@@ -1,0 +1,605 @@
+<Window x:Class="NetworkHealthMonitor.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:converters="clr-namespace:NetworkHealthMonitor.Converters"
+        mc:Ignorable="d"
+        Title="Ağ Cihazları Kontrol Paneli"
+        Height="860"
+        Width="1380"
+        MinHeight="760"
+        MinWidth="1180"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource PageBackgroundBrush}">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <converters:StatusBackgroundConverter x:Key="StatusBackgroundConverter" />
+        <converters:StatusForegroundConverter x:Key="StatusForegroundConverter" />
+        <converters:RowStatusBackgroundConverter x:Key="RowStatusBackgroundConverter" />
+    </Window.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="224" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0" Background="{StaticResource SidebarBrush}" Padding="18">
+            <DockPanel LastChildFill="True">
+                <StackPanel DockPanel.Dock="Top">
+                    <TextBlock Text="Ağ Cihazları"
+                               Foreground="White"
+                               FontSize="20"
+                               FontWeight="Bold" />
+                    <TextBlock Text="Kontrol Paneli"
+                               Foreground="{StaticResource SidebarMutedBrush}"
+                               Margin="0,4,0,24" />
+
+                    <Button Content="Dashboard" Command="{Binding NavigateDashboardCommand}" Style="{StaticResource SidebarButtonStyle}" />
+                    <Button Content="Cihazlar" Command="{Binding NavigateDevicesCommand}" Style="{StaticResource SidebarButtonStyle}" />
+                    <Button Content="Loglar" Command="{Binding NavigateLogsCommand}" Style="{StaticResource SidebarButtonStyle}" />
+                    <Button Content="Ayarlar" Command="{Binding NavigateSettingsCommand}" Style="{StaticResource SidebarButtonStyle}" />
+                </StackPanel>
+
+                <StackPanel DockPanel.Dock="Bottom" VerticalAlignment="Bottom">
+                    <TextBlock Text="{Binding StatusMessage}"
+                               Foreground="{StaticResource SidebarMutedBrush}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <Grid Grid.Column="1" Margin="18">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Background="White" BorderBrush="{StaticResource PanelBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="14">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Row="0" Grid.Column="0">
+                        <TextBlock Text="Ağ Cihazları Kontrol Paneli" FontSize="24" FontWeight="Bold" />
+                        <TextBlock Text="Manuel eklenen IP tabanlı cihazların ping durumu ve geçmiş logları" Foreground="{StaticResource MutedTextBrush}" Margin="0,3,0,0" />
+                    </StackPanel>
+
+                    <WrapPanel Grid.Row="0" Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Top">
+                        <Button Content="CSV Şablonu" Command="{Binding CreateCsvTemplateCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                        <Button Content="CSV Import" Command="{Binding ImportDevicesCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                        <Button Content="CSV Export" Command="{Binding ExportDevicesCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                    </WrapPanel>
+
+                    <WrapPanel Grid.Row="1" Grid.ColumnSpan="2" Margin="0,14,0,0" VerticalAlignment="Center">
+                        <TextBox Width="260"
+                                 Text="{Binding DeviceSearchText, UpdateSourceTrigger=PropertyChanged}"
+                                 ToolTip="Cihaz adı, IP adresi veya not içinde ara" />
+                        <ComboBox Width="160"
+                                  ItemsSource="{Binding DeviceTypeFilterOptions}"
+                                  SelectedItem="{Binding DeviceTypeFilter}"
+                                  Margin="8,0,0,0" />
+                        <ComboBox Width="170"
+                                  ItemsSource="{Binding DeviceStatusFilterOptions}"
+                                  SelectedItem="{Binding DeviceStatusFilter}"
+                                  Margin="8,0,0,0" />
+                        <ComboBox Width="160"
+                                  ItemsSource="{Binding LocationFilterOptions}"
+                                  SelectedItem="{Binding LocationFilter}"
+                                  Margin="8,0,0,0" />
+                        <ComboBox Width="150"
+                                  ItemsSource="{Binding GroupFilterOptions}"
+                                  SelectedItem="{Binding GroupFilter}"
+                                  Margin="8,0,0,0" />
+                        <ComboBox Width="145"
+                                  ItemsSource="{Binding CriticalFilterOptions}"
+                                  SelectedItem="{Binding CriticalFilter}"
+                                  Margin="8,0,0,0" />
+                        <Button Content="Tümüne Ping" Command="{Binding PingAllCommand}" Margin="12,0,0,0" />
+                        <Button Content="Filtreye Ping" Command="{Binding PingFilteredDevicesCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                        <Button Content="Seçiliye Ping" Command="{Binding PingSelectedDeviceCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                        <Button Content="İptal" Command="{Binding CancelPingCommand}" Style="{StaticResource DangerButtonStyle}" />
+                    </WrapPanel>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="1" Margin="0,12,0,12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0"
+                        Background="#FEE2E2"
+                        BorderBrush="#DC2626"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="12"
+                        Margin="0,0,0,10"
+                        Visibility="{Binding HasCriticalProblems, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <TextBlock Text="{Binding CriticalWarningText}" Foreground="#991B1B" FontWeight="Bold" />
+                </Border>
+
+                <ItemsControl Grid.Row="1" ItemsSource="{Binding SummaryCards}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <UniformGrid Columns="8" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,10,0">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="4" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Background="{Binding AccentColor}" CornerRadius="4" />
+                                    <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                                        <TextBlock Text="{Binding Title}" Foreground="{StaticResource MutedTextBrush}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Value}" FontSize="20" FontWeight="Bold" Margin="0,3,0,0" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <Border Grid.Row="2"
+                        Style="{StaticResource SectionBorderStyle}"
+                        Margin="0,10,0,0"
+                        Visibility="{Binding CanShowPingProgress, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ProgressBar Grid.Column="0"
+                                     Height="10"
+                                     Minimum="0"
+                                     Maximum="100"
+                                     Value="{Binding PingProgressPercent, Mode=OneWay}" />
+                        <TextBlock Grid.Column="1"
+                                   Margin="12,0,0,0"
+                                   VerticalAlignment="Center"
+                                   Text="{Binding StatusMessage}" />
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <Grid Grid.Row="2">
+                <Grid Visibility="{Binding IsDashboardSection, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="320" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Style="{StaticResource SectionBorderStyle}" Margin="0,0,12,0">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Top" Text="Kritik Sorunlar" FontSize="16" FontWeight="Bold" Margin="0,0,0,10" />
+                            <DataGrid ItemsSource="{Binding CriticalProblemDevices}">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Cihaz adı" Binding="{Binding Name}" Width="*" />
+                                    <DataGridTextColumn Header="IP" Binding="{Binding IpAddress}" Width="115" />
+                                    <DataGridTextColumn Header="Hata" Binding="{Binding ConsecutiveFailuresText}" Width="60" />
+                                    <DataGridTextColumn Header="Son kontrol" Binding="{Binding LastCheckedAtText}" Width="140" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </DockPanel>
+                    </Border>
+
+                    <Border Grid.Column="1" Style="{StaticResource SectionBorderStyle}" Margin="0,0,12,0">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Top" Text="En Yüksek Gecikme" FontSize="16" FontWeight="Bold" Margin="0,0,0,10" />
+                            <DataGrid ItemsSource="{Binding HighLatencyDevices}">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Cihaz adı" Binding="{Binding Name}" Width="*" />
+                                    <DataGridTextColumn Header="IP" Binding="{Binding IpAddress}" Width="115" />
+                                    <DataGridTextColumn Header="Gecikme" Binding="{Binding LastLatencyText}" Width="90" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </DockPanel>
+                    </Border>
+
+                    <Border Grid.Column="2" Style="{StaticResource SectionBorderStyle}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <TextBlock Text="Uptime Özeti" FontSize="16" FontWeight="Bold" Margin="0,0,0,8" />
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Genel uptime" Foreground="{StaticResource MutedTextBrush}" />
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding OverallUptimeText}" FontWeight="Bold" />
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Kritik uptime" Foreground="{StaticResource MutedTextBrush}" Margin="0,6,0,0" />
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding CriticalUptimeText}" FontWeight="Bold" Margin="0,6,0,0" />
+                                </Grid>
+
+                                <TextBlock Text="En Sorunlu 10 Cihaz" FontSize="14" FontWeight="Bold" Margin="0,0,0,8" />
+                                <DataGrid ItemsSource="{Binding MostProblematicDevices}" Height="210" Margin="0,0,0,12">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Cihaz" Binding="{Binding Name}" Width="*" />
+                                        <DataGridTextColumn Header="30g" Binding="{Binding Uptime30DaysText}" Width="70" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+
+                                <TextBlock Text="Cihaz Tipi Dağılımı" FontSize="14" FontWeight="Bold" Margin="0,0,0,8" />
+                            <ItemsControl ItemsSource="{Binding DeviceTypeDistribution}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="{StaticResource PanelBorderBrush}" BorderThickness="0,0,0,1" Padding="0,9">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="4" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <Border Background="{Binding AccentColor}" CornerRadius="3" />
+                                                <TextBlock Grid.Column="1" Text="{Binding Title}" Margin="10,0,0,0" />
+                                                <TextBlock Grid.Column="2" Text="{Binding Value}" FontWeight="Bold" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+
+                <Grid Visibility="{Binding IsDevicesSection, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="360" />
+                    </Grid.ColumnDefinitions>
+
+                    <DataGrid Grid.Column="0"
+                              ItemsSource="{Binding DevicesView}"
+                              SelectedItem="{Binding SelectedDevice, Mode=TwoWay}"
+                              Margin="0,0,12,0">
+                        <DataGrid.RowStyle>
+                            <Style TargetType="DataGridRow">
+                                <Setter Property="Background" Value="{Binding LastStatus, Converter={StaticResource RowStatusBackgroundConverter}}" />
+                                <Setter Property="Tag" Value="{Binding DataContext, RelativeSource={RelativeSource AncestorType=DataGrid}}" />
+                                <Setter Property="ContextMenu">
+                                    <Setter.Value>
+                                        <ContextMenu>
+                                            <MenuItem Header="Ping At"
+                                                      Command="{Binding PlacementTarget.Tag.PingDeviceCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                            <MenuItem Header="Düzenle"
+                                                      Command="{Binding PlacementTarget.Tag.EditDeviceCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                            <MenuItem Header="Sil"
+                                                      Command="{Binding PlacementTarget.Tag.DeleteDeviceCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                            <Separator />
+                                            <MenuItem Header="Logları Göster"
+                                                      Command="{Binding PlacementTarget.Tag.ShowDeviceLogsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                            <MenuItem Header="IP Adresini Kopyala"
+                                                      Command="{Binding PlacementTarget.Tag.CopyDeviceIpCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                            <MenuItem Header="Cihazı CSV'ye Aktar"
+                                                      Command="{Binding PlacementTarget.Tag.ExportSingleDeviceCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                        </ContextMenu>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </DataGrid.RowStyle>
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Cihaz adı" Binding="{Binding Name}" Width="1.2*" SortMemberPath="Name" />
+                            <DataGridTextColumn Header="IP adresi" Binding="{Binding IpAddress}" Width="120" SortMemberPath="IpSortKey" />
+                            <DataGridTextColumn Header="Cihaz tipi" Binding="{Binding DeviceTypeText}" Width="120" SortMemberPath="DeviceType" />
+                            <DataGridTextColumn Header="Lokasyon" Binding="{Binding Location}" Width="120" SortMemberPath="Location" />
+                            <DataGridTextColumn Header="Grup" Binding="{Binding GroupName}" Width="120" SortMemberPath="GroupName" />
+                            <DataGridTextColumn Header="Kritik" Binding="{Binding IsCriticalText}" Width="70" SortMemberPath="IsCritical" />
+                            <DataGridTemplateColumn Header="Durum" Width="135" SortMemberPath="LastStatus">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{Binding LastStatus, Converter={StaticResource StatusBackgroundConverter}}"
+                                                CornerRadius="6"
+                                                Padding="8,4"
+                                                HorizontalAlignment="Left">
+                                            <TextBlock Text="{Binding LastStatusText}"
+                                                       Foreground="{Binding LastStatus, Converter={StaticResource StatusForegroundConverter}}"
+                                                       FontWeight="SemiBold" />
+                                        </Border>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Gecikme" Binding="{Binding LastLatencyText}" Width="90" SortMemberPath="LastLatencyMs" />
+                            <DataGridTextColumn Header="Hata" Binding="{Binding ConsecutiveFailuresText}" Width="60" SortMemberPath="ConsecutiveFailures" />
+                            <DataGridTextColumn Header="24s uptime" Binding="{Binding Uptime24HoursText}" Width="95" SortMemberPath="Uptime24HoursPercent" />
+                            <DataGridTextColumn Header="Son kontrol" Binding="{Binding LastCheckedAtText}" Width="145" SortMemberPath="LastCheckedAt" />
+                            <DataGridTextColumn Header="Not / Açıklama" Binding="{Binding Description}" Width="1.5*" />
+                            <DataGridTemplateColumn Header="İşlemler" Width="150">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button Content="Ping"
+                                                    Style="{StaticResource SmallButtonStyle}"
+                                                    Command="{Binding DataContext.PingDeviceCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                    CommandParameter="{Binding}" />
+                                            <Button Content="Düzenle"
+                                                    Style="{StaticResource SmallSecondaryButtonStyle}"
+                                                    Command="{Binding DataContext.EditDeviceCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                    CommandParameter="{Binding}" />
+                                            <Button Content="Sil"
+                                                    Style="{StaticResource SmallDangerButtonStyle}"
+                                                    Command="{Binding DataContext.DeleteDeviceCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                    CommandParameter="{Binding}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Border Grid.Column="1" Style="{StaticResource SectionBorderStyle}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <TextBlock Text="Seçili Cihaz" FontSize="16" FontWeight="Bold" />
+                                <Grid Margin="0,10,0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="110" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Ad" Foreground="{StaticResource MutedTextBrush}" Margin="0,0,0,6" />
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SelectedDevice.Name, TargetNullValue=-}" FontWeight="SemiBold" Margin="0,0,0,6" />
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="IP" Foreground="{StaticResource MutedTextBrush}" Margin="0,0,0,6" />
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedDevice.IpAddress, TargetNullValue=-}" Margin="0,0,0,6" />
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Tip" Foreground="{StaticResource MutedTextBrush}" Margin="0,0,0,6" />
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedDevice.DeviceTypeText, TargetNullValue=-}" Margin="0,0,0,6" />
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Durum" Foreground="{StaticResource MutedTextBrush}" Margin="0,0,0,6" />
+                                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedDevice.LastStatusText, TargetNullValue=-}" Margin="0,0,0,6" />
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Son kontrol" Foreground="{StaticResource MutedTextBrush}" />
+                                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding SelectedDevice.LastCheckedAtText, TargetNullValue=-}" />
+                                    <TextBlock Grid.Row="5" Grid.Column="0" Text="Lokasyon" Foreground="{StaticResource MutedTextBrush}" Margin="0,6,0,0" />
+                                    <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding SelectedDevice.Location, TargetNullValue=-}" Margin="0,6,0,0" />
+                                    <TextBlock Grid.Row="6" Grid.Column="0" Text="Grup" Foreground="{StaticResource MutedTextBrush}" Margin="0,6,0,0" />
+                                    <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding SelectedDevice.GroupName, TargetNullValue=-}" Margin="0,6,0,0" />
+                                    <TextBlock Grid.Row="7" Grid.Column="0" Text="24s / 7g / 30g" Foreground="{StaticResource MutedTextBrush}" Margin="0,6,0,0" />
+                                    <TextBlock Grid.Row="7" Grid.Column="1" Margin="0,6,0,0">
+                                        <TextBlock.Text>
+                                            <MultiBinding StringFormat="{}{0} / {1} / {2}">
+                                                <Binding Path="SelectedDevice.Uptime24HoursText" />
+                                                <Binding Path="SelectedDevice.Uptime7DaysText" />
+                                                <Binding Path="SelectedDevice.Uptime30DaysText" />
+                                            </MultiBinding>
+                                        </TextBlock.Text>
+                                    </TextBlock>
+                                    <TextBlock Grid.Row="8" Grid.Column="0" Text="Ort. gecikme" Foreground="{StaticResource MutedTextBrush}" Margin="0,6,0,0" />
+                                    <TextBlock Grid.Row="8" Grid.Column="1" Text="{Binding SelectedDevice.AverageLatencyText, TargetNullValue=-}" Margin="0,6,0,0" />
+                                    <TextBlock Grid.Row="9" Grid.Column="0" Text="Son hata" Foreground="{StaticResource MutedTextBrush}" Margin="0,6,0,0" />
+                                    <TextBlock Grid.Row="9" Grid.Column="1" Text="{Binding SelectedDevice.LastFailureAtText, TargetNullValue=-}" Margin="0,6,0,0" />
+                                </Grid>
+
+                                <WrapPanel Margin="0,0,0,18">
+                                    <Button Content="Ping" Command="{Binding PingSelectedDeviceCommand}" Style="{StaticResource SmallButtonStyle}" />
+                                    <Button Content="Logları Göster" Command="{Binding ShowSelectedDeviceLogsCommand}" Style="{StaticResource SmallSecondaryButtonStyle}" />
+                                    <Button Content="Düzenle" Command="{Binding EditSelectedDeviceCommand}" Style="{StaticResource SmallSecondaryButtonStyle}" />
+                                    <Button Content="Sil" Command="{Binding DeleteSelectedDeviceCommand}" Style="{StaticResource SmallDangerButtonStyle}" />
+                                </WrapPanel>
+
+                                <TextBlock Text="{Binding FormModeTitle}" FontSize="16" FontWeight="Bold" Margin="0,4,0,12" />
+
+                                <TextBlock Text="Cihaz adı" FontWeight="SemiBold" />
+                                <TextBox Text="{Binding FormName, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,10" />
+
+                                <TextBlock Text="IP adresi" FontWeight="SemiBold" />
+                                <TextBox Text="{Binding FormIpAddress, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,10" />
+
+                                <TextBlock Text="Cihaz tipi" FontWeight="SemiBold" />
+                                <ComboBox ItemsSource="{Binding DeviceTypeOptions}"
+                                          DisplayMemberPath="Label"
+                                          SelectedValuePath="Value"
+                                          SelectedValue="{Binding FormDeviceType, Mode=TwoWay}"
+                                          Margin="0,4,0,10" />
+
+                                <TextBlock Text="Lokasyon" FontWeight="SemiBold" />
+                                <TextBox Text="{Binding FormLocation, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,10" />
+
+                                <TextBlock Text="Grup" FontWeight="SemiBold" />
+                                <TextBox Text="{Binding FormGroupName, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,10" />
+
+                                <CheckBox Content="Kritik cihaz"
+                                          IsChecked="{Binding FormIsCritical}"
+                                          FontWeight="SemiBold"
+                                          Margin="0,2,0,12" />
+
+                                <TextBlock Text="Not / Açıklama" FontWeight="SemiBold" />
+                                <TextBox Text="{Binding FormDescription, UpdateSourceTrigger=PropertyChanged}"
+                                         Height="82"
+                                         AcceptsReturn="True"
+                                         TextWrapping="Wrap"
+                                         VerticalContentAlignment="Top"
+                                         Margin="0,4,0,14" />
+
+                                <WrapPanel>
+                                    <Button Content="{Binding FormActionText}" Command="{Binding SaveDeviceCommand}" />
+                                    <Button Content="Temizle" Command="{Binding ClearFormCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+
+                    <Border Grid.ColumnSpan="2"
+                            Style="{StaticResource SectionBorderStyle}"
+                            Background="White"
+                            Margin="28"
+                            Panel.ZIndex="20"
+                            Visibility="{Binding HasImportPreview, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0" Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="CSV Import Ön İzleme" FontSize="18" FontWeight="Bold" />
+                                    <TextBlock Text="{Binding ImportPreviewSummaryText}" Foreground="{StaticResource MutedTextBrush}" Margin="0,3,0,0" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="Duplicate IP:" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                    <ComboBox Width="190"
+                                              ItemsSource="{Binding ImportDuplicateActionOptions}"
+                                              SelectedItem="{Binding SelectedImportDuplicateAction}" />
+                                </StackPanel>
+                            </Grid>
+
+                            <DataGrid Grid.Row="1" ItemsSource="{Binding ImportPreviewRows}">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Satır No" Binding="{Binding RowNumber}" Width="70" />
+                                    <DataGridTextColumn Header="Cihaz Adı" Binding="{Binding Name}" Width="1.1*" />
+                                    <DataGridTextColumn Header="IP Adresi" Binding="{Binding IpAddress}" Width="120" />
+                                    <DataGridTextColumn Header="Cihaz Tipi" Binding="{Binding DeviceType}" Width="120" />
+                                    <DataGridTextColumn Header="Lokasyon" Binding="{Binding Location}" Width="110" />
+                                    <DataGridTextColumn Header="Grup" Binding="{Binding GroupName}" Width="110" />
+                                    <DataGridCheckBoxColumn Header="Kritik" Binding="{Binding IsCritical}" Width="70" IsReadOnly="True" />
+                                    <DataGridTextColumn Header="Not" Binding="{Binding Note}" Width="1.1*" />
+                                    <DataGridTextColumn Header="Import Durumu" Binding="{Binding StatusText}" Width="115" />
+                                    <DataGridTextColumn Header="Hata Mesajı" Binding="{Binding ErrorMessage}" Width="1.4*" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+
+                            <WrapPanel Grid.Row="2" HorizontalAlignment="Right" Margin="0,12,0,0">
+                                <Button Content="Hataları CSV'ye Aktar" Command="{Binding ExportImportErrorsCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                                <Button Content="Import'u Uygula" Command="{Binding ApplyImportPreviewCommand}" />
+                                <Button Content="Vazgeç" Command="{Binding CancelImportPreviewCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                            </WrapPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <Grid Visibility="{Binding IsLogsSection, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" Style="{StaticResource SectionBorderStyle}" Margin="0,0,0,12">
+                        <WrapPanel VerticalAlignment="Center">
+                            <DatePicker Width="140" SelectedDate="{Binding LogStartDate}" />
+                            <DatePicker Width="140" SelectedDate="{Binding LogEndDate}" Margin="8,0,0,0" />
+                            <TextBox Width="180" Text="{Binding LogDeviceNameFilter, UpdateSourceTrigger=PropertyChanged}" ToolTip="Cihaz adı" Margin="8,0,0,0" />
+                            <TextBox Width="150" Text="{Binding LogIpAddressFilter, UpdateSourceTrigger=PropertyChanged}" ToolTip="IP adresi" Margin="8,0,0,0" />
+                            <ComboBox Width="150" ItemsSource="{Binding LogDeviceTypeOptions}" SelectedItem="{Binding LogDeviceTypeFilter}" Margin="8,0,0,0" />
+                            <ComboBox Width="160" ItemsSource="{Binding LogStatusOptions}" SelectedItem="{Binding LogStatusFilter}" Margin="8,0,0,0" />
+                            <CheckBox Content="Sadece erişilemeyenler" IsChecked="{Binding LogOnlyUnreachable}" VerticalAlignment="Center" Margin="10,0,0,0" />
+                            <Button Content="Filtrele" Command="{Binding RefreshLogsCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="12,0,0,0" />
+                            <Button Content="CSV Export" Command="{Binding ExportLogsCommand}" />
+                            <Button Content="Eski Logları Temizle" Command="{Binding ClearOldLogsCommand}" Style="{StaticResource DangerButtonStyle}" />
+                            <Button Content="Tüm Logları Temizle" Command="{Binding ClearLogsCommand}" Style="{StaticResource DangerButtonStyle}" />
+                        </WrapPanel>
+                    </Border>
+
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding LogsView}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Tarih/Saat" Binding="{Binding CheckedAtText}" Width="150" SortMemberPath="CheckedAt" />
+                            <DataGridTextColumn Header="Cihaz adı" Binding="{Binding DeviceName}" Width="1.2*" />
+                            <DataGridTextColumn Header="IP adresi" Binding="{Binding IpAddress}" Width="120" />
+                            <DataGridTextColumn Header="Cihaz tipi" Binding="{Binding DeviceTypeText}" Width="125" />
+                            <DataGridTemplateColumn Header="Durum" Width="130" SortMemberPath="Status">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{Binding Status, Converter={StaticResource StatusBackgroundConverter}}"
+                                                CornerRadius="6"
+                                                Padding="8,4"
+                                                HorizontalAlignment="Left">
+                                            <TextBlock Text="{Binding StatusText}"
+                                                       Foreground="{Binding Status, Converter={StaticResource StatusForegroundConverter}}"
+                                                       FontWeight="SemiBold" />
+                                        </Border>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Gecikme" Binding="{Binding LatencyText}" Width="90" />
+                            <DataGridTextColumn Header="Hata mesajı" Binding="{Binding ResponseOrErrorText}" Width="2*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+
+                <ScrollViewer Visibility="{Binding IsSettingsSection, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Border Style="{StaticResource SectionBorderStyle}" Width="560" HorizontalAlignment="Left">
+                        <StackPanel>
+                            <TextBlock Text="Ayarlar" FontSize="18" FontWeight="Bold" Margin="0,0,0,16" />
+
+                            <TextBlock Text="Ping timeout (ms)" FontWeight="SemiBold" />
+                            <TextBox Text="{Binding PingTimeoutMs, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,12" />
+
+                            <TextBlock Text="Maksimum paralel ping" FontWeight="SemiBold" />
+                            <TextBox Text="{Binding MaxParallelPings, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,12" />
+
+                            <CheckBox Content="Periyodik otomatik kontrol aktif"
+                                      IsChecked="{Binding AutoCheckEnabled}"
+                                      FontWeight="SemiBold"
+                                      Margin="0,4,0,12" />
+
+                            <TextBlock Text="Otomatik kontrol aralığı (dakika)" FontWeight="SemiBold" />
+                            <TextBox Text="{Binding AutoCheckIntervalMinutes, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,12" />
+
+                            <TextBlock Text="CSV ayırıcısı" FontWeight="SemiBold" />
+                            <TextBox Text="{Binding CsvDelimiter, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,12" />
+
+                            <TextBlock Text="Log saklama günü (0 = süresiz)" FontWeight="SemiBold" />
+                            <TextBox Text="{Binding LogRetentionDays, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,16" />
+
+                            <WrapPanel>
+                                <Button Content="Ayarları Kaydet" Command="{Binding SaveSettingsCommand}" />
+                            </WrapPanel>
+
+                            <Separator Margin="0,18,0,14" />
+                            <TextBlock Text="Bakım" FontSize="16" FontWeight="Bold" Margin="0,0,0,10" />
+                            <WrapPanel>
+                                <Button Content="Veritabanını Yedekle" Command="{Binding BackupDatabaseCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                                <Button Content="Veritabanını Geri Yükle" Command="{Binding RestoreDatabaseCommand}" Style="{StaticResource DangerButtonStyle}" />
+                                <Button Content="Ayarları Dışa Aktar" Command="{Binding ExportSettingsCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                                <Button Content="Ayarları İçe Aktar" Command="{Binding ImportSettingsCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                </ScrollViewer>
+            </Grid>
+
+            <Border Grid.Row="3" Background="White" BorderBrush="{StaticResource PanelBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="10" Margin="0,12,0,0">
+                <TextBlock Text="{Binding StatusMessage}" Foreground="{StaticResource MutedTextBrush}" />
+            </Border>
+        </Grid>
+    </Grid>
+</Window>
