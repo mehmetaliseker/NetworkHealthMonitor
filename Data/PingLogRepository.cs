@@ -17,15 +17,7 @@ public sealed class PingLogRepository
     {
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
         await using var command = connection.CreateCommand();
-        command.CommandText = """
-            INSERT INTO PingLogs
-                (DeviceId, DeviceName, IpAddress, DeviceType, Status, LatencyMs,
-                 ResponseMessage, ErrorMessage, CheckedAt)
-            VALUES
-                (@DeviceId, @DeviceName, @IpAddress, @DeviceType, @Status, @LatencyMs,
-                 @ResponseMessage, @ErrorMessage, @CheckedAt);
-            SELECT last_insert_rowid();
-            """;
+        command.CommandText = InsertSql + " SELECT last_insert_rowid();";
 
         AddLogParameters(command, log);
         var result = await command.ExecuteScalarAsync();
@@ -49,17 +41,11 @@ public sealed class PingLogRepository
         {
             await using var command = connection.CreateCommand();
             command.Transaction = transaction;
-            command.CommandText = """
-                INSERT INTO PingLogs
-                    (DeviceId, DeviceName, IpAddress, DeviceType, Status, LatencyMs,
-                     ResponseMessage, ErrorMessage, CheckedAt)
-                VALUES
-                    (@DeviceId, @DeviceName, @IpAddress, @DeviceType, @Status, @LatencyMs,
-                     @ResponseMessage, @ErrorMessage, @CheckedAt);
-                """;
+            command.CommandText = InsertSql + " SELECT last_insert_rowid();";
 
             AddLogParameters(command, log);
-            await command.ExecuteNonQueryAsync();
+            var result = await command.ExecuteScalarAsync();
+            log.Id = Convert.ToInt32(result, CultureInfo.InvariantCulture);
         }
 
         transaction.Commit();
@@ -67,36 +53,27 @@ public sealed class PingLogRepository
 
     public async Task<IReadOnlyList<PingLog>> GetRecentAsync(int limit = 5000)
     {
-        return await GetFilteredAsync(null, null, null, null, null, null, false, limit);
+        return await GetFilteredAsync(
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            false,
+            limit);
     }
 
     public async Task<IReadOnlyDictionary<int, DeviceHealthMetrics>> GetDeviceHealthMetricsAsync(DateTime since)
     {
-        var rows = new List<(int DeviceId, DeviceStatus Status, long? LatencyMs, DateTime CheckedAt)>();
-        await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT DeviceId, Status, LatencyMs, CheckedAt
-            FROM PingLogs
-            WHERE DeviceId IS NOT NULL
-              AND CheckedAt >= @Since
-            ORDER BY CheckedAt DESC;
-            """;
-
-        AddParameter(command, "@Since", ToStorageDate(since));
-        await using var reader = await command.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
-        {
-            rows.Add((
-                reader.GetInt32(0),
-                DeviceStatusExtensions.FromStorageValue(reader.GetString(1)),
-                reader.IsDBNull(2) ? null : reader.GetInt64(2),
-                FromStorageDate(reader.GetString(3))));
-        }
-
+        var rows = await GetForAvailabilityAsync(since);
         var now = DateTime.Now;
         return rows
-            .GroupBy(row => row.DeviceId)
+            .Where(row => row.DeviceId.HasValue)
+            .GroupBy(row => row.DeviceId!.Value)
             .ToDictionary(
                 group => group.Key,
                 group =>
@@ -111,12 +88,37 @@ public sealed class PingLogRepository
                         AverageLatencyMs = CalculateAverageLatency(materialized),
                         LastFailureAt = materialized
                             .Where(row => row.Status == DeviceStatus.Unreachable)
+                            .OrderByDescending(row => row.CheckedAt)
                             .Select(row => (DateTime?)row.CheckedAt)
                             .FirstOrDefault(),
                         FailureCount30Days = materialized.Count(row => row.Status == DeviceStatus.Unreachable),
                         TotalChecks30Days = materialized.Count
                     };
                 });
+    }
+
+    public async Task<IReadOnlyList<PingLog>> GetForAvailabilityAsync(DateTime since)
+    {
+        var logs = new List<PingLog>();
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT Id, DeviceId, DeviceName, IpAddress, DeviceType, GroupName, Status, LatencyMs,
+                   ResponseMessage, ErrorMessage, CheckedAt, TriggerType, SchedulePlanId, SchedulePlanName
+            FROM PingLogs
+            WHERE DeviceId IS NOT NULL
+              AND CheckedAt >= @Since
+            ORDER BY CheckedAt DESC;
+            """;
+
+        AddParameter(command, "@Since", ToStorageDate(since));
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            logs.Add(ReadLog(reader));
+        }
+
+        return logs;
     }
 
     public async Task<IReadOnlyList<PingLog>> GetFilteredAsync(
@@ -126,6 +128,33 @@ public sealed class PingLogRepository
         string? ipAddress,
         DeviceType? deviceType,
         DeviceStatus? status,
+        bool onlyUnreachable,
+        int limit = 5000)
+    {
+        return await GetFilteredAsync(
+            startDate,
+            endDate,
+            deviceName,
+            ipAddress,
+            deviceType,
+            status,
+            null,
+            null,
+            null,
+            onlyUnreachable,
+            limit);
+    }
+
+    public async Task<IReadOnlyList<PingLog>> GetFilteredAsync(
+        DateTime? startDate,
+        DateTime? endDate,
+        string? deviceName,
+        string? ipAddress,
+        DeviceType? deviceType,
+        DeviceStatus? status,
+        string? groupName,
+        PingTriggerType? triggerType,
+        string? planName,
         bool onlyUnreachable,
         int limit = 5000)
     {
@@ -170,6 +199,24 @@ public sealed class PingLogRepository
             AddParameter(command, "@Status", status.Value.ToStorageValue());
         }
 
+        if (!string.IsNullOrWhiteSpace(groupName))
+        {
+            where.Add("GroupName LIKE @GroupName");
+            AddParameter(command, "@GroupName", $"%{groupName.Trim()}%");
+        }
+
+        if (triggerType.HasValue)
+        {
+            where.Add("TriggerType = @TriggerType");
+            AddParameter(command, "@TriggerType", triggerType.Value.ToStorageValue());
+        }
+
+        if (!string.IsNullOrWhiteSpace(planName))
+        {
+            where.Add("SchedulePlanName LIKE @SchedulePlanName");
+            AddParameter(command, "@SchedulePlanName", $"%{planName.Trim()}%");
+        }
+
         if (onlyUnreachable)
         {
             where.Add("Status = @OnlyUnreachableStatus");
@@ -178,8 +225,8 @@ public sealed class PingLogRepository
 
         AddParameter(command, "@Limit", Math.Clamp(limit, 1, 50000));
         command.CommandText = $"""
-            SELECT Id, DeviceId, DeviceName, IpAddress, DeviceType, Status, LatencyMs,
-                   ResponseMessage, ErrorMessage, CheckedAt
+            SELECT Id, DeviceId, DeviceName, IpAddress, DeviceType, GroupName, Status, LatencyMs,
+                   ResponseMessage, ErrorMessage, CheckedAt, TriggerType, SchedulePlanId, SchedulePlanName
             FROM PingLogs
             {(where.Count == 0 ? string.Empty : "WHERE " + string.Join(" AND ", where))}
             ORDER BY CheckedAt DESC
@@ -229,6 +276,15 @@ public sealed class PingLogRepository
         return await command.ExecuteNonQueryAsync();
     }
 
+    private const string InsertSql = """
+        INSERT INTO PingLogs
+            (DeviceId, DeviceName, IpAddress, DeviceType, GroupName, Status, LatencyMs,
+             ResponseMessage, ErrorMessage, CheckedAt, TriggerType, SchedulePlanId, SchedulePlanName)
+        VALUES
+            (@DeviceId, @DeviceName, @IpAddress, @DeviceType, @GroupName, @Status, @LatencyMs,
+             @ResponseMessage, @ErrorMessage, @CheckedAt, @TriggerType, @SchedulePlanId, @SchedulePlanName);
+        """;
+
     private static PingLog ReadLog(SqliteDataReader reader)
     {
         return new PingLog
@@ -238,17 +294,19 @@ public sealed class PingLogRepository
             DeviceName = reader.GetString(2),
             IpAddress = reader.GetString(3),
             DeviceType = DeviceTypeExtensions.FromStorageValue(reader.GetString(4)),
-            Status = DeviceStatusExtensions.FromStorageValue(reader.GetString(5)),
-            LatencyMs = reader.IsDBNull(6) ? null : reader.GetInt64(6),
-            ResponseMessage = reader.GetString(7),
-            ErrorMessage = reader.GetString(8),
-            CheckedAt = FromStorageDate(reader.GetString(9))
+            GroupName = reader.GetString(5),
+            Status = DeviceStatusExtensions.FromStorageValue(reader.GetString(6)),
+            LatencyMs = reader.IsDBNull(7) ? null : reader.GetInt64(7),
+            ResponseMessage = reader.GetString(8),
+            ErrorMessage = reader.GetString(9),
+            CheckedAt = FromStorageDate(reader.GetString(10)),
+            TriggerType = PingTriggerTypeExtensions.FromStorageValue(reader.GetString(11)),
+            SchedulePlanId = reader.IsDBNull(12) ? null : reader.GetInt32(12),
+            SchedulePlanName = reader.GetString(13)
         };
     }
 
-    private static double? CalculateUptime(
-        IReadOnlyCollection<(int DeviceId, DeviceStatus Status, long? LatencyMs, DateTime CheckedAt)> rows,
-        DateTime since)
+    private static double? CalculateUptime(IReadOnlyCollection<PingLog> rows, DateTime since)
     {
         var scoped = rows.Where(row => row.CheckedAt >= since).ToList();
         if (scoped.Count == 0)
@@ -259,8 +317,7 @@ public sealed class PingLogRepository
         return scoped.Count(row => row.Status == DeviceStatus.Reachable) * 100d / scoped.Count;
     }
 
-    private static long? CalculateAverageLatency(
-        IReadOnlyCollection<(int DeviceId, DeviceStatus Status, long? LatencyMs, DateTime CheckedAt)> rows)
+    private static long? CalculateAverageLatency(IReadOnlyCollection<PingLog> rows)
     {
         var latencies = rows
             .Where(row => row.Status == DeviceStatus.Reachable && row.LatencyMs.HasValue)
@@ -276,11 +333,15 @@ public sealed class PingLogRepository
         AddParameter(command, "@DeviceName", log.DeviceName);
         AddParameter(command, "@IpAddress", log.IpAddress);
         AddParameter(command, "@DeviceType", log.DeviceType.ToStorageValue());
+        AddParameter(command, "@GroupName", log.GroupName);
         AddParameter(command, "@Status", log.Status.ToStorageValue());
         AddParameter(command, "@LatencyMs", log.LatencyMs);
         AddParameter(command, "@ResponseMessage", log.ResponseMessage);
         AddParameter(command, "@ErrorMessage", log.ErrorMessage);
         AddParameter(command, "@CheckedAt", ToStorageDate(log.CheckedAt));
+        AddParameter(command, "@TriggerType", log.TriggerType.ToStorageValue());
+        AddParameter(command, "@SchedulePlanId", log.SchedulePlanId);
+        AddParameter(command, "@SchedulePlanName", log.SchedulePlanName);
     }
 
     private static void AddParameter(SqliteCommand command, string name, object? value)

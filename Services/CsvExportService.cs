@@ -73,6 +73,58 @@ public sealed class CsvExportService
         await File.WriteAllTextAsync(filePath, builder.ToString(), Utf8Bom);
     }
 
+    public async Task ExportAvailabilityAsync(IEnumerable<AvailabilityReportItem> items, string filePath, string delimiter = ";")
+    {
+        var separator = NormalizeDelimiter(delimiter);
+        var builder = new StringBuilder();
+        AppendRow(
+            builder,
+            separator,
+            "Cihaz adı",
+            "IP adresi",
+            "Cihaz tipi",
+            "Grup",
+            "Son durum",
+            "Son başarılı kontrol",
+            "Son başarısız kontrol",
+            "Başarılı kontrol",
+            "Başarısız kontrol",
+            "Ölçülen erişilebilirlik",
+            "Son 24 saat",
+            "Son 7 gün",
+            "Son 30 gün",
+            "Kesinti sayısı",
+            "Son kesinti başlangıcı",
+            "Son toparlanma",
+            "Tahmini kesinti süresi");
+
+        foreach (var item in items)
+        {
+            AppendRow(
+                builder,
+                separator,
+                item.DeviceName,
+                item.IpAddress,
+                item.DeviceTypeText,
+                item.GroupName,
+                item.LastStatusText,
+                item.LastSuccessfulCheckAtText,
+                item.LastFailedCheckAtText,
+                item.TotalSuccessCount.ToString(),
+                item.TotalFailureCount.ToString(),
+                item.MeasuredAvailabilityText,
+                item.Availability24HoursText,
+                item.Availability7DaysText,
+                item.Availability30DaysText,
+                item.OutageCount.ToString(),
+                item.LastOutageStartedAtText,
+                item.LastRecoveryAtText,
+                item.EstimatedOutageDurationText);
+        }
+
+        await File.WriteAllTextAsync(filePath, builder.ToString(), Utf8Bom);
+    }
+
     public async Task ExportImportErrorsAsync(IEnumerable<CsvImportError> errors, string filePath, string delimiter = ";")
     {
         var separator = NormalizeDelimiter(delimiter);
