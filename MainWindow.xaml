@@ -138,7 +138,7 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <ProgressBar Height="10" Minimum="0" Maximum="100" Value="{Binding PingProgressPercent}" />
+                        <ProgressBar Height="10" Minimum="0" Maximum="100" Value="{Binding PingProgressPercent, Mode=OneWay}" />
                         <TextBlock Grid.Column="1" Text="{Binding StatusMessage}" Margin="12,0,0,0" VerticalAlignment="Center" />
                     </Grid>
                 </Border>
@@ -938,7 +938,7 @@
                             <TextBlock Text="Tema" FontWeight="SemiBold" />
                             <ComboBox ItemsSource="{Binding ThemeOptions}" SelectedItem="{Binding Theme}" Margin="0,4,0,12" />
                             <TextBlock Text="Veritabanı konumu" FontWeight="SemiBold" />
-                            <TextBox Text="{Binding DatabaseLocation}" IsReadOnly="True" Margin="0,4,0,16" />
+                            <TextBox Text="{Binding DatabaseLocation, Mode=OneWay}" IsReadOnly="True" Margin="0,4,0,16" />
                             <WrapPanel>
                                 <Button Content="Ayarları Kaydet" Command="{Binding SaveSettingsCommand}" />
                                 <Button Content="Ayarları Sıfırla" Command="{Binding ResetSettingsCommand}" Style="{StaticResource SecondaryButtonStyle}" />
