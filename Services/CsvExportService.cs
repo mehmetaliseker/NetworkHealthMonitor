@@ -255,7 +255,19 @@ public sealed class CsvExportService
 
         if (lines.Length == 0)
         {
-            rows.Add(CreateInvalidRow(1, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, "CSV dosyası boş."));
+            rows.Add(CreateInvalidRow(
+                1,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                "CSV dosyası boş."));
             return new CsvImportPreview(0, rows);
         }
 
@@ -273,6 +285,9 @@ public sealed class CsvExportService
         {
             rows.Add(CreateInvalidRow(
                 1,
+                string.Empty,
+                string.Empty,
+                string.Empty,
                 string.Empty,
                 string.Empty,
                 string.Empty,

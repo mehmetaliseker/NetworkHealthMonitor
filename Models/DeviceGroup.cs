@@ -63,7 +63,7 @@ public sealed class DeviceGroup : ObservableObject
         {
             var normalized = value.HasValue
                 ? Math.Clamp(value.Value, AppSettings.MinDeviceCheckIntervalSeconds, AppSettings.MaxDeviceCheckIntervalSeconds)
-                : null;
+                : (int?)null;
             if (SetProperty(ref _defaultCheckIntervalSeconds, normalized))
             {
                 OnPropertyChanged(nameof(DefaultCheckIntervalText));

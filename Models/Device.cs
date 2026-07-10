@@ -151,7 +151,7 @@ public sealed class Device : ObservableObject
         {
             var normalized = value.HasValue && value.Value > 0
                 ? Math.Clamp(value.Value, AppSettings.MinPingTimeoutMs, AppSettings.MaxPingTimeoutMs)
-                : null;
+                : (int?)null;
             if (SetProperty(ref _pingTimeoutMs, normalized))
             {
                 OnPropertyChanged(nameof(PingTimeoutText));
