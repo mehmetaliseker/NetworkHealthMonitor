@@ -18,7 +18,7 @@ public interface IDialogService
 
     string? GetOpenCsvFilePath();
 
-    string? GetSaveCsvFilePath(string defaultFileName);
+    string? GetSaveCsvFilePath(string defaultFileName, string? initialDirectory = null);
 
     string? GetOpenDatabaseFilePath();
 

@@ -8,6 +8,7 @@ public sealed class DeviceGroup : ObservableObject
     private string _name = string.Empty;
     private string _description = string.Empty;
     private int? _defaultSchedulePlanId;
+    private int? _defaultCheckIntervalSeconds;
     private DateTime _createdAt = DateTime.Now;
     private DateTime _updatedAt = DateTime.Now;
     private int _deviceCount;
@@ -35,6 +36,21 @@ public sealed class DeviceGroup : ObservableObject
     {
         get => _defaultSchedulePlanId;
         set => SetProperty(ref _defaultSchedulePlanId, value);
+    }
+
+    public int? DefaultCheckIntervalSeconds
+    {
+        get => _defaultCheckIntervalSeconds;
+        set
+        {
+            var normalized = value.HasValue
+                ? Math.Clamp(value.Value, AppSettings.MinDeviceCheckIntervalSeconds, AppSettings.MaxDeviceCheckIntervalSeconds)
+                : null;
+            if (SetProperty(ref _defaultCheckIntervalSeconds, normalized))
+            {
+                OnPropertyChanged(nameof(DefaultCheckIntervalText));
+            }
+        }
     }
 
     public DateTime CreatedAt
@@ -76,4 +92,21 @@ public sealed class DeviceGroup : ObservableObject
     public string DeviceCountText => DeviceCount.ToString();
 
     public string Availability30DaysText => Availability30DaysPercent.HasValue ? $"{Availability30DaysPercent.Value:0.0}%" : "-";
+
+    public string DefaultCheckIntervalText => DefaultCheckIntervalSeconds.HasValue ? FormatDuration(DefaultCheckIntervalSeconds.Value) : "Plan/global";
+
+    private static string FormatDuration(int seconds)
+    {
+        if (seconds >= 3600 && seconds % 3600 == 0)
+        {
+            return $"{seconds / 3600} sa";
+        }
+
+        if (seconds >= 60 && seconds % 60 == 0)
+        {
+            return $"{seconds / 60} dk";
+        }
+
+        return $"{seconds} sn";
+    }
 }

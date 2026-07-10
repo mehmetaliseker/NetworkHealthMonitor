@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
+using System.IO;
 using System.Windows;
 using System.Windows.Data;
 using NetworkHealthMonitor.Data;
@@ -39,6 +40,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly IPingExecutionService _pingExecutionService;
     private readonly IAvailabilityService _availabilityService;
     private readonly ISchedulerService _schedulerService;
+    private readonly SchedulePlanTargetResolver _schedulePlanTargetResolver;
     private readonly CsvExportService _csvExportService;
     private readonly AppSettingsService _settingsService;
     private readonly IDialogService _dialogService;
@@ -77,29 +79,37 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private string _formDescription = string.Empty;
     private bool _formAutoCheckEnabled = true;
     private int? _formDefaultSchedulePlanId;
+    private int _formCheckIntervalSeconds;
+    private int _formFailureRetryIntervalSeconds = AppSettings.DefaultFailureRetryIntervalSecondsValue;
+    private int _formFailureRetryLimit = AppSettings.DefaultFailureRetryLimitValue;
     private bool _formIsCritical;
     private bool _formIsActive = true;
     private int? _editingGroupId;
     private string _groupFormName = string.Empty;
     private string _groupFormDescription = string.Empty;
     private int? _groupFormDefaultSchedulePlanId;
+    private int? _groupFormDefaultCheckIntervalSeconds;
     private int? _editingPlanId;
     private string _planFormName = string.Empty;
     private SchedulePlanTargetType _planFormTargetType = SchedulePlanTargetType.AllDevices;
     private string _planFormTargetValue = string.Empty;
     private int _planFormFrequencyValue = 10;
     private string _planFormFrequencyUnit = "Dakika";
-    private int _planFormTimeoutMs = 1000;
-    private int _planFormMaxParallelism = 16;
-    private int _planFormFailureThreshold = 3;
+    private int _planFormTimeoutMs = AppSettings.DefaultPingTimeoutMs;
+    private int _planFormMaxParallelism = AppSettings.DefaultSchedulePlanMaxParallelism;
+    private int _planFormFailureThreshold = AppSettings.DefaultFailureThresholdValue;
     private bool _planFormIsActive = true;
     private string _planFormDescription = string.Empty;
-    private int _pingTimeoutMs = 1000;
-    private int _maxParallelPings = 32;
-    private int _defaultFailureThreshold = 3;
+    private int _pingTimeoutMs = AppSettings.DefaultPingTimeoutMs;
+    private int _maxParallelPings = AppSettings.DefaultMaxParallelPings;
+    private int _defaultFailureThreshold = AppSettings.DefaultFailureThresholdValue;
+    private int _autoCheckIntervalMinutes = AppSettings.DefaultAutoCheckIntervalMinutes;
+    private int _defaultFailureRetryIntervalSeconds = AppSettings.DefaultFailureRetryIntervalSecondsValue;
+    private int _defaultFailureRetryLimit = AppSettings.DefaultFailureRetryLimitValue;
     private bool _startSchedulePlansOnStartup = true;
     private string _csvDelimiter = ";";
-    private int _logRetentionDays = 30;
+    private int _logRetentionDays = AppSettings.DefaultLogRetentionDays;
+    private string _exportDirectory = string.Empty;
     private string _theme = "Açık";
     private int _pingTotalCount;
     private int _pingCompletedCount;
@@ -119,6 +129,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         IPingExecutionService pingExecutionService,
         IAvailabilityService availabilityService,
         ISchedulerService schedulerService,
+        SchedulePlanTargetResolver schedulePlanTargetResolver,
         CsvExportService csvExportService,
         AppSettingsService settingsService,
         IDialogService dialogService,
@@ -135,6 +146,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _pingExecutionService = pingExecutionService;
         _availabilityService = availabilityService;
         _schedulerService = schedulerService;
+        _schedulePlanTargetResolver = schedulePlanTargetResolver;
         _csvExportService = csvExportService;
         _settingsService = settingsService;
         _dialogService = dialogService;
@@ -145,9 +157,12 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         DeviceStatusFilterOptions = new ObservableCollection<string>(new[]
         {
             AllStatusesText,
-            DeviceStatus.Reachable.ToDisplayName(),
-            DeviceStatus.Unreachable.ToDisplayName(),
-            DeviceStatus.NotChecked.ToDisplayName()
+            DeviceStatus.Online.ToDisplayName(),
+            DeviceStatus.Warning.ToDisplayName(),
+            DeviceStatus.UnderWatch.ToDisplayName(),
+            DeviceStatus.Offline.ToDisplayName(),
+            DeviceStatus.PingBlockedOrNoReply.ToDisplayName(),
+            DeviceStatus.Unknown.ToDisplayName()
         });
         CriticalFilterOptions = new ObservableCollection<string>(new[] { AllCriticalText, CriticalOnlyText, NonCriticalOnlyText });
         TriggerFilterOptions = new ObservableCollection<string>(new[]
@@ -205,7 +220,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         ClearSchedulePlanFormCommand = new RelayCommand(ClearSchedulePlanForm, () => !IsBusy);
         EditSelectedSchedulePlanCommand = new RelayCommand(() => StartEditSchedulePlan(SelectedSchedulePlan), () => SelectedSchedulePlan is not null && !IsBusy);
         DeleteSelectedSchedulePlanCommand = new AsyncRelayCommand(() => DeleteSchedulePlanAsync(SelectedSchedulePlan), () => SelectedSchedulePlan is not null && !IsBusy);
-        RunSelectedSchedulePlanCommand = new AsyncRelayCommand(() => SelectedSchedulePlan is null ? Task.CompletedTask : RunSchedulePlanNowAsync(SelectedSchedulePlan), () => SelectedSchedulePlan is not null && !IsBusy);
+        RunSelectedSchedulePlanCommand = new AsyncRelayCommand(() => SelectedSchedulePlan is null ? Task.CompletedTask : RunSchedulePlanNowAsync(SelectedSchedulePlan), () => SelectedSchedulePlan is { IsActive: true } && !IsBusy);
         StartSchedulerCommand = new AsyncRelayCommand(StartSchedulerAsync, () => !IsSchedulerRunning && !IsBusy);
         StopSchedulerCommand = new AsyncRelayCommand(StopSchedulerAsync, () => IsSchedulerRunning && !IsBusy);
 
@@ -613,6 +628,26 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         set => SetProperty(ref _formDefaultSchedulePlanId, value);
     }
 
+    public int FormCheckIntervalSeconds
+    {
+        get => _formCheckIntervalSeconds;
+        set => SetProperty(
+            ref _formCheckIntervalSeconds,
+            value <= 0 ? 0 : Math.Clamp(value, AppSettings.MinDeviceCheckIntervalSeconds, AppSettings.MaxDeviceCheckIntervalSeconds));
+    }
+
+    public int FormFailureRetryIntervalSeconds
+    {
+        get => _formFailureRetryIntervalSeconds;
+        set => SetProperty(ref _formFailureRetryIntervalSeconds, Math.Clamp(value, AppSettings.MinFailureRetryIntervalSeconds, AppSettings.MaxFailureRetryIntervalSeconds));
+    }
+
+    public int FormFailureRetryLimit
+    {
+        get => _formFailureRetryLimit;
+        set => SetProperty(ref _formFailureRetryLimit, Math.Clamp(value, AppSettings.MinFailureRetryLimit, AppSettings.MaxFailureRetryLimit));
+    }
+
     public bool FormIsCritical
     {
         get => _formIsCritical;
@@ -645,6 +680,16 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         get => _groupFormDefaultSchedulePlanId;
         set => SetProperty(ref _groupFormDefaultSchedulePlanId, value);
+    }
+
+    public int? GroupFormDefaultCheckIntervalSeconds
+    {
+        get => _groupFormDefaultCheckIntervalSeconds;
+        set => SetProperty(
+            ref _groupFormDefaultCheckIntervalSeconds,
+            value.HasValue
+                ? Math.Clamp(value.Value, AppSettings.MinDeviceCheckIntervalSeconds, AppSettings.MaxDeviceCheckIntervalSeconds)
+                : null);
     }
 
     public string GroupFormTitle => _editingGroupId.HasValue ? "Grubu Düzenle" : "Yeni Grup";
@@ -739,6 +784,24 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         set => SetProperty(ref _defaultFailureThreshold, value);
     }
 
+    public int AutoCheckIntervalMinutes
+    {
+        get => _autoCheckIntervalMinutes;
+        set => SetProperty(ref _autoCheckIntervalMinutes, Math.Max(AppSettings.MinAutoCheckIntervalMinutes, value));
+    }
+
+    public int DefaultFailureRetryIntervalSeconds
+    {
+        get => _defaultFailureRetryIntervalSeconds;
+        set => SetProperty(ref _defaultFailureRetryIntervalSeconds, Math.Clamp(value, AppSettings.MinFailureRetryIntervalSeconds, AppSettings.MaxFailureRetryIntervalSeconds));
+    }
+
+    public int DefaultFailureRetryLimit
+    {
+        get => _defaultFailureRetryLimit;
+        set => SetProperty(ref _defaultFailureRetryLimit, Math.Clamp(value, AppSettings.MinFailureRetryLimit, AppSettings.MaxFailureRetryLimit));
+    }
+
     public bool StartSchedulePlansOnStartup
     {
         get => _startSchedulePlansOnStartup;
@@ -754,7 +817,19 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public int LogRetentionDays
     {
         get => _logRetentionDays;
-        set => SetProperty(ref _logRetentionDays, value);
+        set
+        {
+            if (SetProperty(ref _logRetentionDays, value))
+            {
+                ClearOldLogsCommand?.NotifyCanExecuteChanged();
+            }
+        }
+    }
+
+    public string ExportDirectory
+    {
+        get => _exportDirectory;
+        set => SetProperty(ref _exportDirectory, value ?? string.Empty);
     }
 
     public string Theme
@@ -821,7 +896,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     public string DatabaseLocation => DatabasePaths.DatabaseFilePath;
 
-    public string AvailabilityNotice => "Bu ekran ping tabanlı ölçülen erişilebilirliği gösterir. Gerçek cihaz uptime değeri yalnızca cihaz yetkili bir yöntemle desteklerse ayrı kaynaklardan alınabilir.";
+    public string AvailabilityNotice => "Bu ekran ping loglarından türetilen ölçülen erişilebilirliği gösterir. Ping yanıtı alınamaması cihazın kesin kapalı olduğu anlamına gelmez; firewall, ICMP kapatma veya ağ politikası etkili olabilir.";
 
     public async Task InitializeAsync()
     {
@@ -834,7 +909,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         IsBusy = true;
         try
         {
-            ApplySettings(await _settingsService.LoadAsync());
+            var settings = await _settingsService.LoadAsync();
+            ApplySettings(settings);
+            await RunStartupRetentionCleanupAsync(settings);
             await ReloadAllAsync();
             if (StartSchedulePlansOnStartup)
             {
@@ -883,6 +960,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             device.Uptime24HoursPercent = metric.Uptime24HoursPercent;
             device.Uptime7DaysPercent = metric.Uptime7DaysPercent;
             device.Uptime30DaysPercent = metric.Uptime30DaysPercent;
+            device.UptimeOverallPercent = metric.UptimeOverallPercent;
             device.AverageLatencyMs = metric.AverageLatencyMs;
             device.LastFailureAt = metric.LastFailureAt;
         }
@@ -979,6 +1057,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         device.Description = FormDescription;
         device.AutoCheckEnabled = FormAutoCheckEnabled;
         device.DefaultSchedulePlanId = FormDefaultSchedulePlanId;
+        device.CheckIntervalSeconds = FormCheckIntervalSeconds;
+        device.FailureRetryIntervalSeconds = FormFailureRetryIntervalSeconds;
+        device.FailureRetryLimit = FormFailureRetryLimit;
         device.IsCritical = FormIsCritical;
         device.IsActive = FormIsActive;
 
@@ -1019,6 +1100,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         FormDescription = device.Description;
         FormAutoCheckEnabled = device.AutoCheckEnabled;
         FormDefaultSchedulePlanId = device.DefaultSchedulePlanId;
+        FormCheckIntervalSeconds = device.CheckIntervalSeconds;
+        FormFailureRetryIntervalSeconds = device.FailureRetryIntervalSeconds;
+        FormFailureRetryLimit = device.FailureRetryLimit;
         FormIsCritical = device.IsCritical;
         FormIsActive = device.IsActive;
         OnPropertyChanged(nameof(DeviceFormTitle));
@@ -1037,6 +1121,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         FormDescription = string.Empty;
         FormAutoCheckEnabled = true;
         FormDefaultSchedulePlanId = null;
+        FormCheckIntervalSeconds = 0;
+        FormFailureRetryIntervalSeconds = DefaultFailureRetryIntervalSeconds;
+        FormFailureRetryLimit = DefaultFailureRetryLimit;
         FormIsCritical = false;
         FormIsActive = true;
         OnPropertyChanged(nameof(DeviceFormTitle));
@@ -1077,6 +1164,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         group.Name = GroupFormName;
         group.Description = GroupFormDescription;
         group.DefaultSchedulePlanId = GroupFormDefaultSchedulePlanId;
+        group.DefaultCheckIntervalSeconds = GroupFormDefaultCheckIntervalSeconds;
 
         IsBusy = true;
         try
@@ -1109,6 +1197,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         GroupFormName = group.Name;
         GroupFormDescription = group.Description;
         GroupFormDefaultSchedulePlanId = group.DefaultSchedulePlanId;
+        GroupFormDefaultCheckIntervalSeconds = group.DefaultCheckIntervalSeconds;
         OnPropertyChanged(nameof(GroupFormTitle));
         OnPropertyChanged(nameof(GroupFormActionText));
     }
@@ -1119,6 +1208,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         GroupFormName = string.Empty;
         GroupFormDescription = string.Empty;
         GroupFormDefaultSchedulePlanId = null;
+        GroupFormDefaultCheckIntervalSeconds = null;
         OnPropertyChanged(nameof(GroupFormTitle));
         OnPropertyChanged(nameof(GroupFormActionText));
     }
@@ -1215,7 +1305,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         PlanFormFrequencyValue = 10;
         PlanFormFrequencyUnit = "Dakika";
         PlanFormTimeoutMs = PingTimeoutMs;
-        PlanFormMaxParallelism = Math.Min(MaxParallelPings, 16);
+        PlanFormMaxParallelism = Math.Min(MaxParallelPings, AppSettings.DefaultSchedulePlanMaxParallelism);
         PlanFormFailureThreshold = DefaultFailureThreshold;
         PlanFormIsActive = true;
         PlanFormDescription = string.Empty;
@@ -1251,7 +1341,13 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     private async Task RunSchedulePlanNowAsync(SchedulePlan plan)
     {
-        var targets = ResolveTargetsForPlan(plan, respectAutoCheck: false).ToList();
+        if (!plan.IsActive)
+        {
+            _dialogService.ShowWarning("Plan pasif", "Pasif otomatik kontrol planı çalıştırılamaz.");
+            return;
+        }
+
+        var targets = _schedulePlanTargetResolver.ResolveTargets(plan, Devices, DeviceGroups, respectAutoCheck: false);
         if (targets.Count == 0)
         {
             _dialogService.ShowWarning("Hedef bulunamadı", "Bu plan için kontrol edilecek aktif cihaz bulunamadı.");
@@ -1392,6 +1488,11 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             StatusMessage = e.Message;
             IsSchedulerRunning = _schedulerService.IsRunning;
+            if (e.ShouldRefresh)
+            {
+                _ = RefreshAfterSchedulerAsync();
+            }
+
             return;
         }
 
@@ -1399,7 +1500,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             StatusMessage = e.Message;
             IsSchedulerRunning = _schedulerService.IsRunning;
-            _ = RefreshAfterSchedulerAsync();
+            if (e.ShouldRefresh)
+            {
+                _ = RefreshAfterSchedulerAsync();
+            }
         });
     }
 
@@ -1453,6 +1557,11 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         try
         {
             var deleted = await _pingLogRepository.ClearOlderThanAsync(DateTime.Now.AddDays(-LogRetentionDays));
+            if (deleted > 0)
+            {
+                await _maintenanceService.OptimizeDatabaseAsync();
+            }
+
             await ReloadAllAsync();
             StatusMessage = $"{deleted} eski log temizlendi.";
         }
@@ -1464,26 +1573,28 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     private async Task ExportDevicesAsync()
     {
-        var path = _dialogService.GetSaveCsvFilePath($"cihaz-listesi-{DateTime.Now:yyyy-MM-dd}.csv");
+        var path = _dialogService.GetSaveCsvFilePath($"cihaz-listesi-{DateTime.Now:yyyy-MM-dd}.csv", ExportDirectory);
         if (path is null)
         {
             return;
         }
 
         await _csvExportService.ExportDevicesAsync(DevicesView.Cast<Device>().ToList(), path, CsvDelimiter);
-        StatusMessage = "Cihaz listesi CSV olarak dışa aktarıldı.";
+        await RememberExportDirectoryAsync(path);
+        StatusMessage = $"Cihaz listesi CSV olarak dışa aktarıldı: {path}";
     }
 
     private async Task CreateCsvTemplateAsync()
     {
-        var path = _dialogService.GetSaveCsvFilePath($"cihaz-import-sablonu-{DateTime.Now:yyyy-MM-dd}.csv");
+        var path = _dialogService.GetSaveCsvFilePath($"cihaz-import-sablonu-{DateTime.Now:yyyy-MM-dd}.csv", ExportDirectory);
         if (path is null)
         {
             return;
         }
 
         await _csvExportService.ExportDeviceTemplateAsync(path, CsvDelimiter);
-        StatusMessage = "CSV import şablonu oluşturuldu.";
+        await RememberExportDirectoryAsync(path);
+        StatusMessage = $"CSV import şablonu oluşturuldu: {path}";
     }
 
     private async Task ImportDevicesAsync()
@@ -1526,58 +1637,102 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     private async Task ExportLogsAsync()
     {
-        var path = _dialogService.GetSaveCsvFilePath($"ping-loglari-{DateTime.Now:yyyy-MM-dd}.csv");
+        var path = _dialogService.GetSaveCsvFilePath($"ping-loglari-{DateTime.Now:yyyy-MM-dd}.csv", ExportDirectory);
         if (path is null)
         {
             return;
         }
 
         await _csvExportService.ExportLogsAsync(Logs.ToList(), path, CsvDelimiter);
-        StatusMessage = "Ping logları CSV olarak dışa aktarıldı.";
+        await RememberExportDirectoryAsync(path);
+        StatusMessage = $"Ping logları CSV olarak dışa aktarıldı: {path}";
     }
 
     private async Task ExportAvailabilityAsync()
     {
-        var path = _dialogService.GetSaveCsvFilePath($"uptime-raporu-{DateTime.Now:yyyy-MM-dd}.csv");
+        var path = _dialogService.GetSaveCsvFilePath($"NetworkHealthMonitor_UptimeReport_{DateTime.Now:yyyyMMdd_HHmmss}.csv", ExportDirectory);
         if (path is null)
         {
             return;
         }
 
-        await _csvExportService.ExportAvailabilityAsync(AvailabilityItems.ToList(), path, CsvDelimiter);
-        StatusMessage = "Erişilebilirlik raporu CSV olarak dışa aktarıldı.";
+        IsBusy = true;
+        try
+        {
+            var items = await _pingLogRepository.GetUptimeReportAsync();
+            await _csvExportService.ExportUptimeReportAsync(items, path, CsvDelimiter);
+            await RememberExportDirectoryAsync(path);
+            StatusMessage = $"Uptime CSV dışa aktarıldı: {path}";
+        }
+        catch (Exception ex)
+        {
+            _dialogService.ShowError("Uptime CSV oluşturulamadı", ex.Message);
+            StatusMessage = "Uptime CSV dışa aktarılamadı.";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     private async Task SaveSettingsAsync()
     {
-        if (PingTimeoutMs < 250 || PingTimeoutMs > 10000)
+        if (PingTimeoutMs < AppSettings.MinPingTimeoutMs || PingTimeoutMs > AppSettings.MaxPingTimeoutMs)
         {
-            _dialogService.ShowWarning("Geçersiz ayar", "Ping timeout değeri 250 ile 10000 ms arasında olmalıdır.");
+            _dialogService.ShowWarning("Geçersiz ayar", $"Ping timeout değeri {AppSettings.MinPingTimeoutMs} ile {AppSettings.MaxPingTimeoutMs} ms arasında olmalıdır.");
             return;
         }
 
-        if (MaxParallelPings < 1 || MaxParallelPings > 128)
+        if (MaxParallelPings < AppSettings.MinParallelPings || MaxParallelPings > AppSettings.MaxParallelPingsLimit)
         {
-            _dialogService.ShowWarning("Geçersiz ayar", "Maksimum paralel ping sayısı 1 ile 128 arasında olmalıdır.");
+            _dialogService.ShowWarning("Geçersiz ayar", $"Maksimum paralel ping sayısı {AppSettings.MinParallelPings} ile {AppSettings.MaxParallelPingsLimit} arasında olmalıdır.");
             return;
         }
 
-        if (DefaultFailureThreshold < 1 || DefaultFailureThreshold > 20)
+        if (DefaultFailureThreshold < AppSettings.MinFailureThreshold || DefaultFailureThreshold > AppSettings.MaxFailureThreshold)
         {
-            _dialogService.ShowWarning("Geçersiz ayar", "Varsayılan başarısızlık eşiği 1 ile 20 arasında olmalıdır.");
+            _dialogService.ShowWarning("Geçersiz ayar", $"Varsayılan başarısızlık eşiği {AppSettings.MinFailureThreshold} ile {AppSettings.MaxFailureThreshold} arasında olmalıdır.");
             return;
         }
 
-        await _settingsService.SaveAsync(new AppSettings
+        if (AutoCheckIntervalMinutes < AppSettings.MinAutoCheckIntervalMinutes)
         {
-            PingTimeoutMs = PingTimeoutMs,
-            MaxParallelPings = MaxParallelPings,
-            DefaultFailureThreshold = DefaultFailureThreshold,
-            StartSchedulePlansOnStartup = StartSchedulePlansOnStartup,
-            CsvDelimiter = CsvDelimiter,
-            LogRetentionDays = LogRetentionDays,
-            Theme = Theme
-        });
+            _dialogService.ShowWarning("Geçersiz ayar", $"Global otomatik kontrol aralığı en az {AppSettings.MinAutoCheckIntervalMinutes} dakika olmalıdır.");
+            return;
+        }
+
+        if (DefaultFailureRetryIntervalSeconds < AppSettings.MinFailureRetryIntervalSeconds || DefaultFailureRetryIntervalSeconds > AppSettings.MaxFailureRetryIntervalSeconds)
+        {
+            _dialogService.ShowWarning("Geçersiz ayar", $"Varsayılan hızlı tekrar aralığı {AppSettings.MinFailureRetryIntervalSeconds} saniye ile {AppSettings.MaxFailureRetryIntervalSeconds} saniye arasında olmalıdır.");
+            return;
+        }
+
+        if (DefaultFailureRetryLimit < AppSettings.MinFailureRetryLimit || DefaultFailureRetryLimit > AppSettings.MaxFailureRetryLimit)
+        {
+            _dialogService.ShowWarning("Geçersiz ayar", $"Varsayılan hızlı tekrar limiti {AppSettings.MinFailureRetryLimit} ile {AppSettings.MaxFailureRetryLimit} arasında olmalıdır.");
+            return;
+        }
+
+        if (LogRetentionDays < 0)
+        {
+            _dialogService.ShowWarning("Geçersiz ayar", "Log saklama süresi 0 veya daha büyük olmalıdır.");
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(ExportDirectory))
+        {
+            try
+            {
+                Directory.CreateDirectory(ExportDirectory);
+            }
+            catch (Exception ex)
+            {
+                _dialogService.ShowWarning("Export klasörü kullanılamıyor", ex.Message);
+                return;
+            }
+        }
+
+        await _settingsService.SaveAsync(CreateSettingsFromCurrentValues());
 
         StatusMessage = "Ayarlar kaydedildi.";
     }
@@ -1652,18 +1807,71 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         StatusMessage = "Ayarlar içe aktarıldı.";
     }
 
+    private AppSettings CreateSettingsFromCurrentValues()
+    {
+        return new AppSettings
+        {
+            PingTimeoutMs = PingTimeoutMs,
+            MaxParallelPings = MaxParallelPings,
+            DefaultFailureThreshold = DefaultFailureThreshold,
+            AutoCheckIntervalMinutes = AutoCheckIntervalMinutes,
+            DefaultFailureRetryIntervalSeconds = DefaultFailureRetryIntervalSeconds,
+            DefaultFailureRetryLimit = DefaultFailureRetryLimit,
+            StartSchedulePlansOnStartup = StartSchedulePlansOnStartup,
+            CsvDelimiter = CsvDelimiter,
+            LogRetentionDays = LogRetentionDays,
+            ExportDirectory = ExportDirectory,
+            Theme = Theme
+        };
+    }
+
+    private async Task RememberExportDirectoryAsync(string filePath)
+    {
+        var directory = Path.GetDirectoryName(filePath);
+        if (string.IsNullOrWhiteSpace(directory))
+        {
+            return;
+        }
+
+        ExportDirectory = directory;
+        var settings = await _settingsService.LoadAsync();
+        settings.ExportDirectory = directory;
+        await _settingsService.SaveAsync(settings);
+    }
+
+    private async Task RunStartupRetentionCleanupAsync(AppSettings settings)
+    {
+        if (settings.LogRetentionDays <= 0)
+        {
+            return;
+        }
+
+        var deleted = await _pingLogRepository.ClearOlderThanAsync(DateTime.Now.AddDays(-settings.LogRetentionDays));
+        if (deleted > 0)
+        {
+            await _maintenanceService.OptimizeDatabaseAsync();
+        }
+    }
+
     private void ApplySettings(AppSettings settings)
     {
         PingTimeoutMs = settings.PingTimeoutMs;
         MaxParallelPings = settings.MaxParallelPings;
         DefaultFailureThreshold = settings.DefaultFailureThreshold;
+        AutoCheckIntervalMinutes = settings.AutoCheckIntervalMinutes;
+        DefaultFailureRetryIntervalSeconds = settings.DefaultFailureRetryIntervalSeconds;
+        DefaultFailureRetryLimit = settings.DefaultFailureRetryLimit;
         StartSchedulePlansOnStartup = settings.StartSchedulePlansOnStartup;
         CsvDelimiter = settings.CsvDelimiter;
         LogRetentionDays = settings.LogRetentionDays;
+        ExportDirectory = settings.ExportDirectory;
         Theme = settings.Theme;
         PlanFormTimeoutMs = settings.PingTimeoutMs;
-        PlanFormMaxParallelism = Math.Min(settings.MaxParallelPings, 16);
+        PlanFormMaxParallelism = Math.Min(settings.MaxParallelPings, AppSettings.DefaultSchedulePlanMaxParallelism);
         PlanFormFailureThreshold = settings.DefaultFailureThreshold;
+        FormCheckIntervalSeconds = 0;
+        FormFailureRetryIntervalSeconds = settings.DefaultFailureRetryIntervalSeconds;
+        FormFailureRetryLimit = settings.DefaultFailureRetryLimit;
     }
 
     private void UpdateDashboard()
@@ -1674,14 +1882,14 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         var total = Devices.Count;
-        var reachable = Devices.Count(device => device.LastStatus == DeviceStatus.Reachable);
-        var unreachable = Devices.Count(device => device.LastStatus == DeviceStatus.Unreachable);
-        var notChecked = Devices.Count(device => device.LastStatus == DeviceStatus.NotChecked);
-        var criticalDown = Devices.Count(device => device.IsCritical && device.LastStatus == DeviceStatus.Unreachable);
+        var reachable = Devices.Count(device => device.LastStatus.IsSuccessful());
+        var unreachable = Devices.Count(device => device.LastStatus.IsFailureObservation());
+        var notChecked = Devices.Count(device => device.LastStatus == DeviceStatus.Unknown);
+        var criticalDown = Devices.Count(device => device.IsCritical && device.LastStatus.IsProblematic());
         var last24Logs = Logs.Where(log => log.CheckedAt >= DateTime.Now.AddHours(-24)).ToList();
         double? success24 = last24Logs.Count == 0
             ? null
-            : last24Logs.Count(log => log.Status == DeviceStatus.Reachable) * 100d / last24Logs.Count;
+            : last24Logs.Count(log => log.Status.IsSuccessful()) * 100d / last24Logs.Count;
         var activePlans = SchedulePlans.Count(plan => plan.IsActive);
 
         SummaryCards[0].Value = total.ToString(CultureInfo.CurrentCulture);
@@ -1693,8 +1901,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         SummaryCards[6].Value = activePlans.ToString(CultureInfo.CurrentCulture);
         SummaryCards[7].Value = OpenOutages.Count.ToString(CultureInfo.CurrentCulture);
 
-        ReplaceCollection(CriticalProblemDevices, Devices.Where(device => device.IsCritical && device.LastStatus == DeviceStatus.Unreachable).Take(10));
-        ReplaceCollection(RecentFailureLogs, Logs.Where(log => log.Status == DeviceStatus.Unreachable).Take(10));
+        ReplaceCollection(CriticalProblemDevices, Devices.Where(device => device.IsCritical && device.LastStatus.IsProblematic()).Take(10));
+        ReplaceCollection(RecentFailureLogs, Logs.Where(log => log.Status.IsFailureObservation()).Take(10));
         ReplaceCollection(RecentDashboardLogs, Logs.Take(12));
         ReplaceCollection(LowAvailabilityDevices, AvailabilityItems
             .Where(item => item.Availability30DaysPercent.HasValue)
@@ -1711,11 +1919,11 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         SummaryCards.Add(new SummaryCardViewModel("Toplam cihaz", "0", "#2563EB"));
-        SummaryCards.Add(new SummaryCardViewModel("Erişilebilir", "0", "#16A34A"));
-        SummaryCards.Add(new SummaryCardViewModel("Erişilemeyen", "0", "#DC2626"));
+        SummaryCards.Add(new SummaryCardViewModel("Online", "0", "#16A34A"));
+        SummaryCards.Add(new SummaryCardViewModel("Riskli / yanıt yok", "0", "#DC2626"));
         SummaryCards.Add(new SummaryCardViewModel("Kontrol edilmemiş", "0", "#64748B"));
         SummaryCards.Add(new SummaryCardViewModel("Kritik sorun", "0", "#B91C1C"));
-        SummaryCards.Add(new SummaryCardViewModel("24s başarı", "-", "#0F766E"));
+        SummaryCards.Add(new SummaryCardViewModel("24s ölçülen başarı", "-", "#0F766E"));
         SummaryCards.Add(new SummaryCardViewModel("Aktif plan", "0", "#7C3AED"));
         SummaryCards.Add(new SummaryCardViewModel("Açık kesinti", "0", "#EA580C"));
     }
@@ -1731,7 +1939,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 Title = group.Key.ToDisplayName(),
                 Value = group.Count().ToString(CultureInfo.CurrentCulture),
                 Percent = group.Count() * 100d / total,
-                AccentColor = group.Any(device => device.LastStatus == DeviceStatus.Unreachable) ? "#DC2626" : "#2563EB"
+                AccentColor = group.Any(device => device.LastStatus.IsProblematic()) ? "#DC2626" : "#2563EB"
             });
 
         ReplaceCollection(DeviceTypeDistribution, rows);
@@ -1874,20 +2082,6 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             : PlanTargetOptions.FirstOrDefault()?.Value ?? string.Empty;
     }
 
-    private IEnumerable<Device> ResolveTargetsForPlan(SchedulePlan plan, bool respectAutoCheck)
-    {
-        var activeDevices = Devices.Where(device => device.IsActive && (!respectAutoCheck || device.AutoCheckEnabled));
-        return plan.TargetType switch
-        {
-            SchedulePlanTargetType.Device => activeDevices.Where(device => int.TryParse(plan.TargetValue, out var id) ? device.Id == id : device.IpAddress == plan.TargetValue),
-            SchedulePlanTargetType.DeviceType => activeDevices.Where(device => device.DeviceType == DeviceTypeExtensions.FromStorageValue(plan.TargetValue)),
-            SchedulePlanTargetType.DeviceGroup => activeDevices.Where(device => int.TryParse(plan.TargetValue, out var id) ? device.GroupId == id : device.GroupName == plan.TargetValue),
-            SchedulePlanTargetType.CriticalDevices => activeDevices.Where(device => device.IsCritical),
-            SchedulePlanTargetType.AllDevices => activeDevices,
-            _ => activeDevices
-        };
-    }
-
     private string ResolvePlanTargetDisplayName(SchedulePlan plan)
     {
         return plan.TargetType switch
@@ -1959,7 +2153,25 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             return null;
         }
 
-        return Enum.GetValues<DeviceStatus>().FirstOrDefault(status => status.ToDisplayName() == value);
+        var statuses = new[]
+        {
+            DeviceStatus.Online,
+            DeviceStatus.Warning,
+            DeviceStatus.UnderWatch,
+            DeviceStatus.Offline,
+            DeviceStatus.PingBlockedOrNoReply,
+            DeviceStatus.Unknown
+        };
+
+        foreach (var status in statuses)
+        {
+            if (status.ToDisplayName() == value)
+            {
+                return status;
+            }
+        }
+
+        return null;
     }
 
     private static PingTriggerType? ParseTriggerFilter(string value)

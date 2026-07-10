@@ -92,6 +92,7 @@ public sealed class SqliteConnectionFactory
                 Name TEXT NOT NULL UNIQUE,
                 Description TEXT NOT NULL DEFAULT '',
                 DefaultSchedulePlanId INTEGER NULL,
+                DefaultCheckIntervalSeconds INTEGER NULL,
                 CreatedAt TEXT NOT NULL,
                 UpdatedAt TEXT NOT NULL
             );
@@ -99,6 +100,7 @@ public sealed class SqliteConnectionFactory
 
         await EnsureColumnAsync(connection, "DeviceGroups", "Description", "TEXT NOT NULL DEFAULT ''");
         await EnsureColumnAsync(connection, "DeviceGroups", "DefaultSchedulePlanId", "INTEGER NULL");
+        await EnsureColumnAsync(connection, "DeviceGroups", "DefaultCheckIntervalSeconds", "INTEGER NULL");
         await EnsureColumnAsync(connection, "DeviceGroups", "CreatedAt", $"TEXT NOT NULL DEFAULT '{DateTime.Now:O}'");
         await EnsureColumnAsync(connection, "DeviceGroups", "UpdatedAt", $"TEXT NOT NULL DEFAULT '{DateTime.Now:O}'");
     }
@@ -118,13 +120,18 @@ public sealed class SqliteConnectionFactory
                 IsActive INTEGER NOT NULL DEFAULT 1,
                 AutoCheckEnabled INTEGER NOT NULL DEFAULT 1,
                 DefaultSchedulePlanId INTEGER NULL,
+                CheckIntervalSeconds INTEGER NOT NULL DEFAULT 0,
+                FailureRetryIntervalSeconds INTEGER NOT NULL DEFAULT 60,
+                FailureRetryLimit INTEGER NOT NULL DEFAULT 3,
                 Description TEXT NOT NULL DEFAULT '',
-                LastStatus TEXT NOT NULL DEFAULT 'NotChecked',
+                LastStatus TEXT NOT NULL DEFAULT 'Unknown',
                 LastLatencyMs INTEGER NULL,
                 LastCheckedAt TEXT NULL,
+                LastSuccessfulCheckAt TEXT NULL,
+                LastFailedCheckAt TEXT NULL,
                 ConsecutiveFailures INTEGER NOT NULL DEFAULT 0,
                 ConsecutiveSuccesses INTEGER NOT NULL DEFAULT 0,
-                LastStableStatus TEXT NOT NULL DEFAULT 'NotChecked',
+                LastStableStatus TEXT NOT NULL DEFAULT 'Unknown',
                 CreatedAt TEXT NOT NULL,
                 UpdatedAt TEXT NOT NULL
             );
@@ -137,13 +144,18 @@ public sealed class SqliteConnectionFactory
         await EnsureColumnAsync(connection, "Devices", "IsActive", "INTEGER NOT NULL DEFAULT 1");
         await EnsureColumnAsync(connection, "Devices", "AutoCheckEnabled", "INTEGER NOT NULL DEFAULT 1");
         await EnsureColumnAsync(connection, "Devices", "DefaultSchedulePlanId", "INTEGER NULL");
+        await EnsureColumnAsync(connection, "Devices", "CheckIntervalSeconds", "INTEGER NOT NULL DEFAULT 0");
+        await EnsureColumnAsync(connection, "Devices", "FailureRetryIntervalSeconds", "INTEGER NOT NULL DEFAULT 60");
+        await EnsureColumnAsync(connection, "Devices", "FailureRetryLimit", "INTEGER NOT NULL DEFAULT 3");
         await EnsureColumnAsync(connection, "Devices", "Description", "TEXT NOT NULL DEFAULT ''");
-        await EnsureColumnAsync(connection, "Devices", "LastStatus", "TEXT NOT NULL DEFAULT 'NotChecked'");
+        await EnsureColumnAsync(connection, "Devices", "LastStatus", "TEXT NOT NULL DEFAULT 'Unknown'");
         await EnsureColumnAsync(connection, "Devices", "LastLatencyMs", "INTEGER NULL");
         await EnsureColumnAsync(connection, "Devices", "LastCheckedAt", "TEXT NULL");
+        await EnsureColumnAsync(connection, "Devices", "LastSuccessfulCheckAt", "TEXT NULL");
+        await EnsureColumnAsync(connection, "Devices", "LastFailedCheckAt", "TEXT NULL");
         await EnsureColumnAsync(connection, "Devices", "ConsecutiveFailures", "INTEGER NOT NULL DEFAULT 0");
         await EnsureColumnAsync(connection, "Devices", "ConsecutiveSuccesses", "INTEGER NOT NULL DEFAULT 0");
-        await EnsureColumnAsync(connection, "Devices", "LastStableStatus", "TEXT NOT NULL DEFAULT 'NotChecked'");
+        await EnsureColumnAsync(connection, "Devices", "LastStableStatus", "TEXT NOT NULL DEFAULT 'Unknown'");
         await EnsureColumnAsync(connection, "Devices", "CreatedAt", $"TEXT NOT NULL DEFAULT '{DateTime.Now:O}'");
         await EnsureColumnAsync(connection, "Devices", "UpdatedAt", $"TEXT NOT NULL DEFAULT '{DateTime.Now:O}'");
     }
@@ -190,7 +202,7 @@ public sealed class SqliteConnectionFactory
         await EnsureColumnAsync(connection, "PingLogs", "IpAddress", "TEXT NOT NULL DEFAULT ''");
         await EnsureColumnAsync(connection, "PingLogs", "DeviceType", "TEXT NOT NULL DEFAULT 'Other'");
         await EnsureColumnAsync(connection, "PingLogs", "GroupName", "TEXT NOT NULL DEFAULT ''");
-        await EnsureColumnAsync(connection, "PingLogs", "Status", "TEXT NOT NULL DEFAULT 'NotChecked'");
+        await EnsureColumnAsync(connection, "PingLogs", "Status", "TEXT NOT NULL DEFAULT 'Unknown'");
         await EnsureColumnAsync(connection, "PingLogs", "LatencyMs", "INTEGER NULL");
         await EnsureColumnAsync(connection, "PingLogs", "ResponseMessage", "TEXT NOT NULL DEFAULT ''");
         await EnsureColumnAsync(connection, "PingLogs", "ErrorMessage", "TEXT NOT NULL DEFAULT ''");
@@ -242,9 +254,15 @@ public sealed class SqliteConnectionFactory
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_Devices_GroupName ON Devices(GroupName);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_Devices_IsCritical ON Devices(IsCritical);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_Devices_IsActive ON Devices(IsActive);");
+        await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_Devices_AutoCheck ON Devices(IsActive, AutoCheckEnabled, LastCheckedAt);");
+        await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_Devices_AutoCheck_Status ON Devices(IsActive, AutoCheckEnabled, LastStatus, LastCheckedAt);");
+        await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_Devices_DefaultSchedulePlanId ON Devices(DefaultSchedulePlanId);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_PingLogs_DeviceId ON PingLogs(DeviceId);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_PingLogs_CheckedAt ON PingLogs(CheckedAt DESC);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_PingLogs_Status ON PingLogs(Status);");
+        await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_PingLogs_DeviceId_CheckedAt ON PingLogs(DeviceId, CheckedAt DESC);");
+        await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_PingLogs_DeviceId_CheckedAt_Status ON PingLogs(DeviceId, CheckedAt DESC, Status);");
+        await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_PingLogs_DeviceId_Status_CheckedAt ON PingLogs(DeviceId, Status, CheckedAt DESC);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_PingLogs_DeviceType ON PingLogs(DeviceType);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_PingLogs_GroupName ON PingLogs(GroupName);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_PingLogs_IpAddress ON PingLogs(IpAddress);");
@@ -253,6 +271,7 @@ public sealed class SqliteConnectionFactory
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_PingLogs_CheckedAt_Status ON PingLogs(CheckedAt DESC, Status);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_Outages_DeviceId ON Outages(DeviceId);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_Outages_IsResolved ON Outages(IsResolved);");
+        await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_Outages_DeviceId_IsResolved ON Outages(DeviceId, IsResolved);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_SchedulePlans_IsActive ON SchedulePlans(IsActive);");
     }
 

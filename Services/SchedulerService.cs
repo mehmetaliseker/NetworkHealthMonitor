@@ -5,23 +5,35 @@ namespace NetworkHealthMonitor.Services;
 
 public sealed class SchedulerService : ISchedulerService
 {
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(AppSettings.SchedulerPollIntervalSeconds);
 
     private readonly DeviceRepository _deviceRepository;
+    private readonly DeviceGroupRepository _deviceGroupRepository;
     private readonly SchedulePlanRepository _schedulePlanRepository;
     private readonly IPingExecutionService _pingExecutionService;
+    private readonly SchedulePlanTargetResolver _targetResolver;
+    private readonly IDeviceCheckPolicyService _deviceCheckPolicyService;
+    private readonly AppSettingsService _settingsService;
     private readonly SemaphoreSlim _lifecycleLock = new(1, 1);
     private CancellationTokenSource? _cancellationTokenSource;
     private Task? _loopTask;
 
     public SchedulerService(
         DeviceRepository deviceRepository,
+        DeviceGroupRepository deviceGroupRepository,
         SchedulePlanRepository schedulePlanRepository,
-        IPingExecutionService pingExecutionService)
+        IPingExecutionService pingExecutionService,
+        SchedulePlanTargetResolver targetResolver,
+        IDeviceCheckPolicyService deviceCheckPolicyService,
+        AppSettingsService settingsService)
     {
         _deviceRepository = deviceRepository;
+        _deviceGroupRepository = deviceGroupRepository;
         _schedulePlanRepository = schedulePlanRepository;
         _pingExecutionService = pingExecutionService;
+        _targetResolver = targetResolver;
+        _deviceCheckPolicyService = deviceCheckPolicyService;
+        _settingsService = settingsService;
     }
 
     public event EventHandler<SchedulerStatusChangedEventArgs>? StatusChanged;
@@ -117,28 +129,52 @@ public sealed class SchedulerService : ISchedulerService
             return;
         }
 
-        var devices = await _deviceRepository.GetAllAsync();
+        var devices = await _deviceRepository.GetAutoCheckCandidatesAsync();
+        var groups = await _deviceGroupRepository.GetAllAsync();
+        var settings = await _settingsService.LoadAsync();
         var now = DateTime.Now;
+        var groupsById = groups.ToDictionary(group => group.Id);
+        var groupsByName = groups.ToDictionary(group => group.Name, StringComparer.OrdinalIgnoreCase);
+        var dispatchedDeviceIds = new HashSet<int>();
 
         foreach (var plan in plans)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!IsDue(plan, now))
-            {
-                continue;
-            }
 
-            var targets = ResolveTargets(plan, devices).ToList();
+            var targets = _targetResolver.ResolveTargets(plan, devices, groups, respectAutoCheck: true);
             if (targets.Count == 0)
             {
-                await _schedulePlanRepository.UpdateLastRunAsync(plan.Id, now);
                 Notify($"{plan.Name}: uygun hedef cihaz bulunamadı.");
                 continue;
             }
 
-            Notify($"{plan.Name}: {targets.Count} cihaz kontrol ediliyor.");
+            var dueTargets = targets
+                .Where(device =>
+                {
+                    if (dispatchedDeviceIds.Contains(device.Id))
+                    {
+                        return false;
+                    }
+
+                    var group = ResolveGroup(device, groupsById, groupsByName);
+                    var policy = _deviceCheckPolicyService.ResolvePolicy(device, group, plan, settings, plan.ToPingOptions());
+                    return _deviceCheckPolicyService.IsDue(device, policy, now);
+                })
+                .ToList();
+
+            if (dueTargets.Count == 0)
+            {
+                continue;
+            }
+
+            Notify($"{plan.Name}: {dueTargets.Count} cihaz kontrol ediliyor.");
+            foreach (var device in dueTargets)
+            {
+                dispatchedDeviceIds.Add(device.Id);
+            }
+
             var result = await _pingExecutionService.PingDevicesAsync(
-                targets,
+                dueTargets,
                 plan.ToPingOptions(),
                 PingTriggerType.Scheduled,
                 plan,
@@ -146,50 +182,27 @@ public sealed class SchedulerService : ISchedulerService
                 cancellationToken);
 
             await _schedulePlanRepository.UpdateLastRunAsync(plan.Id, DateTime.Now);
-            Notify($"{plan.Name}: {result.SuccessCount} başarılı, {result.FailureCount} başarısız.");
+            Notify($"{plan.Name}: {result.SuccessCount} başarılı, {result.FailureCount} başarısız, {result.SkippedBecauseAlreadyRunning} çakışma atlandı.", shouldRefresh: true);
         }
     }
 
-    private static bool IsDue(SchedulePlan plan, DateTime now)
+    private static DeviceGroup? ResolveGroup(
+        Device device,
+        IReadOnlyDictionary<int, DeviceGroup> groupsById,
+        IReadOnlyDictionary<string, DeviceGroup> groupsByName)
     {
-        if (!plan.LastRunAt.HasValue)
+        if (device.GroupId.HasValue && groupsById.TryGetValue(device.GroupId.Value, out var groupById))
         {
-            return true;
+            return groupById;
         }
 
-        return now - plan.LastRunAt.Value >= TimeSpan.FromMinutes(Math.Max(1, plan.IntervalMinutes));
+        return !string.IsNullOrWhiteSpace(device.GroupName) && groupsByName.TryGetValue(device.GroupName, out var groupByName)
+            ? groupByName
+            : null;
     }
 
-    private static IEnumerable<Device> ResolveTargets(SchedulePlan plan, IReadOnlyList<Device> devices)
+    private void Notify(string message, bool shouldRefresh = false)
     {
-        var activeDevices = devices.Where(device => device.IsActive && device.AutoCheckEnabled);
-        return plan.TargetType switch
-        {
-            SchedulePlanTargetType.Device => activeDevices.Where(device => MatchesDeviceTarget(device, plan.TargetValue)),
-            SchedulePlanTargetType.DeviceType => activeDevices.Where(device => device.DeviceType == DeviceTypeExtensions.FromStorageValue(plan.TargetValue)),
-            SchedulePlanTargetType.DeviceGroup => activeDevices.Where(device => MatchesGroupTarget(device, plan.TargetValue)),
-            SchedulePlanTargetType.CriticalDevices => activeDevices.Where(device => device.IsCritical),
-            SchedulePlanTargetType.AllDevices => activeDevices,
-            _ => activeDevices
-        };
-    }
-
-    private static bool MatchesDeviceTarget(Device device, string targetValue)
-    {
-        return int.TryParse(targetValue, out var id)
-            ? device.Id == id
-            : string.Equals(device.IpAddress, targetValue, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool MatchesGroupTarget(Device device, string targetValue)
-    {
-        return int.TryParse(targetValue, out var id)
-            ? device.GroupId == id
-            : string.Equals(device.GroupName, targetValue, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private void Notify(string message)
-    {
-        StatusChanged?.Invoke(this, new SchedulerStatusChangedEventArgs(message));
+        StatusChanged?.Invoke(this, new SchedulerStatusChangedEventArgs(message, shouldRefresh));
     }
 }

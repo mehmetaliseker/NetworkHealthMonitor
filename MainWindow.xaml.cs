@@ -24,15 +24,26 @@ public partial class MainWindow : Window
         var schedulePlanRepository = new SchedulePlanRepository(_connectionFactory);
         var outageRepository = new OutageRepository(_connectionFactory);
         var pingService = new PingService();
+        var schedulePlanTargetResolver = new SchedulePlanTargetResolver();
+        var deviceCheckPolicyService = new DeviceCheckPolicyService();
+        var deviceHealthEvaluator = new DeviceHealthEvaluator();
+        var appSettingsService = new AppSettingsService();
         var pingExecutionService = new PingExecutionService(
             deviceRepository,
             pingLogRepository,
             outageRepository,
-            pingService);
+            pingService,
+            deviceCheckPolicyService,
+            deviceHealthEvaluator,
+            appSettingsService);
         var schedulerService = new SchedulerService(
             deviceRepository,
+            deviceGroupRepository,
             schedulePlanRepository,
-            pingExecutionService);
+            pingExecutionService,
+            schedulePlanTargetResolver,
+            deviceCheckPolicyService,
+            appSettingsService);
 
         _viewModel = new MainViewModel(
             deviceRepository,
@@ -46,8 +57,9 @@ public partial class MainWindow : Window
             pingExecutionService,
             new AvailabilityService(deviceRepository, pingLogRepository, outageRepository),
             schedulerService,
+            schedulePlanTargetResolver,
             new CsvExportService(),
-            new AppSettingsService(),
+            appSettingsService,
             new WpfDialogService(),
             new DataMaintenanceService(_connectionFactory));
 

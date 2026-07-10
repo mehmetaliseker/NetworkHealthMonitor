@@ -23,9 +23,9 @@ public sealed class SchedulePlanService : ISchedulePlanService
         plan.Name = plan.Name.Trim();
         plan.TargetValue = NormalizeTargetValue(plan);
         plan.IntervalMinutes = Math.Max(1, plan.IntervalMinutes);
-        plan.TimeoutMs = Math.Clamp(plan.TimeoutMs, 250, 10000);
-        plan.MaxParallelism = Math.Clamp(plan.MaxParallelism, 1, 128);
-        plan.FailureThreshold = Math.Clamp(plan.FailureThreshold, 1, 20);
+        plan.TimeoutMs = Math.Clamp(plan.TimeoutMs, AppSettings.MinPingTimeoutMs, AppSettings.MaxPingTimeoutMs);
+        plan.MaxParallelism = Math.Clamp(plan.MaxParallelism, AppSettings.MinParallelPings, AppSettings.MaxParallelPingsLimit);
+        plan.FailureThreshold = Math.Clamp(plan.FailureThreshold, AppSettings.MinFailureThreshold, AppSettings.MaxFailureThreshold);
 
         if (plan.Id == 0)
         {
@@ -65,19 +65,19 @@ public sealed class SchedulePlanService : ISchedulePlanService
             return OperationResult.Fail("Kontrol sıklığı en az 1 dakika olmalıdır.");
         }
 
-        if (plan.TimeoutMs < 250 || plan.TimeoutMs > 10000)
+        if (plan.TimeoutMs < AppSettings.MinPingTimeoutMs || plan.TimeoutMs > AppSettings.MaxPingTimeoutMs)
         {
-            return OperationResult.Fail("Ping timeout değeri 250 ile 10000 ms arasında olmalıdır.");
+            return OperationResult.Fail($"Ping timeout değeri {AppSettings.MinPingTimeoutMs} ile {AppSettings.MaxPingTimeoutMs} ms arasında olmalıdır.");
         }
 
-        if (plan.MaxParallelism < 1 || plan.MaxParallelism > 128)
+        if (plan.MaxParallelism < AppSettings.MinParallelPings || plan.MaxParallelism > AppSettings.MaxParallelPingsLimit)
         {
-            return OperationResult.Fail("Maksimum paralel işlem sınırı 1 ile 128 arasında olmalıdır.");
+            return OperationResult.Fail($"Maksimum paralel işlem sınırı {AppSettings.MinParallelPings} ile {AppSettings.MaxParallelPingsLimit} arasında olmalıdır.");
         }
 
-        if (plan.FailureThreshold < 1 || plan.FailureThreshold > 20)
+        if (plan.FailureThreshold < AppSettings.MinFailureThreshold || plan.FailureThreshold > AppSettings.MaxFailureThreshold)
         {
-            return OperationResult.Fail("Başarısızlık eşiği 1 ile 20 arasında olmalıdır.");
+            return OperationResult.Fail($"Başarısızlık eşiği {AppSettings.MinFailureThreshold} ile {AppSettings.MaxFailureThreshold} arasında olmalıdır.");
         }
 
         if (plan.TargetType is SchedulePlanTargetType.Device or SchedulePlanTargetType.DeviceType or SchedulePlanTargetType.DeviceGroup

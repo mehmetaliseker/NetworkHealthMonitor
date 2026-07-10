@@ -16,18 +16,24 @@ public sealed class Device : ObservableObject
     private bool _isActive = true;
     private bool _autoCheckEnabled = true;
     private int? _defaultSchedulePlanId;
+    private int _checkIntervalSeconds;
+    private int _failureRetryIntervalSeconds = AppSettings.DefaultFailureRetryIntervalSecondsValue;
+    private int _failureRetryLimit = AppSettings.DefaultFailureRetryLimitValue;
     private string _description = string.Empty;
-    private DeviceStatus _lastStatus = DeviceStatus.NotChecked;
+    private DeviceStatus _lastStatus = DeviceStatus.Unknown;
     private long? _lastLatencyMs;
     private DateTime? _lastCheckedAt;
+    private DateTime? _lastSuccessfulCheckAt;
+    private DateTime? _lastFailedCheckAt;
     private int _consecutiveFailures;
     private int _consecutiveSuccesses;
-    private DeviceStatus _lastStableStatus = DeviceStatus.NotChecked;
+    private DeviceStatus _lastStableStatus = DeviceStatus.Unknown;
     private DateTime _createdAt = DateTime.Now;
     private DateTime _updatedAt = DateTime.Now;
     private double? _uptime24HoursPercent;
     private double? _uptime7DaysPercent;
     private double? _uptime30DaysPercent;
+    private double? _uptimeOverallPercent;
     private long? _averageLatencyMs;
     private DateTime? _lastFailureAt;
 
@@ -135,6 +141,49 @@ public sealed class Device : ObservableObject
         set => SetProperty(ref _defaultSchedulePlanId, value);
     }
 
+    public int CheckIntervalSeconds
+    {
+        get => _checkIntervalSeconds;
+        set
+        {
+            var normalized = value <= 0
+                ? 0
+                : Math.Clamp(value, AppSettings.MinDeviceCheckIntervalSeconds, AppSettings.MaxDeviceCheckIntervalSeconds);
+            if (SetProperty(ref _checkIntervalSeconds, normalized))
+            {
+                OnPropertyChanged(nameof(CheckIntervalText));
+                OnPropertyChanged(nameof(AutoPolicyText));
+            }
+        }
+    }
+
+    public int FailureRetryIntervalSeconds
+    {
+        get => _failureRetryIntervalSeconds;
+        set
+        {
+            if (SetProperty(ref _failureRetryIntervalSeconds, Math.Clamp(value, AppSettings.MinFailureRetryIntervalSeconds, AppSettings.MaxFailureRetryIntervalSeconds)))
+            {
+                OnPropertyChanged(nameof(FailureRetryIntervalText));
+                OnPropertyChanged(nameof(AutoPolicyText));
+            }
+        }
+    }
+
+    public int FailureRetryLimit
+    {
+        get => _failureRetryLimit;
+        set
+        {
+            if (SetProperty(ref _failureRetryLimit, Math.Clamp(value, AppSettings.MinFailureRetryLimit, AppSettings.MaxFailureRetryLimit)))
+            {
+                OnPropertyChanged(nameof(FailureRetryLimitText));
+                OnPropertyChanged(nameof(AutoPolicyText));
+                OnPropertyChanged(nameof(IsProblematic));
+            }
+        }
+    }
+
     public string Description
     {
         get => _description;
@@ -161,6 +210,7 @@ public sealed class Device : ObservableObject
             if (SetProperty(ref _lastStatus, value))
             {
                 OnPropertyChanged(nameof(LastStatusText));
+                OnPropertyChanged(nameof(HealthHintText));
                 OnPropertyChanged(nameof(IsProblematic));
             }
         }
@@ -186,6 +236,30 @@ public sealed class Device : ObservableObject
             if (SetProperty(ref _lastCheckedAt, value))
             {
                 OnPropertyChanged(nameof(LastCheckedAtText));
+            }
+        }
+    }
+
+    public DateTime? LastSuccessfulCheckAt
+    {
+        get => _lastSuccessfulCheckAt;
+        set
+        {
+            if (SetProperty(ref _lastSuccessfulCheckAt, value))
+            {
+                OnPropertyChanged(nameof(LastSuccessfulCheckAtText));
+            }
+        }
+    }
+
+    public DateTime? LastFailedCheckAt
+    {
+        get => _lastFailedCheckAt;
+        set
+        {
+            if (SetProperty(ref _lastFailedCheckAt, value))
+            {
+                OnPropertyChanged(nameof(LastFailedCheckAtText));
             }
         }
     }
@@ -221,7 +295,7 @@ public sealed class Device : ObservableObject
         }
     }
 
-    public bool IsProblematic => ConsecutiveFailures >= 3;
+    public bool IsProblematic => LastStatus.IsProblematic() || ConsecutiveFailures >= FailureRetryLimit;
 
     public string ConsecutiveFailuresText => ConsecutiveFailures.ToString(CultureInfo.CurrentCulture);
 
@@ -275,6 +349,18 @@ public sealed class Device : ObservableObject
         }
     }
 
+    public double? UptimeOverallPercent
+    {
+        get => _uptimeOverallPercent;
+        set
+        {
+            if (SetProperty(ref _uptimeOverallPercent, value))
+            {
+                OnPropertyChanged(nameof(UptimeOverallText));
+            }
+        }
+    }
+
     public long? AverageLatencyMs
     {
         get => _averageLatencyMs;
@@ -303,15 +389,40 @@ public sealed class Device : ObservableObject
 
     public string LastStatusText => LastStatus.ToDisplayName();
 
+    public string HealthHintText => LastStatus switch
+    {
+        DeviceStatus.Online => "Son kontrolde ping yanıtı alındı.",
+        DeviceStatus.Warning => "Tekil veya erken hata var; cihaz kesin arızalı kabul edilmedi.",
+        DeviceStatus.UnderWatch => "Hızlı tekrar denemeleri sonucunda takipte.",
+        DeviceStatus.Offline => "Tekrarlı hatalar sonrası muhtemel erişilemiyor.",
+        DeviceStatus.PingBlockedOrNoReply => "Cihaz çalışıyor olabilir ancak ping yanıtlamıyor olabilir.",
+        DeviceStatus.Checking => "Kontrol devam ediyor.",
+        _ => "Henüz ölçüm yapılmadı."
+    };
+
     public string LastLatencyText => LastLatencyMs.HasValue ? $"{LastLatencyMs.Value} ms" : "-";
 
     public string LastCheckedAtText => LastCheckedAt.HasValue ? LastCheckedAt.Value.ToString("dd.MM.yyyy HH:mm:ss", CultureInfo.CurrentCulture) : "-";
+
+    public string LastSuccessfulCheckAtText => LastSuccessfulCheckAt.HasValue ? LastSuccessfulCheckAt.Value.ToString("dd.MM.yyyy HH:mm:ss", CultureInfo.CurrentCulture) : "-";
+
+    public string LastFailedCheckAtText => LastFailedCheckAt.HasValue ? LastFailedCheckAt.Value.ToString("dd.MM.yyyy HH:mm:ss", CultureInfo.CurrentCulture) : "-";
+
+    public string CheckIntervalText => CheckIntervalSeconds > 0 ? FormatDuration(CheckIntervalSeconds) : "Grup/plan/global";
+
+    public string FailureRetryIntervalText => FormatDuration(FailureRetryIntervalSeconds);
+
+    public string FailureRetryLimitText => FailureRetryLimit.ToString(CultureInfo.CurrentCulture);
+
+    public string AutoPolicyText => $"{CheckIntervalText} / hızlı {FailureRetryIntervalText}, limit {FailureRetryLimit}";
 
     public string Uptime24HoursText => FormatPercent(Uptime24HoursPercent);
 
     public string Uptime7DaysText => FormatPercent(Uptime7DaysPercent);
 
     public string Uptime30DaysText => FormatPercent(Uptime30DaysPercent);
+
+    public string UptimeOverallText => FormatPercent(UptimeOverallPercent);
 
     public string AverageLatencyText => AverageLatencyMs.HasValue ? $"{AverageLatencyMs.Value} ms" : "-";
 
@@ -320,6 +431,21 @@ public sealed class Device : ObservableObject
     private static string FormatPercent(double? value)
     {
         return value.HasValue ? $"{value.Value:0.0}%" : "-";
+    }
+
+    private static string FormatDuration(int seconds)
+    {
+        if (seconds >= 3600 && seconds % 3600 == 0)
+        {
+            return $"{seconds / 3600} sa";
+        }
+
+        if (seconds >= 60 && seconds % 60 == 0)
+        {
+            return $"{seconds / 60} dk";
+        }
+
+        return $"{seconds} sn";
     }
 
     private static long CreateIpSortKey(string ipAddress)

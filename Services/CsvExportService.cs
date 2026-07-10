@@ -1,4 +1,5 @@
 using System.IO;
+using System.Globalization;
 using System.Text;
 using NetworkHealthMonitor.Models;
 
@@ -120,6 +121,78 @@ public sealed class CsvExportService
                 item.LastOutageStartedAtText,
                 item.LastRecoveryAtText,
                 item.EstimatedOutageDurationText);
+        }
+
+        await File.WriteAllTextAsync(filePath, builder.ToString(), Utf8Bom);
+    }
+
+    public async Task ExportUptimeReportAsync(IEnumerable<UptimeReportItem> items, string filePath, string delimiter = ";")
+    {
+        var separator = NormalizeDelimiter(delimiter);
+        var builder = new StringBuilder();
+        AppendRow(
+            builder,
+            separator,
+            "DeviceId",
+            "DeviceName",
+            "IpAddress",
+            "DeviceType",
+            "GroupName",
+            "HealthStatus",
+            "LastCheckAt",
+            "LastSuccessfulCheckAt",
+            "LastFailedCheckAt",
+            "LatencyMs",
+            "ConsecutiveFailureCount",
+            "Uptime24hPercent",
+            "Uptime7dPercent",
+            "Uptime30dPercent",
+            "UptimeOverallPercent",
+            "TotalChecks24h",
+            "SuccessfulChecks24h",
+            "FailedChecks24h",
+            "TotalChecks7d",
+            "SuccessfulChecks7d",
+            "FailedChecks7d",
+            "TotalChecks30d",
+            "SuccessfulChecks30d",
+            "FailedChecks30d",
+            "TotalChecksOverall",
+            "SuccessfulChecksOverall",
+            "FailedChecksOverall");
+
+        foreach (var item in items)
+        {
+            AppendRow(
+                builder,
+                separator,
+                item.DeviceId.ToString(CultureInfo.InvariantCulture),
+                item.DeviceName,
+                item.IpAddress,
+                item.DeviceTypeText,
+                item.GroupName,
+                item.HealthStatusText,
+                item.LastCheckAtText,
+                item.LastSuccessfulCheckAtText,
+                item.LastFailedCheckAtText,
+                item.LatencyMsText,
+                item.ConsecutiveFailureCount.ToString(CultureInfo.InvariantCulture),
+                FormatPercent(item.Uptime24hPercent),
+                FormatPercent(item.Uptime7dPercent),
+                FormatPercent(item.Uptime30dPercent),
+                FormatPercent(item.UptimeOverallPercent),
+                item.TotalChecks24h.ToString(CultureInfo.InvariantCulture),
+                item.SuccessfulChecks24h.ToString(CultureInfo.InvariantCulture),
+                item.FailedChecks24h.ToString(CultureInfo.InvariantCulture),
+                item.TotalChecks7d.ToString(CultureInfo.InvariantCulture),
+                item.SuccessfulChecks7d.ToString(CultureInfo.InvariantCulture),
+                item.FailedChecks7d.ToString(CultureInfo.InvariantCulture),
+                item.TotalChecks30d.ToString(CultureInfo.InvariantCulture),
+                item.SuccessfulChecks30d.ToString(CultureInfo.InvariantCulture),
+                item.FailedChecks30d.ToString(CultureInfo.InvariantCulture),
+                item.TotalChecksOverall.ToString(CultureInfo.InvariantCulture),
+                item.SuccessfulChecksOverall.ToString(CultureInfo.InvariantCulture),
+                item.FailedChecksOverall.ToString(CultureInfo.InvariantCulture));
         }
 
         await File.WriteAllTextAsync(filePath, builder.ToString(), Utf8Bom);
@@ -402,6 +475,13 @@ public sealed class CsvExportService
         }
 
         return safeValue;
+    }
+
+    private static string FormatPercent(double? value)
+    {
+        return value.HasValue
+            ? value.Value.ToString("0.00", CultureInfo.CurrentCulture)
+            : string.Empty;
     }
 
     private static char NormalizeDelimiter(string? delimiter)

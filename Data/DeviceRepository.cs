@@ -6,6 +6,15 @@ namespace NetworkHealthMonitor.Data;
 
 public sealed class DeviceRepository
 {
+    private const string DeviceSelectColumns = """
+        Id, Name, IpAddress, DeviceType, Location, GroupId, GroupName, IsCritical,
+        IsActive, AutoCheckEnabled, DefaultSchedulePlanId, CheckIntervalSeconds,
+        FailureRetryIntervalSeconds, FailureRetryLimit, Description, LastStatus,
+        LastLatencyMs, LastCheckedAt, LastSuccessfulCheckAt, LastFailedCheckAt,
+        ConsecutiveFailures, ConsecutiveSuccesses,
+        LastStableStatus, CreatedAt, UpdatedAt
+        """;
+
     private readonly SqliteConnectionFactory _connectionFactory;
 
     public DeviceRepository(SqliteConnectionFactory connectionFactory)
@@ -15,17 +24,30 @@ public sealed class DeviceRepository
 
     public async Task<IReadOnlyList<Device>> GetAllAsync()
     {
+        return await GetDevicesAsync($"""
+            SELECT {DeviceSelectColumns}
+            FROM Devices
+            ORDER BY Name COLLATE NOCASE, IpAddress;
+            """);
+    }
+
+    public async Task<IReadOnlyList<Device>> GetAutoCheckCandidatesAsync()
+    {
+        return await GetDevicesAsync($"""
+            SELECT {DeviceSelectColumns}
+            FROM Devices
+            WHERE IsActive = 1
+              AND AutoCheckEnabled = 1
+            ORDER BY Name COLLATE NOCASE, IpAddress;
+            """);
+    }
+
+    private async Task<IReadOnlyList<Device>> GetDevicesAsync(string commandText)
+    {
         var devices = new List<Device>();
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
         await using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT Id, Name, IpAddress, DeviceType, Location, GroupId, GroupName, IsCritical,
-                   IsActive, AutoCheckEnabled, DefaultSchedulePlanId, Description, LastStatus,
-                   LastLatencyMs, LastCheckedAt, ConsecutiveFailures, ConsecutiveSuccesses,
-                   LastStableStatus, CreatedAt, UpdatedAt
-            FROM Devices
-            ORDER BY Name COLLATE NOCASE, IpAddress;
-            """;
+        command.CommandText = commandText;
 
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
@@ -47,13 +69,17 @@ public sealed class DeviceRepository
         command.CommandText = """
             INSERT INTO Devices
                 (Name, IpAddress, DeviceType, Location, GroupId, GroupName, IsCritical, IsActive,
-                 AutoCheckEnabled, DefaultSchedulePlanId, Description, LastStatus, LastLatencyMs,
-                 LastCheckedAt, ConsecutiveFailures, ConsecutiveSuccesses, LastStableStatus,
+                 AutoCheckEnabled, DefaultSchedulePlanId, CheckIntervalSeconds, FailureRetryIntervalSeconds,
+                 FailureRetryLimit, Description, LastStatus, LastLatencyMs,
+                 LastCheckedAt, LastSuccessfulCheckAt, LastFailedCheckAt,
+                 ConsecutiveFailures, ConsecutiveSuccesses, LastStableStatus,
                  CreatedAt, UpdatedAt)
             VALUES
                 (@Name, @IpAddress, @DeviceType, @Location, @GroupId, @GroupName, @IsCritical, @IsActive,
-                 @AutoCheckEnabled, @DefaultSchedulePlanId, @Description, @LastStatus, @LastLatencyMs,
-                 @LastCheckedAt, @ConsecutiveFailures, @ConsecutiveSuccesses, @LastStableStatus,
+                 @AutoCheckEnabled, @DefaultSchedulePlanId, @CheckIntervalSeconds, @FailureRetryIntervalSeconds,
+                 @FailureRetryLimit, @Description, @LastStatus, @LastLatencyMs,
+                 @LastCheckedAt, @LastSuccessfulCheckAt, @LastFailedCheckAt,
+                 @ConsecutiveFailures, @ConsecutiveSuccesses, @LastStableStatus,
                  @CreatedAt, @UpdatedAt);
             SELECT last_insert_rowid();
             """;
@@ -88,10 +114,15 @@ public sealed class DeviceRepository
                 IsActive = @IsActive,
                 AutoCheckEnabled = @AutoCheckEnabled,
                 DefaultSchedulePlanId = @DefaultSchedulePlanId,
+                CheckIntervalSeconds = @CheckIntervalSeconds,
+                FailureRetryIntervalSeconds = @FailureRetryIntervalSeconds,
+                FailureRetryLimit = @FailureRetryLimit,
                 Description = @Description,
                 LastStatus = @LastStatus,
                 LastLatencyMs = @LastLatencyMs,
                 LastCheckedAt = @LastCheckedAt,
+                LastSuccessfulCheckAt = @LastSuccessfulCheckAt,
+                LastFailedCheckAt = @LastFailedCheckAt,
                 ConsecutiveFailures = @ConsecutiveFailures,
                 ConsecutiveSuccesses = @ConsecutiveSuccesses,
                 LastStableStatus = @LastStableStatus,
@@ -106,7 +137,7 @@ public sealed class DeviceRepository
         transaction.Commit();
     }
 
-    public async Task BulkUpdatePingResultsAsync(IEnumerable<PingDeviceResult> results, int failureThreshold = 3)
+    public async Task BulkUpdatePingResultsAsync(IEnumerable<PingDeviceResult> results)
     {
         var materialized = results.ToList();
         if (materialized.Count == 0)
@@ -126,11 +157,13 @@ public sealed class DeviceRepository
                 SET LastStatus = @LastStatus,
                     LastLatencyMs = @LastLatencyMs,
                     LastCheckedAt = @LastCheckedAt,
+                    LastSuccessfulCheckAt = CASE WHEN @IsSuccess = 1 THEN @LastCheckedAt ELSE LastSuccessfulCheckAt END,
+                    LastFailedCheckAt = CASE WHEN @IsSuccess = 1 THEN LastFailedCheckAt ELSE @LastCheckedAt END,
                     ConsecutiveFailures = CASE WHEN @IsSuccess = 1 THEN 0 ELSE ConsecutiveFailures + 1 END,
                     ConsecutiveSuccesses = CASE WHEN @IsSuccess = 1 THEN ConsecutiveSuccesses + 1 ELSE 0 END,
                     LastStableStatus = CASE
-                        WHEN @IsSuccess = 1 THEN @ReachableStatus
-                        WHEN ConsecutiveFailures + 1 >= @FailureThreshold THEN @UnreachableStatus
+                        WHEN @IsSuccess = 1 THEN @OnlineStatus
+                        WHEN @LastStatus = @OfflineStatus THEN @OfflineStatus
                         ELSE LastStableStatus
                     END,
                     UpdatedAt = @UpdatedAt
@@ -141,9 +174,8 @@ public sealed class DeviceRepository
             AddParameter(command, "@LastLatencyMs", result.LatencyMs);
             AddParameter(command, "@LastCheckedAt", ToStorageDate(result.CheckedAt));
             AddParameter(command, "@IsSuccess", result.IsSuccess ? 1 : 0);
-            AddParameter(command, "@FailureThreshold", Math.Clamp(failureThreshold, 1, 20));
-            AddParameter(command, "@ReachableStatus", DeviceStatus.Reachable.ToStorageValue());
-            AddParameter(command, "@UnreachableStatus", DeviceStatus.Unreachable.ToStorageValue());
+            AddParameter(command, "@OnlineStatus", DeviceStatus.Online.ToStorageValue());
+            AddParameter(command, "@OfflineStatus", DeviceStatus.Offline.ToStorageValue());
             AddParameter(command, "@UpdatedAt", ToStorageDate(DateTime.Now));
             AddParameter(command, "@Id", result.Device.Id);
             await command.ExecuteNonQueryAsync();
@@ -221,12 +253,14 @@ public sealed class DeviceRepository
             insert.CommandText = """
                 INSERT INTO Devices
                     (Name, IpAddress, DeviceType, Location, GroupId, GroupName, IsCritical, IsActive,
-                     AutoCheckEnabled, DefaultSchedulePlanId, Description, LastStatus, LastLatencyMs,
-                     LastCheckedAt, ConsecutiveFailures, ConsecutiveSuccesses, LastStableStatus,
+                     AutoCheckEnabled, DefaultSchedulePlanId, CheckIntervalSeconds, FailureRetryIntervalSeconds,
+                     FailureRetryLimit, Description, LastStatus, LastLatencyMs,
+                     LastCheckedAt, LastSuccessfulCheckAt, LastFailedCheckAt,
+                     ConsecutiveFailures, ConsecutiveSuccesses, LastStableStatus,
                      CreatedAt, UpdatedAt)
                 VALUES
                     (@Name, @IpAddress, @DeviceType, @Location, @GroupId, @GroupName, @IsCritical, 1,
-                     1, NULL, @Description, @LastStatus, NULL, NULL, 0, 0, @LastStableStatus,
+                     1, NULL, 0, 60, 3, @Description, @LastStatus, NULL, NULL, NULL, NULL, 0, 0, @LastStableStatus,
                      @CreatedAt, @UpdatedAt);
                 """;
             AddParameter(insert, "@Name", row.Name);
@@ -237,8 +271,8 @@ public sealed class DeviceRepository
             AddParameter(insert, "@GroupName", row.GroupName);
             AddParameter(insert, "@IsCritical", row.IsCritical ? 1 : 0);
             AddParameter(insert, "@Description", row.Note);
-            AddParameter(insert, "@LastStatus", DeviceStatus.NotChecked.ToStorageValue());
-            AddParameter(insert, "@LastStableStatus", DeviceStatus.NotChecked.ToStorageValue());
+            AddParameter(insert, "@LastStatus", DeviceStatus.Unknown.ToStorageValue());
+            AddParameter(insert, "@LastStableStatus", DeviceStatus.Unknown.ToStorageValue());
             AddParameter(insert, "@CreatedAt", ToStorageDate(now));
             AddParameter(insert, "@UpdatedAt", ToStorageDate(now));
             await insert.ExecuteNonQueryAsync();
@@ -352,15 +386,20 @@ public sealed class DeviceRepository
             IsActive = reader.GetInt32(8) == 1,
             AutoCheckEnabled = reader.GetInt32(9) == 1,
             DefaultSchedulePlanId = reader.IsDBNull(10) ? null : reader.GetInt32(10),
-            Description = reader.GetString(11),
-            LastStatus = DeviceStatusExtensions.FromStorageValue(reader.GetString(12)),
-            LastLatencyMs = reader.IsDBNull(13) ? null : reader.GetInt64(13),
-            LastCheckedAt = reader.IsDBNull(14) ? null : FromStorageDate(reader.GetString(14)),
-            ConsecutiveFailures = reader.GetInt32(15),
-            ConsecutiveSuccesses = reader.GetInt32(16),
-            LastStableStatus = DeviceStatusExtensions.FromStorageValue(reader.GetString(17)),
-            CreatedAt = FromStorageDate(reader.GetString(18)),
-            UpdatedAt = FromStorageDate(reader.GetString(19))
+            CheckIntervalSeconds = reader.GetInt32(11),
+            FailureRetryIntervalSeconds = reader.GetInt32(12),
+            FailureRetryLimit = reader.GetInt32(13),
+            Description = reader.GetString(14),
+            LastStatus = DeviceStatusExtensions.FromStorageValue(reader.GetString(15)),
+            LastLatencyMs = reader.IsDBNull(16) ? null : reader.GetInt64(16),
+            LastCheckedAt = reader.IsDBNull(17) ? null : FromStorageDate(reader.GetString(17)),
+            LastSuccessfulCheckAt = reader.IsDBNull(18) ? null : FromStorageDate(reader.GetString(18)),
+            LastFailedCheckAt = reader.IsDBNull(19) ? null : FromStorageDate(reader.GetString(19)),
+            ConsecutiveFailures = reader.GetInt32(20),
+            ConsecutiveSuccesses = reader.GetInt32(21),
+            LastStableStatus = DeviceStatusExtensions.FromStorageValue(reader.GetString(22)),
+            CreatedAt = FromStorageDate(reader.GetString(23)),
+            UpdatedAt = FromStorageDate(reader.GetString(24))
         };
     }
 
@@ -376,10 +415,15 @@ public sealed class DeviceRepository
         AddParameter(command, "@IsActive", device.IsActive ? 1 : 0);
         AddParameter(command, "@AutoCheckEnabled", device.AutoCheckEnabled ? 1 : 0);
         AddParameter(command, "@DefaultSchedulePlanId", device.DefaultSchedulePlanId);
+        AddParameter(command, "@CheckIntervalSeconds", device.CheckIntervalSeconds <= 0 ? 0 : Math.Clamp(device.CheckIntervalSeconds, AppSettings.MinDeviceCheckIntervalSeconds, AppSettings.MaxDeviceCheckIntervalSeconds));
+        AddParameter(command, "@FailureRetryIntervalSeconds", Math.Clamp(device.FailureRetryIntervalSeconds, AppSettings.MinFailureRetryIntervalSeconds, AppSettings.MaxFailureRetryIntervalSeconds));
+        AddParameter(command, "@FailureRetryLimit", Math.Clamp(device.FailureRetryLimit, AppSettings.MinFailureRetryLimit, AppSettings.MaxFailureRetryLimit));
         AddParameter(command, "@Description", device.Description);
         AddParameter(command, "@LastStatus", device.LastStatus.ToStorageValue());
         AddParameter(command, "@LastLatencyMs", device.LastLatencyMs);
         AddParameter(command, "@LastCheckedAt", device.LastCheckedAt.HasValue ? ToStorageDate(device.LastCheckedAt.Value) : null);
+        AddParameter(command, "@LastSuccessfulCheckAt", device.LastSuccessfulCheckAt.HasValue ? ToStorageDate(device.LastSuccessfulCheckAt.Value) : null);
+        AddParameter(command, "@LastFailedCheckAt", device.LastFailedCheckAt.HasValue ? ToStorageDate(device.LastFailedCheckAt.Value) : null);
         AddParameter(command, "@ConsecutiveFailures", device.ConsecutiveFailures);
         AddParameter(command, "@ConsecutiveSuccesses", device.ConsecutiveSuccesses);
         AddParameter(command, "@LastStableStatus", device.LastStableStatus.ToStorageValue());

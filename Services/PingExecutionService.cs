@@ -10,18 +10,27 @@ public sealed class PingExecutionService : IPingExecutionService
     private readonly PingLogRepository _pingLogRepository;
     private readonly OutageRepository _outageRepository;
     private readonly IPingService _pingService;
+    private readonly IDeviceCheckPolicyService _deviceCheckPolicyService;
+    private readonly IDeviceHealthEvaluator _deviceHealthEvaluator;
+    private readonly AppSettingsService _settingsService;
     private readonly ConcurrentDictionary<int, byte> _runningDeviceIds = new();
 
     public PingExecutionService(
         DeviceRepository deviceRepository,
         PingLogRepository pingLogRepository,
         OutageRepository outageRepository,
-        IPingService pingService)
+        IPingService pingService,
+        IDeviceCheckPolicyService deviceCheckPolicyService,
+        IDeviceHealthEvaluator deviceHealthEvaluator,
+        AppSettingsService settingsService)
     {
         _deviceRepository = deviceRepository;
         _pingLogRepository = pingLogRepository;
         _outageRepository = outageRepository;
         _pingService = pingService;
+        _deviceCheckPolicyService = deviceCheckPolicyService;
+        _deviceHealthEvaluator = deviceHealthEvaluator;
+        _settingsService = settingsService;
     }
 
     public async Task<PingExecutionResult> PingDevicesAsync(
@@ -57,14 +66,22 @@ public sealed class PingExecutionService : IPingExecutionService
 
         try
         {
-            var results = await _pingService.PingManyAsync(acquired, options, progress, cancellationToken);
+            var rawResults = await _pingService.PingManyAsync(acquired, options, progress, cancellationToken);
+            var settings = await _settingsService.LoadAsync();
+            var results = rawResults
+                .Select(result =>
+                {
+                    var policy = _deviceCheckPolicyService.ResolvePolicy(result.Device, null, schedulePlan, settings, options);
+                    return result with { Status = _deviceHealthEvaluator.Evaluate(result.Device, result, policy) };
+                })
+                .ToList();
             var logs = results
                 .Select(result => CreateLog(result, triggerType, schedulePlan))
                 .ToList();
 
             await _pingLogRepository.AddRangeAsync(logs);
-            await _deviceRepository.BulkUpdatePingResultsAsync(results, options.FailureThreshold);
-            await UpdateOutagesAsync(results, logs, options.FailureThreshold);
+            await _deviceRepository.BulkUpdatePingResultsAsync(results);
+            await _outageRepository.SyncFromPingResultsAsync(results, CreateRecoveryLogMap(logs));
 
             return new PingExecutionResult(results, logs, skipped);
         }
@@ -77,41 +94,11 @@ public sealed class PingExecutionService : IPingExecutionService
         }
     }
 
-    private async Task UpdateOutagesAsync(
-        IReadOnlyList<PingDeviceResult> results,
-        IReadOnlyList<PingLog> logs,
-        int failureThreshold)
+    private static IReadOnlyDictionary<int, int?> CreateRecoveryLogMap(IReadOnlyList<PingLog> logs)
     {
-        var logByDevice = logs
+        return logs
             .Where(log => log.DeviceId.HasValue)
-            .ToDictionary(log => log.DeviceId!.Value);
-
-        foreach (var result in results)
-        {
-            var device = result.Device;
-            if (result.IsSuccess)
-            {
-                int? recoveryLogId = logByDevice.TryGetValue(device.Id, out var successLog) ? successLog.Id : null;
-                await _outageRepository.ResolveByDeviceIdAsync(device.Id, result.CheckedAt, recoveryLogId);
-                continue;
-            }
-
-            var failureCount = device.ConsecutiveFailures + 1;
-            if (failureCount < failureThreshold)
-            {
-                continue;
-            }
-
-            var openOutage = await _outageRepository.GetOpenByDeviceIdAsync(device.Id);
-            if (openOutage is null)
-            {
-                await _outageRepository.StartAsync(device, result.CheckedAt, failureCount);
-            }
-            else
-            {
-                await _outageRepository.UpdateFailureCountAsync(openOutage.Id, failureCount);
-            }
-        }
+            .ToDictionary(log => log.DeviceId!.Value, log => (int?)log.Id);
     }
 
     private static PingLog CreateLog(

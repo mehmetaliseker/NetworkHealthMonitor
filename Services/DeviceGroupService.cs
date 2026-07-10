@@ -24,6 +24,13 @@ public sealed class DeviceGroupService : IDeviceGroupService
             return OperationResult.Fail("Bu grup adı zaten kullanılıyor.");
         }
 
+        if (group.DefaultCheckIntervalSeconds.HasValue
+            && (group.DefaultCheckIntervalSeconds.Value < AppSettings.MinDeviceCheckIntervalSeconds
+                || group.DefaultCheckIntervalSeconds.Value > AppSettings.MaxDeviceCheckIntervalSeconds))
+        {
+            return OperationResult.Fail($"Grup varsayılan kontrol aralığı {AppSettings.MinDeviceCheckIntervalSeconds} saniye ile 24 saat arasında olmalıdır.");
+        }
+
         group.Name = group.Name.Trim();
         if (group.Id == 0)
         {

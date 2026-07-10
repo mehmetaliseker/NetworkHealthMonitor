@@ -10,6 +10,8 @@ public sealed class DeviceHealthMetrics
 
     public double? Uptime30DaysPercent { get; init; }
 
+    public double? UptimeOverallPercent { get; init; }
+
     public long? AverageLatencyMs { get; init; }
 
     public DateTime? LastFailureAt { get; init; }

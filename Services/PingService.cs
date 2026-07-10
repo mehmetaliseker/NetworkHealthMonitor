@@ -39,10 +39,6 @@ public sealed class PingService : IPingService
                 $"Yanıt alınamadı: {statusText}",
                 statusText);
         }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
         catch (PingException ex)
         {
             return new PingDeviceResult(
@@ -83,61 +79,46 @@ public sealed class PingService : IPingService
             return Array.Empty<PingDeviceResult>();
         }
 
-        using var semaphore = new SemaphoreSlim(options.MaxParallelPings);
-        var tasks = targets.Select(async device =>
+        var parallelOptions = new ParallelOptions
         {
-            var entered = false;
+            MaxDegreeOfParallelism = options.MaxParallelPings,
+            CancellationToken = cancellationToken
+        };
 
-            try
+        await Parallel.ForEachAsync(targets, parallelOptions, async (device, token) =>
+        {
+            progress?.Report(new PingProgress(
+                total,
+                Volatile.Read(ref completed),
+                Volatile.Read(ref success),
+                Volatile.Read(ref failure),
+                device.Id,
+                DeviceStatus.Checking));
+
+            var result = await PingAsync(device, options, token);
+            results.Add(result);
+
+            if (result.IsSuccess)
             {
-                await semaphore.WaitAsync(cancellationToken);
-                entered = true;
-
-                progress?.Report(new PingProgress(
-                    total,
-                    Volatile.Read(ref completed),
-                    Volatile.Read(ref success),
-                    Volatile.Read(ref failure),
-                    device.Id,
-                    DeviceStatus.Checking));
-
-                var result = await PingAsync(device, options, cancellationToken);
-                results.Add(result);
-
-                if (result.IsSuccess)
-                {
-                    Interlocked.Increment(ref success);
-                }
-                else
-                {
-                    Interlocked.Increment(ref failure);
-                }
-
-                var done = Interlocked.Increment(ref completed);
-                progress?.Report(new PingProgress(
-                    total,
-                    done,
-                    Volatile.Read(ref success),
-                    Volatile.Read(ref failure),
-                    device.Id,
-                    result.Status,
-                    result.LatencyMs,
-                    result.CheckedAt));
+                Interlocked.Increment(ref success);
             }
-            catch (OperationCanceledException)
+            else
             {
-                // Cancellation is a user action; partial results gathered so far are returned.
+                Interlocked.Increment(ref failure);
             }
-            finally
-            {
-                if (entered)
-                {
-                    semaphore.Release();
-                }
-            }
+
+            var done = Interlocked.Increment(ref completed);
+            progress?.Report(new PingProgress(
+                total,
+                done,
+                Volatile.Read(ref success),
+                Volatile.Read(ref failure),
+                device.Id,
+                result.Status,
+                result.LatencyMs,
+                result.CheckedAt));
         });
 
-        await Task.WhenAll(tasks);
         return results.OrderBy(result => result.CheckedAt).ToList();
     }
 

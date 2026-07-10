@@ -64,4 +64,12 @@ public sealed class DataMaintenanceService
         File.Copy(sourcePath, DatabasePaths.SettingsFilePath, overwrite: true);
         return Task.CompletedTask;
     }
+
+    public async Task OptimizeDatabaseAsync()
+    {
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA optimize;";
+        await command.ExecuteNonQueryAsync();
+    }
 }

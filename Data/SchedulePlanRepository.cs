@@ -173,9 +173,9 @@ public sealed class SchedulePlanRepository
         AddParameter(command, "@TargetType", plan.TargetType.ToStorageValue());
         AddParameter(command, "@TargetValue", plan.TargetValue.Trim());
         AddParameter(command, "@IntervalMinutes", Math.Max(1, plan.IntervalMinutes));
-        AddParameter(command, "@TimeoutMs", Math.Clamp(plan.TimeoutMs, 250, 10000));
-        AddParameter(command, "@MaxParallelism", Math.Clamp(plan.MaxParallelism, 1, 128));
-        AddParameter(command, "@FailureThreshold", Math.Clamp(plan.FailureThreshold, 1, 20));
+        AddParameter(command, "@TimeoutMs", Math.Clamp(plan.TimeoutMs, AppSettings.MinPingTimeoutMs, AppSettings.MaxPingTimeoutMs));
+        AddParameter(command, "@MaxParallelism", Math.Clamp(plan.MaxParallelism, AppSettings.MinParallelPings, AppSettings.MaxParallelPingsLimit));
+        AddParameter(command, "@FailureThreshold", Math.Clamp(plan.FailureThreshold, AppSettings.MinFailureThreshold, AppSettings.MaxFailureThreshold));
         AddParameter(command, "@IsActive", plan.IsActive ? 1 : 0);
         AddParameter(command, "@Description", plan.Description);
         AddParameter(command, "@LastRunAt", plan.LastRunAt.HasValue ? ToStorageDate(plan.LastRunAt.Value) : null);

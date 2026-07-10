@@ -6,7 +6,24 @@ public sealed record PingDeviceResult(
     long? LatencyMs,
     DateTime CheckedAt,
     string ResponseMessage,
-    string ErrorMessage)
+    string ErrorMessage,
+    DeviceStatus Status)
 {
-    public DeviceStatus Status => IsSuccess ? DeviceStatus.Reachable : DeviceStatus.Unreachable;
+    public PingDeviceResult(
+        Device device,
+        bool isSuccess,
+        long? latencyMs,
+        DateTime checkedAt,
+        string responseMessage,
+        string errorMessage)
+        : this(
+            device,
+            isSuccess,
+            latencyMs,
+            checkedAt,
+            responseMessage,
+            errorMessage,
+            isSuccess ? DeviceStatus.Online : DeviceStatus.Warning)
+    {
+    }
 }

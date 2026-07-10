@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using Microsoft.Win32;
 using NetworkHealthMonitor.Models;
@@ -52,9 +53,9 @@ public sealed class WpfDialogService : IDialogService
         return GetOpenFilePath("CSV dosyasını seç", "CSV dosyası (*.csv)|*.csv|Tüm dosyalar (*.*)|*.*", ".csv");
     }
 
-    public string? GetSaveCsvFilePath(string defaultFileName)
+    public string? GetSaveCsvFilePath(string defaultFileName, string? initialDirectory = null)
     {
-        return GetSaveFilePath("CSV dosyasını kaydet", defaultFileName, "CSV dosyası (*.csv)|*.csv|Tüm dosyalar (*.*)|*.*", ".csv");
+        return GetSaveFilePath("CSV dosyasını kaydet", defaultFileName, "CSV dosyası (*.csv)|*.csv|Tüm dosyalar (*.*)|*.*", ".csv", initialDirectory);
     }
 
     public string? GetOpenDatabaseFilePath()
@@ -91,7 +92,12 @@ public sealed class WpfDialogService : IDialogService
         return dialog.ShowDialog() == true ? dialog.FileName : null;
     }
 
-    private static string? GetSaveFilePath(string title, string defaultFileName, string filter, string defaultExtension)
+    private static string? GetSaveFilePath(
+        string title,
+        string defaultFileName,
+        string filter,
+        string defaultExtension,
+        string? initialDirectory = null)
     {
         var dialog = new SaveFileDialog
         {
@@ -102,6 +108,11 @@ public sealed class WpfDialogService : IDialogService
             AddExtension = true,
             OverwritePrompt = true
         };
+
+        if (!string.IsNullOrWhiteSpace(initialDirectory) && Directory.Exists(initialDirectory))
+        {
+            dialog.InitialDirectory = initialDirectory;
+        }
 
         return dialog.ShowDialog() == true ? dialog.FileName : null;
     }

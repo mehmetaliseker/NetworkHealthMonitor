@@ -12,8 +12,11 @@ public sealed class StatusBackgroundConverter : IValueConverter
         return value is DeviceStatus status
             ? new SolidColorBrush(status switch
             {
-                DeviceStatus.Reachable => Color.FromRgb(220, 252, 231),
-                DeviceStatus.Unreachable => Color.FromRgb(254, 226, 226),
+                DeviceStatus.Online => Color.FromRgb(220, 252, 231),
+                DeviceStatus.Warning => Color.FromRgb(254, 243, 199),
+                DeviceStatus.UnderWatch => Color.FromRgb(255, 237, 213),
+                DeviceStatus.Offline => Color.FromRgb(254, 226, 226),
+                DeviceStatus.PingBlockedOrNoReply => Color.FromRgb(224, 231, 255),
                 DeviceStatus.Checking => Color.FromRgb(219, 234, 254),
                 _ => Color.FromRgb(229, 231, 235)
             })
@@ -33,8 +36,11 @@ public sealed class StatusForegroundConverter : IValueConverter
         return value is DeviceStatus status
             ? new SolidColorBrush(status switch
             {
-                DeviceStatus.Reachable => Color.FromRgb(22, 101, 52),
-                DeviceStatus.Unreachable => Color.FromRgb(153, 27, 27),
+                DeviceStatus.Online => Color.FromRgb(22, 101, 52),
+                DeviceStatus.Warning => Color.FromRgb(146, 64, 14),
+                DeviceStatus.UnderWatch => Color.FromRgb(154, 52, 18),
+                DeviceStatus.Offline => Color.FromRgb(153, 27, 27),
+                DeviceStatus.PingBlockedOrNoReply => Color.FromRgb(55, 48, 163),
                 DeviceStatus.Checking => Color.FromRgb(30, 64, 175),
                 _ => Color.FromRgb(55, 65, 81)
             })
@@ -54,8 +60,11 @@ public sealed class RowStatusBackgroundConverter : IValueConverter
         return value is DeviceStatus status
             ? new SolidColorBrush(status switch
             {
-                DeviceStatus.Reachable => Color.FromRgb(240, 253, 244),
-                DeviceStatus.Unreachable => Color.FromRgb(254, 242, 242),
+                DeviceStatus.Online => Color.FromRgb(240, 253, 244),
+                DeviceStatus.Warning => Color.FromRgb(255, 251, 235),
+                DeviceStatus.UnderWatch => Color.FromRgb(255, 247, 237),
+                DeviceStatus.Offline => Color.FromRgb(254, 242, 242),
+                DeviceStatus.PingBlockedOrNoReply => Color.FromRgb(238, 242, 255),
                 DeviceStatus.Checking => Color.FromRgb(239, 246, 255),
                 _ => Colors.White
             })

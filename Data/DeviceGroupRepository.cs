@@ -19,11 +19,11 @@ public sealed class DeviceGroupRepository
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT g.Id, g.Name, g.Description, g.DefaultSchedulePlanId, g.CreatedAt, g.UpdatedAt,
+            SELECT g.Id, g.Name, g.Description, g.DefaultSchedulePlanId, g.DefaultCheckIntervalSeconds, g.CreatedAt, g.UpdatedAt,
                    COUNT(d.Id) AS DeviceCount
             FROM DeviceGroups g
             LEFT JOIN Devices d ON d.GroupId = g.Id
-            GROUP BY g.Id, g.Name, g.Description, g.DefaultSchedulePlanId, g.CreatedAt, g.UpdatedAt
+            GROUP BY g.Id, g.Name, g.Description, g.DefaultSchedulePlanId, g.DefaultCheckIntervalSeconds, g.CreatedAt, g.UpdatedAt
             ORDER BY g.Name COLLATE NOCASE;
             """;
 
@@ -45,8 +45,8 @@ public sealed class DeviceGroupRepository
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO DeviceGroups (Name, Description, DefaultSchedulePlanId, CreatedAt, UpdatedAt)
-            VALUES (@Name, @Description, @DefaultSchedulePlanId, @CreatedAt, @UpdatedAt);
+            INSERT INTO DeviceGroups (Name, Description, DefaultSchedulePlanId, DefaultCheckIntervalSeconds, CreatedAt, UpdatedAt)
+            VALUES (@Name, @Description, @DefaultSchedulePlanId, @DefaultCheckIntervalSeconds, @CreatedAt, @UpdatedAt);
             SELECT last_insert_rowid();
             """;
 
@@ -66,6 +66,7 @@ public sealed class DeviceGroupRepository
             SET Name = @Name,
                 Description = @Description,
                 DefaultSchedulePlanId = @DefaultSchedulePlanId,
+                DefaultCheckIntervalSeconds = @DefaultCheckIntervalSeconds,
                 UpdatedAt = @UpdatedAt
             WHERE Id = @Id;
             """;
@@ -138,9 +139,10 @@ public sealed class DeviceGroupRepository
             Name = reader.GetString(1),
             Description = reader.GetString(2),
             DefaultSchedulePlanId = reader.IsDBNull(3) ? null : reader.GetInt32(3),
-            CreatedAt = FromStorageDate(reader.GetString(4)),
-            UpdatedAt = FromStorageDate(reader.GetString(5)),
-            DeviceCount = reader.GetInt32(6)
+            DefaultCheckIntervalSeconds = reader.IsDBNull(4) ? null : reader.GetInt32(4),
+            CreatedAt = FromStorageDate(reader.GetString(5)),
+            UpdatedAt = FromStorageDate(reader.GetString(6)),
+            DeviceCount = reader.GetInt32(7)
         };
     }
 
@@ -149,6 +151,7 @@ public sealed class DeviceGroupRepository
         AddParameter(command, "@Name", group.Name.Trim());
         AddParameter(command, "@Description", group.Description);
         AddParameter(command, "@DefaultSchedulePlanId", group.DefaultSchedulePlanId);
+        AddParameter(command, "@DefaultCheckIntervalSeconds", group.DefaultCheckIntervalSeconds);
         AddParameter(command, "@CreatedAt", ToStorageDate(group.CreatedAt));
         AddParameter(command, "@UpdatedAt", ToStorageDate(group.UpdatedAt));
     }

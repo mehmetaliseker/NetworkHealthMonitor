@@ -11,7 +11,7 @@ public sealed class SchedulePlan : ObservableObject
     private string _targetDisplayName = string.Empty;
     private int _intervalMinutes = 10;
     private int _timeoutMs = 1000;
-    private int _maxParallelism = 16;
+    private int _maxParallelism = AppSettings.DefaultSchedulePlanMaxParallelism;
     private int _failureThreshold = 3;
     private bool _isActive = true;
     private string _description = string.Empty;
@@ -70,19 +70,19 @@ public sealed class SchedulePlan : ObservableObject
     public int TimeoutMs
     {
         get => _timeoutMs;
-        set => SetProperty(ref _timeoutMs, Math.Clamp(value, 250, 10000));
+        set => SetProperty(ref _timeoutMs, Math.Clamp(value, AppSettings.MinPingTimeoutMs, AppSettings.MaxPingTimeoutMs));
     }
 
     public int MaxParallelism
     {
         get => _maxParallelism;
-        set => SetProperty(ref _maxParallelism, Math.Clamp(value, 1, 128));
+        set => SetProperty(ref _maxParallelism, Math.Clamp(value, AppSettings.MinParallelPings, AppSettings.MaxParallelPingsLimit));
     }
 
     public int FailureThreshold
     {
         get => _failureThreshold;
-        set => SetProperty(ref _failureThreshold, Math.Clamp(value, 1, 20));
+        set => SetProperty(ref _failureThreshold, Math.Clamp(value, AppSettings.MinFailureThreshold, AppSettings.MaxFailureThreshold));
     }
 
     public bool IsActive

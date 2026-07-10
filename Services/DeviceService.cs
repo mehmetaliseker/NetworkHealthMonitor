@@ -67,6 +67,25 @@ public sealed class DeviceService : IDeviceService
             return OperationResult.Fail("Cihaz tipi seçilmeden kayıt yapılamaz.");
         }
 
+        if (device.CheckIntervalSeconds != 0
+            && (device.CheckIntervalSeconds < AppSettings.MinDeviceCheckIntervalSeconds
+                || device.CheckIntervalSeconds > AppSettings.MaxDeviceCheckIntervalSeconds))
+        {
+            return OperationResult.Fail($"Normal kontrol aralığı 0 veya {AppSettings.MinDeviceCheckIntervalSeconds} saniye ile 24 saat arasında olmalıdır.");
+        }
+
+        if (device.FailureRetryIntervalSeconds < AppSettings.MinFailureRetryIntervalSeconds
+            || device.FailureRetryIntervalSeconds > AppSettings.MaxFailureRetryIntervalSeconds)
+        {
+            return OperationResult.Fail($"Hızlı tekrar aralığı {AppSettings.MinFailureRetryIntervalSeconds} saniye ile {AppSettings.MaxFailureRetryIntervalSeconds} saniye arasında olmalıdır.");
+        }
+
+        if (device.FailureRetryLimit < AppSettings.MinFailureRetryLimit
+            || device.FailureRetryLimit > AppSettings.MaxFailureRetryLimit)
+        {
+            return OperationResult.Fail($"Hızlı tekrar limiti {AppSettings.MinFailureRetryLimit} ile {AppSettings.MaxFailureRetryLimit} arasında olmalıdır.");
+        }
+
         if (await _deviceRepository.ExistsByIpAsync(device.IpAddress.Trim(), device.Id == 0 ? null : device.Id))
         {
             return OperationResult.Fail("Bu IP adresi zaten başka bir cihazda kayıtlı.");

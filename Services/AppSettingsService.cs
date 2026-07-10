@@ -45,14 +45,22 @@ public sealed class AppSettingsService
     {
         return new AppSettings
         {
-            PingTimeoutMs = Math.Clamp(settings.PingTimeoutMs, 250, 10000),
-            MaxParallelPings = Math.Clamp(settings.MaxParallelPings, 1, 128),
-            DefaultFailureThreshold = Math.Clamp(settings.DefaultFailureThreshold, 1, 20),
-            AutoCheckEnabled = settings.AutoCheckEnabled,
-            AutoCheckIntervalMinutes = Math.Max(1, settings.AutoCheckIntervalMinutes),
+            PingTimeoutMs = Math.Clamp(settings.PingTimeoutMs, AppSettings.MinPingTimeoutMs, AppSettings.MaxPingTimeoutMs),
+            MaxParallelPings = Math.Clamp(settings.MaxParallelPings, AppSettings.MinParallelPings, AppSettings.MaxParallelPingsLimit),
+            DefaultFailureThreshold = Math.Clamp(settings.DefaultFailureThreshold, AppSettings.MinFailureThreshold, AppSettings.MaxFailureThreshold),
+            AutoCheckIntervalMinutes = settings.AutoCheckIntervalMinutes <= 0
+                ? AppSettings.DefaultAutoCheckIntervalMinutes
+                : Math.Max(AppSettings.MinAutoCheckIntervalMinutes, settings.AutoCheckIntervalMinutes),
+            DefaultFailureRetryIntervalSeconds = settings.DefaultFailureRetryIntervalSeconds <= 0
+                ? AppSettings.DefaultFailureRetryIntervalSecondsValue
+                : Math.Clamp(settings.DefaultFailureRetryIntervalSeconds, AppSettings.MinFailureRetryIntervalSeconds, AppSettings.MaxFailureRetryIntervalSeconds),
+            DefaultFailureRetryLimit = settings.DefaultFailureRetryLimit <= 0
+                ? AppSettings.DefaultFailureRetryLimitValue
+                : Math.Clamp(settings.DefaultFailureRetryLimit, AppSettings.MinFailureRetryLimit, AppSettings.MaxFailureRetryLimit),
             StartSchedulePlansOnStartup = settings.StartSchedulePlansOnStartup,
             CsvDelimiter = string.IsNullOrWhiteSpace(settings.CsvDelimiter) ? ";" : settings.CsvDelimiter[..1],
-            LogRetentionDays = Math.Max(0, settings.LogRetentionDays),
+            LogRetentionDays = settings.LogRetentionDays < 0 ? AppSettings.DefaultLogRetentionDays : settings.LogRetentionDays,
+            ExportDirectory = settings.ExportDirectory?.Trim() ?? string.Empty,
             Theme = string.IsNullOrWhiteSpace(settings.Theme) ? "Açık" : settings.Theme
         };
     }

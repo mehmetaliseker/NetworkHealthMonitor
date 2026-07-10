@@ -30,6 +30,8 @@ public sealed class AvailabilityReportItem
 
     public double? Availability30DaysPercent { get; init; }
 
+    public double? AvailabilityOverallPercent { get; init; }
+
     public int OutageCount { get; init; }
 
     public DateTime? LastOutageStartedAt { get; init; }
@@ -53,6 +55,8 @@ public sealed class AvailabilityReportItem
     public string Availability7DaysText => FormatPercent(Availability7DaysPercent);
 
     public string Availability30DaysText => FormatPercent(Availability30DaysPercent);
+
+    public string AvailabilityOverallText => FormatPercent(AvailabilityOverallPercent);
 
     public string LastOutageStartedAtText => FormatDate(LastOutageStartedAt);
 

@@ -23,69 +23,84 @@ public sealed class OutageRepository
         return await GetFilteredAsync(onlyOpen: false, limit: limit);
     }
 
-    public async Task<Outage?> GetOpenByDeviceIdAsync(int deviceId)
+    public async Task SyncFromPingResultsAsync(
+        IReadOnlyList<PingDeviceResult> results,
+        IReadOnlyDictionary<int, int?> recoveryLogIds)
     {
-        await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT o.Id, o.DeviceId, d.Name, d.IpAddress, d.DeviceType, d.GroupName, o.StartedAt,
-                   o.EndedAt, o.FailureCount, o.RecoveryPingLogId, o.IsResolved
-            FROM Outages o
-            INNER JOIN Devices d ON d.Id = o.DeviceId
-            WHERE o.DeviceId = @DeviceId
-              AND o.IsResolved = 0
-            ORDER BY o.StartedAt DESC
-            LIMIT 1;
-            """;
-        AddParameter(command, "@DeviceId", deviceId);
+        if (results.Count == 0)
+        {
+            return;
+        }
 
-        await using var reader = await command.ExecuteReaderAsync();
-        return await reader.ReadAsync() ? ReadOutage(reader) : null;
-    }
-
-    public async Task<int> StartAsync(Device device, DateTime startedAt, int failureCount)
-    {
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            INSERT INTO Outages (DeviceId, StartedAt, EndedAt, FailureCount, RecoveryPingLogId, IsResolved, CreatedAt)
-            VALUES (@DeviceId, @StartedAt, NULL, @FailureCount, NULL, 0, @CreatedAt);
-            SELECT last_insert_rowid();
-            """;
-        AddParameter(command, "@DeviceId", device.Id);
-        AddParameter(command, "@StartedAt", ToStorageDate(startedAt));
-        AddParameter(command, "@FailureCount", failureCount);
-        AddParameter(command, "@CreatedAt", ToStorageDate(DateTime.Now));
-        var result = await command.ExecuteScalarAsync();
-        return Convert.ToInt32(result, CultureInfo.InvariantCulture);
-    }
+        using var transaction = connection.BeginTransaction();
 
-    public async Task UpdateFailureCountAsync(int outageId, int failureCount)
-    {
-        await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
-        await using var command = connection.CreateCommand();
-        command.CommandText = "UPDATE Outages SET FailureCount = @FailureCount WHERE Id = @Id;";
-        AddParameter(command, "@FailureCount", failureCount);
-        AddParameter(command, "@Id", outageId);
-        await command.ExecuteNonQueryAsync();
-    }
+        foreach (var result in results)
+        {
+            if (result.IsSuccess)
+            {
+                await using var resolve = connection.CreateCommand();
+                resolve.Transaction = transaction;
+                resolve.CommandText = """
+                    UPDATE Outages
+                    SET EndedAt = @EndedAt,
+                        RecoveryPingLogId = @RecoveryPingLogId,
+                        IsResolved = 1
+                    WHERE DeviceId = @DeviceId
+                      AND IsResolved = 0;
+                    """;
+                AddParameter(resolve, "@EndedAt", ToStorageDate(result.CheckedAt));
+                AddParameter(resolve, "@RecoveryPingLogId", recoveryLogIds.TryGetValue(result.Device.Id, out var logId) ? logId : null);
+                AddParameter(resolve, "@DeviceId", result.Device.Id);
+                await resolve.ExecuteNonQueryAsync();
+                continue;
+            }
 
-    public async Task ResolveByDeviceIdAsync(int deviceId, DateTime endedAt, int? recoveryPingLogId)
-    {
-        await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            UPDATE Outages
-            SET EndedAt = @EndedAt,
-                RecoveryPingLogId = @RecoveryPingLogId,
-                IsResolved = 1
-            WHERE DeviceId = @DeviceId
-              AND IsResolved = 0;
-            """;
-        AddParameter(command, "@EndedAt", ToStorageDate(endedAt));
-        AddParameter(command, "@RecoveryPingLogId", recoveryPingLogId);
-        AddParameter(command, "@DeviceId", deviceId);
-        await command.ExecuteNonQueryAsync();
+            if (result.Status != DeviceStatus.Offline)
+            {
+                continue;
+            }
+
+            var failureCount = result.Device.ConsecutiveFailures + 1;
+            await using var select = connection.CreateCommand();
+            select.Transaction = transaction;
+            select.CommandText = """
+                SELECT Id
+                FROM Outages
+                WHERE DeviceId = @DeviceId
+                  AND IsResolved = 0
+                ORDER BY StartedAt DESC
+                LIMIT 1;
+                """;
+            AddParameter(select, "@DeviceId", result.Device.Id);
+            var existingId = await select.ExecuteScalarAsync();
+
+            if (existingId is null || existingId == DBNull.Value)
+            {
+                await using var insert = connection.CreateCommand();
+                insert.Transaction = transaction;
+                insert.CommandText = """
+                    INSERT INTO Outages (DeviceId, StartedAt, EndedAt, FailureCount, RecoveryPingLogId, IsResolved, CreatedAt)
+                    VALUES (@DeviceId, @StartedAt, NULL, @FailureCount, NULL, 0, @CreatedAt);
+                    """;
+                AddParameter(insert, "@DeviceId", result.Device.Id);
+                AddParameter(insert, "@StartedAt", ToStorageDate(result.CheckedAt));
+                AddParameter(insert, "@FailureCount", failureCount);
+                AddParameter(insert, "@CreatedAt", ToStorageDate(DateTime.Now));
+                await insert.ExecuteNonQueryAsync();
+            }
+            else
+            {
+                await using var update = connection.CreateCommand();
+                update.Transaction = transaction;
+                update.CommandText = "UPDATE Outages SET FailureCount = @FailureCount WHERE Id = @Id;";
+                AddParameter(update, "@FailureCount", failureCount);
+                AddParameter(update, "@Id", Convert.ToInt32(existingId, CultureInfo.InvariantCulture));
+                await update.ExecuteNonQueryAsync();
+            }
+        }
+
+        transaction.Commit();
     }
 
     public async Task<IReadOnlyDictionary<int, IReadOnlyList<Outage>>> GetByDeviceSinceAsync(DateTime since)
