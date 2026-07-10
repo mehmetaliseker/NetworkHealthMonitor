@@ -1,0 +1,337 @@
+﻿using System.Windows;
+using NetworkHealthMonitor.Models;
+using NetworkHealthMonitor.Services;
+
+namespace NetworkHealthMonitor.ViewModels;
+
+public sealed partial class MainViewModel
+{
+    private async Task SaveDeviceAsync()
+    {
+        var groupName = ResolveGroupName(FormGroupId);
+        var device = _editingDeviceId.HasValue
+            ? Devices.FirstOrDefault(item => item.Id == _editingDeviceId.Value) ?? new Device { Id = _editingDeviceId.Value }
+            : new Device();
+
+        device.Name = FormName;
+        device.IpAddress = FormIpAddress;
+        device.DeviceType = FormDeviceType;
+        device.GroupId = FormGroupId;
+        device.GroupName = groupName;
+        device.Location = FormLocation;
+        device.Description = FormDescription;
+        device.AutoCheckEnabled = FormAutoCheckEnabled;
+        device.DefaultSchedulePlanId = FormDefaultSchedulePlanId;
+        device.PingTimeoutMs = FormPingTimeoutMs;
+        device.CheckIntervalSeconds = FormCheckIntervalSeconds;
+        device.FailureRetryIntervalSeconds = FormFailureRetryIntervalSeconds;
+        device.FailureRetryLimit = FormFailureRetryLimit;
+        device.FailureThreshold = FormFailureThreshold;
+        device.IsCritical = FormIsCritical;
+        device.IsActive = FormIsActive;
+
+        IsBusy = true;
+        try
+        {
+            var result = await _deviceService.SaveAsync(device);
+            if (!result.Success)
+            {
+                _dialogService.ShowWarning("Cihaz kaydedilemedi", result.Message);
+                return;
+            }
+
+            StatusMessage = result.Message;
+            ClearDeviceForm();
+            await ReloadAllAsync();
+            CurrentSection = SectionDevices;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private void StartEditDevice(Device? device)
+    {
+        if (device is null)
+        {
+            return;
+        }
+
+        _editingDeviceId = device.Id;
+        FormName = device.Name;
+        FormIpAddress = device.IpAddress;
+        FormDeviceType = device.DeviceType;
+        FormGroupId = device.GroupId;
+        FormLocation = device.Location;
+        FormDescription = device.Description;
+        FormAutoCheckEnabled = device.AutoCheckEnabled;
+        FormDefaultSchedulePlanId = device.DefaultSchedulePlanId;
+        FormPingTimeoutMs = device.PingTimeoutMs;
+        FormCheckIntervalSeconds = device.CheckIntervalSeconds;
+        FormFailureRetryIntervalSeconds = device.FailureRetryIntervalSeconds;
+        FormFailureRetryLimit = device.FailureRetryLimit;
+        FormFailureThreshold = device.FailureThreshold;
+        FormIsCritical = device.IsCritical;
+        FormIsActive = device.IsActive;
+        OnPropertyChanged(nameof(DeviceFormTitle));
+        OnPropertyChanged(nameof(DeviceFormActionText));
+        CurrentSection = SectionDeviceEdit;
+    }
+
+    private void ClearDeviceForm()
+    {
+        _editingDeviceId = null;
+        FormName = string.Empty;
+        FormIpAddress = string.Empty;
+        FormDeviceType = DeviceType.Camera;
+        FormGroupId = null;
+        FormLocation = string.Empty;
+        FormDescription = string.Empty;
+        FormAutoCheckEnabled = true;
+        FormDefaultSchedulePlanId = null;
+        FormPingTimeoutMs = null;
+        FormCheckIntervalSeconds = 0;
+        FormFailureRetryIntervalSeconds = 0;
+        FormFailureRetryLimit = 0;
+        FormFailureThreshold = 0;
+        FormIsCritical = false;
+        FormIsActive = true;
+        OnPropertyChanged(nameof(DeviceFormTitle));
+        OnPropertyChanged(nameof(DeviceFormActionText));
+    }
+
+    private async Task DeleteDeviceAsync(Device? device)
+    {
+        if (device is null)
+        {
+            return;
+        }
+
+        if (!_dialogService.Confirm("Cihaz silinsin mi?", $"{device.Name} cihazı silinecek. Ping logları korunur."))
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var result = await _deviceService.DeleteAsync(device);
+            StatusMessage = result.Message;
+            await ReloadAllAsync();
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task SaveGroupAsync()
+    {
+        var group = _editingGroupId.HasValue
+            ? DeviceGroups.FirstOrDefault(item => item.Id == _editingGroupId.Value) ?? new DeviceGroup { Id = _editingGroupId.Value }
+            : new DeviceGroup();
+
+        group.Name = GroupFormName;
+        group.Description = GroupFormDescription;
+        group.DefaultSchedulePlanId = GroupFormDefaultSchedulePlanId;
+        group.DefaultAutoCheckEnabled = GroupFormDefaultAutoCheckEnabled;
+        group.DefaultCheckIntervalSeconds = GroupFormDefaultCheckIntervalSeconds;
+        group.DefaultPingTimeoutMs = GroupFormDefaultPingTimeoutMs;
+        group.DefaultFailureRetryIntervalSeconds = GroupFormDefaultFailureRetryIntervalSeconds;
+        group.DefaultFailureRetryLimit = GroupFormDefaultFailureRetryLimit;
+        group.DefaultFailureThreshold = GroupFormDefaultFailureThreshold;
+
+        IsBusy = true;
+        try
+        {
+            var result = await _deviceGroupService.SaveAsync(group);
+            if (!result.Success)
+            {
+                _dialogService.ShowWarning("Grup kaydedilemedi", result.Message);
+                return;
+            }
+
+            StatusMessage = result.Message;
+            ClearGroupForm();
+            await ReloadAllAsync();
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private void StartEditGroup(DeviceGroup? group)
+    {
+        if (group is null)
+        {
+            return;
+        }
+
+        _editingGroupId = group.Id;
+        GroupFormName = group.Name;
+        GroupFormDescription = group.Description;
+        GroupFormDefaultSchedulePlanId = group.DefaultSchedulePlanId;
+        GroupFormDefaultAutoCheckEnabled = group.DefaultAutoCheckEnabled;
+        GroupFormDefaultCheckIntervalSeconds = group.DefaultCheckIntervalSeconds;
+        GroupFormDefaultPingTimeoutMs = group.DefaultPingTimeoutMs;
+        GroupFormDefaultFailureRetryIntervalSeconds = group.DefaultFailureRetryIntervalSeconds;
+        GroupFormDefaultFailureRetryLimit = group.DefaultFailureRetryLimit;
+        GroupFormDefaultFailureThreshold = group.DefaultFailureThreshold;
+        OnPropertyChanged(nameof(GroupFormTitle));
+        OnPropertyChanged(nameof(GroupFormActionText));
+    }
+
+    private void ClearGroupForm()
+    {
+        _editingGroupId = null;
+        GroupFormName = string.Empty;
+        GroupFormDescription = string.Empty;
+        GroupFormDefaultSchedulePlanId = null;
+        GroupFormDefaultAutoCheckEnabled = null;
+        GroupFormDefaultCheckIntervalSeconds = null;
+        GroupFormDefaultPingTimeoutMs = null;
+        GroupFormDefaultFailureRetryIntervalSeconds = null;
+        GroupFormDefaultFailureRetryLimit = null;
+        GroupFormDefaultFailureThreshold = null;
+        OnPropertyChanged(nameof(GroupFormTitle));
+        OnPropertyChanged(nameof(GroupFormActionText));
+    }
+
+    private async Task DeleteGroupAsync(DeviceGroup? group)
+    {
+        if (group is null)
+        {
+            return;
+        }
+
+        if (!_dialogService.Confirm("Grup silinsin mi?", $"{group.Name} grubu silinecek. Cihazlar silinmez, sadece grup bağlantısı kaldırılır."))
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var result = await _deviceGroupService.DeleteAsync(group);
+            StatusMessage = result.Message;
+            await ReloadAllAsync();
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task PingGroupAsync(DeviceGroup group)
+    {
+        var devices = Devices.Where(device => device.GroupId == group.Id).ToList();
+        if (devices.Count == 0)
+        {
+            _dialogService.ShowWarning("Cihaz bulunamadı", "Bu gruba atanmış cihaz bulunmuyor.");
+            return;
+        }
+
+        await RunManualPingAsync(devices, PingTriggerType.GroupManual);
+    }
+
+    private async Task PingSelectedTypeAsync()
+    {
+        var type = ParseDeviceTypeFilter(DeviceTypeFilter);
+        if (!type.HasValue)
+        {
+            return;
+        }
+
+        await RunManualPingAsync(Devices.Where(device => device.DeviceType == type.Value).ToList(), PingTriggerType.TypeManual);
+    }
+
+    private async Task RunManualPingAsync(
+        IEnumerable<Device> devices,
+        PingTriggerType triggerType,
+        SchedulePlan? schedulePlan = null)
+    {
+        var targets = devices.Where(device => device.IsActive).DistinctBy(device => device.Id).ToList();
+        if (targets.Count == 0)
+        {
+            _dialogService.ShowWarning("Cihaz bulunamadı", "Kontrol edilecek aktif cihaz bulunamadı.");
+            return;
+        }
+
+        _pingCancellationTokenSource?.Cancel();
+        _pingCancellationTokenSource?.Dispose();
+        _pingCancellationTokenSource = new CancellationTokenSource();
+        ResetPingProgress(targets.Count);
+        IsPinging = true;
+        IsBusy = true;
+        StatusMessage = $"{targets.Count} cihaz kontrol ediliyor...";
+
+        var progress = new Progress<PingProgress>(ApplyPingProgress);
+        try
+        {
+            var options = schedulePlan?.ToPingOptions() ?? new PingOptions(PingTimeoutMs, MaxParallelPings, DefaultFailureThreshold);
+            var result = await _pingExecutionService.PingDevicesAsync(
+                targets,
+                options,
+                triggerType,
+                schedulePlan,
+                progress,
+                _pingCancellationTokenSource.Token);
+
+            StatusMessage = $"Ping tamamlandı. Başarılı: {result.SuccessCount}, başarısız: {result.FailureCount}, atlanan: {result.SkippedBecauseAlreadyRunning}.";
+            await ReloadAllAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            StatusMessage = "Ping işlemi iptal edildi.";
+        }
+        finally
+        {
+            IsPinging = false;
+            IsBusy = false;
+        }
+    }
+
+    private void CancelPing()
+    {
+        _pingCancellationTokenSource?.Cancel();
+    }
+
+    private void ApplyPingProgress(PingProgress progress)
+    {
+        PingTotalCount = progress.Total;
+        PingCompletedCount = progress.Completed;
+        PingSuccessCount = progress.Success;
+        PingFailureCount = progress.Failure;
+
+        if (progress.DeviceId.HasValue && progress.DeviceStatus.HasValue)
+        {
+            var device = Devices.FirstOrDefault(item => item.Id == progress.DeviceId.Value);
+            if (device is not null)
+            {
+                device.LastStatus = progress.DeviceStatus.Value;
+                if (progress.LatencyMs.HasValue || progress.DeviceStatus.Value != DeviceStatus.Checking)
+                {
+                    device.LastLatencyMs = progress.LatencyMs;
+                }
+
+                if (progress.CheckedAt.HasValue)
+                {
+                    device.LastCheckedAt = progress.CheckedAt;
+                }
+            }
+        }
+
+        StatusMessage = $"Kontrol ediliyor: {progress.Completed}/{progress.Total} tamamlandı.";
+    }
+
+    private void ResetPingProgress(int total)
+    {
+        PingTotalCount = total;
+        PingCompletedCount = 0;
+        PingSuccessCount = 0;
+        PingFailureCount = 0;
+    }
+}
+
