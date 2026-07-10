@@ -1,12 +1,19 @@
 namespace NetworkHealthMonitor.Models;
 
 public sealed record DeviceCheckPolicy(
+    bool AutoCheckEnabled,
     int NormalIntervalSeconds,
+    int PingTimeoutMs,
     int FailureRetryIntervalSeconds,
     int FailureRetryLimit,
-    int FailureThreshold)
+    int FailureThreshold,
+    string PolicySourceText)
 {
+    public bool AutoCheckEnabled { get; init; } = AutoCheckEnabled;
+
     public int NormalIntervalSeconds { get; init; } = Math.Clamp(NormalIntervalSeconds, AppSettings.MinDeviceCheckIntervalSeconds, AppSettings.MaxDeviceCheckIntervalSeconds);
+
+    public int PingTimeoutMs { get; init; } = Math.Clamp(PingTimeoutMs, AppSettings.MinPingTimeoutMs, AppSettings.MaxPingTimeoutMs);
 
     public int FailureRetryIntervalSeconds { get; init; } = Math.Clamp(FailureRetryIntervalSeconds, AppSettings.MinFailureRetryIntervalSeconds, AppSettings.MaxFailureRetryIntervalSeconds);
 
@@ -15,6 +22,8 @@ public sealed record DeviceCheckPolicy(
     public int FailureThreshold { get; init; } = Math.Clamp(FailureThreshold, AppSettings.MinFailureThreshold, AppSettings.MaxFailureThreshold);
 
     public int OfflineFailureCount => FailureThreshold + FailureRetryLimit;
+
+    public string PolicySourceText { get; init; } = string.IsNullOrWhiteSpace(PolicySourceText) ? "Global" : PolicySourceText;
 
     public bool HasFailureRetryRemaining(int consecutiveFailureCount)
     {

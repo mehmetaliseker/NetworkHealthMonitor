@@ -74,16 +74,32 @@ public sealed class DeviceService : IDeviceService
             return OperationResult.Fail($"Normal kontrol aralığı 0 veya {AppSettings.MinDeviceCheckIntervalSeconds} saniye ile 24 saat arasında olmalıdır.");
         }
 
-        if (device.FailureRetryIntervalSeconds < AppSettings.MinFailureRetryIntervalSeconds
-            || device.FailureRetryIntervalSeconds > AppSettings.MaxFailureRetryIntervalSeconds)
+        if (device.PingTimeoutMs.HasValue
+            && (device.PingTimeoutMs.Value < AppSettings.MinPingTimeoutMs
+                || device.PingTimeoutMs.Value > AppSettings.MaxPingTimeoutMs))
         {
-            return OperationResult.Fail($"Hızlı tekrar aralığı {AppSettings.MinFailureRetryIntervalSeconds} saniye ile {AppSettings.MaxFailureRetryIntervalSeconds} saniye arasında olmalıdır.");
+            return OperationResult.Fail($"Cihaz özel ping timeout değeri {AppSettings.MinPingTimeoutMs} ile {AppSettings.MaxPingTimeoutMs} ms arasında olmalıdır.");
         }
 
-        if (device.FailureRetryLimit < AppSettings.MinFailureRetryLimit
-            || device.FailureRetryLimit > AppSettings.MaxFailureRetryLimit)
+        if (device.FailureRetryIntervalSeconds != 0
+            && (device.FailureRetryIntervalSeconds < AppSettings.MinFailureRetryIntervalSeconds
+                || device.FailureRetryIntervalSeconds > AppSettings.MaxFailureRetryIntervalSeconds))
         {
-            return OperationResult.Fail($"Hızlı tekrar limiti {AppSettings.MinFailureRetryLimit} ile {AppSettings.MaxFailureRetryLimit} arasında olmalıdır.");
+            return OperationResult.Fail($"Hızlı tekrar aralığı 0 veya {AppSettings.MinFailureRetryIntervalSeconds} saniye ile {AppSettings.MaxFailureRetryIntervalSeconds} saniye arasında olmalıdır.");
+        }
+
+        if (device.FailureRetryLimit != 0
+            && (device.FailureRetryLimit < AppSettings.MinFailureRetryLimit
+                || device.FailureRetryLimit > AppSettings.MaxFailureRetryLimit))
+        {
+            return OperationResult.Fail($"Hızlı tekrar limiti 0 veya {AppSettings.MinFailureRetryLimit} ile {AppSettings.MaxFailureRetryLimit} arasında olmalıdır.");
+        }
+
+        if (device.FailureThreshold != 0
+            && (device.FailureThreshold < AppSettings.MinFailureThreshold
+                || device.FailureThreshold > AppSettings.MaxFailureThreshold))
+        {
+            return OperationResult.Fail($"Başarısızlık eşiği 0 veya {AppSettings.MinFailureThreshold} ile {AppSettings.MaxFailureThreshold} arasında olmalıdır.");
         }
 
         if (await _deviceRepository.ExistsByIpAsync(device.IpAddress.Trim(), device.Id == 0 ? null : device.Id))

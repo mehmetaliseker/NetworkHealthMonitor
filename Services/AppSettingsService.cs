@@ -12,10 +12,13 @@ public sealed class AppSettingsService
         WriteIndented = true
     };
 
+    public bool LastLoadUsedDefaultsDueToError { get; private set; }
+
     public async Task<AppSettings> LoadAsync()
     {
         try
         {
+            LastLoadUsedDefaultsDueToError = false;
             if (!File.Exists(DatabasePaths.SettingsFilePath))
             {
                 var defaults = AppSettings.Default;
@@ -29,6 +32,7 @@ public sealed class AppSettingsService
         }
         catch
         {
+            LastLoadUsedDefaultsDueToError = true;
             return AppSettings.Default;
         }
     }
@@ -51,6 +55,10 @@ public sealed class AppSettingsService
             AutoCheckIntervalMinutes = settings.AutoCheckIntervalMinutes <= 0
                 ? AppSettings.DefaultAutoCheckIntervalMinutes
                 : Math.Max(AppSettings.MinAutoCheckIntervalMinutes, settings.AutoCheckIntervalMinutes),
+            SchedulerPollIntervalSeconds = settings.SchedulerPollIntervalSeconds <= 0
+                ? AppSettings.DefaultSchedulerPollIntervalSeconds
+                : Math.Clamp(settings.SchedulerPollIntervalSeconds, AppSettings.MinSchedulerPollIntervalSeconds, AppSettings.MaxSchedulerPollIntervalSeconds),
+            AutoCheckEnabled = settings.AutoCheckEnabled,
             DefaultFailureRetryIntervalSeconds = settings.DefaultFailureRetryIntervalSeconds <= 0
                 ? AppSettings.DefaultFailureRetryIntervalSecondsValue
                 : Math.Clamp(settings.DefaultFailureRetryIntervalSeconds, AppSettings.MinFailureRetryIntervalSeconds, AppSettings.MaxFailureRetryIntervalSeconds),
@@ -58,9 +66,10 @@ public sealed class AppSettingsService
                 ? AppSettings.DefaultFailureRetryLimitValue
                 : Math.Clamp(settings.DefaultFailureRetryLimit, AppSettings.MinFailureRetryLimit, AppSettings.MaxFailureRetryLimit),
             StartSchedulePlansOnStartup = settings.StartSchedulePlansOnStartup,
-            CsvDelimiter = string.IsNullOrWhiteSpace(settings.CsvDelimiter) ? ";" : settings.CsvDelimiter[..1],
+            CsvDelimiter = string.IsNullOrWhiteSpace(settings.CsvDelimiter) ? AppSettings.DefaultCsvDelimiter : settings.CsvDelimiter[..1],
             LogRetentionDays = settings.LogRetentionDays < 0 ? AppSettings.DefaultLogRetentionDays : settings.LogRetentionDays,
             ExportDirectory = settings.ExportDirectory?.Trim() ?? string.Empty,
+            DeviceTypePolicies = DeviceTypePolicy.NormalizeCollection(settings.DeviceTypePolicies),
             Theme = string.IsNullOrWhiteSpace(settings.Theme) ? "Açık" : settings.Theme
         };
     }

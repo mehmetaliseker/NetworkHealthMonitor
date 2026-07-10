@@ -28,8 +28,11 @@ public partial class MainWindow : Window
         var deviceCheckPolicyService = new DeviceCheckPolicyService();
         var deviceHealthEvaluator = new DeviceHealthEvaluator();
         var appSettingsService = new AppSettingsService();
+        var csvExportService = new CsvExportService();
+        var deviceImportExportService = new DeviceImportExportService(csvExportService);
         var pingExecutionService = new PingExecutionService(
             deviceRepository,
+            deviceGroupRepository,
             pingLogRepository,
             outageRepository,
             pingService,
@@ -58,7 +61,9 @@ public partial class MainWindow : Window
             new AvailabilityService(deviceRepository, pingLogRepository, outageRepository),
             schedulerService,
             schedulePlanTargetResolver,
-            new CsvExportService(),
+            csvExportService,
+            deviceImportExportService,
+            deviceCheckPolicyService,
             appSettingsService,
             new WpfDialogService(),
             new DataMaintenanceService(_connectionFactory));

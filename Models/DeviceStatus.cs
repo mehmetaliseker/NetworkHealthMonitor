@@ -21,7 +21,7 @@ public static class DeviceStatusExtensions
         return status switch
         {
             DeviceStatus.Online => "Online / Sağlıklı",
-            DeviceStatus.Warning => "Kararsız",
+            DeviceStatus.Warning => "Uyarı",
             DeviceStatus.UnderWatch => "Takipte",
             DeviceStatus.Offline => "Muhtemel erişilemiyor",
             DeviceStatus.PingBlockedOrNoReply => "Ping yanıtlamıyor olabilir",
@@ -77,7 +77,7 @@ public static class DeviceStatusExtensions
         {
             "erişilebilir" or "erisilebilir" or "online" or "sağlıklı" or "saglikli" => DeviceStatus.Online,
             "erişilemiyor" or "erisilemiyor" or "offline" => DeviceStatus.Offline,
-            "kararsız" or "kararsiz" or "warning" => DeviceStatus.Warning,
+            "uyarı" or "uyari" or "kararsız" or "kararsiz" or "warning" => DeviceStatus.Warning,
             "takipte" or "underwatch" => DeviceStatus.UnderWatch,
             "ping yanıtlamıyor olabilir" or "ping yanitlamiyor olabilir" => DeviceStatus.PingBlockedOrNoReply,
             "kontrol ediliyor" => DeviceStatus.Checking,

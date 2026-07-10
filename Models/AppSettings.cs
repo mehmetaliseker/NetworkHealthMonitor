@@ -8,6 +8,7 @@ public sealed class AppSettings
     public const int MinParallelPings = 1;
     public const int MaxParallelPingsLimit = 128;
     public const int DefaultMaxParallelPings = 32;
+    public const int DefaultSchedulePlanIntervalMinutes = 10;
     public const int DefaultSchedulePlanMaxParallelism = 16;
     public const int MinFailureThreshold = 1;
     public const int MaxFailureThreshold = 20;
@@ -22,8 +23,12 @@ public sealed class AppSettings
     public const int DefaultFailureRetryLimitValue = 3;
     public const int MinDeviceCheckIntervalSeconds = 30;
     public const int MaxDeviceCheckIntervalSeconds = 86400;
-    public const int SchedulerPollIntervalSeconds = 15;
+    public const int MinSchedulerPollIntervalSeconds = 5;
+    public const int MaxSchedulerPollIntervalSeconds = 300;
+    public const int DefaultSchedulerPollIntervalSeconds = 15;
+    public const int SqliteBusyTimeoutMs = 5000;
     public const int DefaultLogRetentionDays = 90;
+    public const string DefaultCsvDelimiter = ";";
 
     public int PingTimeoutMs { get; set; } = DefaultPingTimeoutMs;
 
@@ -33,17 +38,23 @@ public sealed class AppSettings
 
     public int AutoCheckIntervalMinutes { get; set; } = DefaultAutoCheckIntervalMinutes;
 
+    public int SchedulerPollIntervalSeconds { get; set; } = DefaultSchedulerPollIntervalSeconds;
+
+    public bool AutoCheckEnabled { get; set; } = true;
+
     public int DefaultFailureRetryIntervalSeconds { get; set; } = DefaultFailureRetryIntervalSecondsValue;
 
     public int DefaultFailureRetryLimit { get; set; } = DefaultFailureRetryLimitValue;
 
     public bool StartSchedulePlansOnStartup { get; set; } = true;
 
-    public string CsvDelimiter { get; set; } = ";";
+    public string CsvDelimiter { get; set; } = DefaultCsvDelimiter;
 
     public int LogRetentionDays { get; set; } = DefaultLogRetentionDays;
 
     public string ExportDirectory { get; set; } = string.Empty;
+
+    public List<DeviceTypePolicy> DeviceTypePolicies { get; set; } = DeviceTypePolicy.CreateDefaults().ToList();
 
     public string Theme { get; set; } = "Açık";
 

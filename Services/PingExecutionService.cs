@@ -7,6 +7,7 @@ namespace NetworkHealthMonitor.Services;
 public sealed class PingExecutionService : IPingExecutionService
 {
     private readonly DeviceRepository _deviceRepository;
+    private readonly DeviceGroupRepository _deviceGroupRepository;
     private readonly PingLogRepository _pingLogRepository;
     private readonly OutageRepository _outageRepository;
     private readonly IPingService _pingService;
@@ -17,6 +18,7 @@ public sealed class PingExecutionService : IPingExecutionService
 
     public PingExecutionService(
         DeviceRepository deviceRepository,
+        DeviceGroupRepository deviceGroupRepository,
         PingLogRepository pingLogRepository,
         OutageRepository outageRepository,
         IPingService pingService,
@@ -25,6 +27,7 @@ public sealed class PingExecutionService : IPingExecutionService
         AppSettingsService settingsService)
     {
         _deviceRepository = deviceRepository;
+        _deviceGroupRepository = deviceGroupRepository;
         _pingLogRepository = pingLogRepository;
         _outageRepository = outageRepository;
         _pingService = pingService;
@@ -66,12 +69,23 @@ public sealed class PingExecutionService : IPingExecutionService
 
         try
         {
-            var rawResults = await _pingService.PingManyAsync(acquired, options, progress, cancellationToken);
             var settings = await _settingsService.LoadAsync();
+            var groups = await _deviceGroupRepository.GetAllAsync();
+            var groupsById = groups.ToDictionary(group => group.Id);
+            var groupsByName = groups.ToDictionary(group => group.Name, StringComparer.OrdinalIgnoreCase);
+            var policies = acquired.ToDictionary(
+                device => device.Id,
+                device => _deviceCheckPolicyService.ResolvePolicy(
+                    device,
+                    ResolveGroup(device, groupsById, groupsByName),
+                    schedulePlan,
+                    settings,
+                    options));
+            var rawResults = await PingByEffectiveTimeoutAsync(acquired, policies, options, progress, cancellationToken);
             var results = rawResults
                 .Select(result =>
                 {
-                    var policy = _deviceCheckPolicyService.ResolvePolicy(result.Device, null, schedulePlan, settings, options);
+                    var policy = policies[result.Device.Id];
                     return result with { Status = _deviceHealthEvaluator.Evaluate(result.Device, result, policy) };
                 })
                 .ToList();
@@ -92,6 +106,48 @@ public sealed class PingExecutionService : IPingExecutionService
                 _runningDeviceIds.TryRemove(device.Id, out _);
             }
         }
+    }
+
+    private async Task<IReadOnlyList<PingDeviceResult>> PingByEffectiveTimeoutAsync(
+        IReadOnlyList<Device> devices,
+        IReadOnlyDictionary<int, DeviceCheckPolicy> policies,
+        PingOptions baseOptions,
+        IProgress<PingProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        var allResults = new List<PingDeviceResult>();
+        var total = devices.Count;
+        var completedOffset = 0;
+        var successOffset = 0;
+        var failureOffset = 0;
+
+        foreach (var group in devices.GroupBy(device => policies[device.Id].PingTimeoutMs).OrderBy(group => group.Key))
+        {
+            var groupDevices = group.ToList();
+            var groupProgress = progress is null
+                ? null
+                : new Progress<PingProgress>(item =>
+                {
+                    progress.Report(new PingProgress(
+                        total,
+                        completedOffset + item.Completed,
+                        successOffset + item.Success,
+                        failureOffset + item.Failure,
+                        item.DeviceId,
+                        item.DeviceStatus,
+                        item.LatencyMs,
+                        item.CheckedAt));
+                });
+
+            var groupOptions = baseOptions with { TimeoutMs = group.Key };
+            var groupResults = await _pingService.PingManyAsync(groupDevices, groupOptions, groupProgress, cancellationToken);
+            allResults.AddRange(groupResults);
+            completedOffset += groupResults.Count;
+            successOffset += groupResults.Count(result => result.IsSuccess);
+            failureOffset += groupResults.Count(result => !result.IsSuccess);
+        }
+
+        return allResults.OrderBy(result => result.CheckedAt).ToList();
     }
 
     private static IReadOnlyDictionary<int, int?> CreateRecoveryLogMap(IReadOnlyList<PingLog> logs)
@@ -122,5 +178,20 @@ public sealed class PingExecutionService : IPingExecutionService
             SchedulePlanId = schedulePlan?.Id,
             SchedulePlanName = schedulePlan?.Name ?? string.Empty
         };
+    }
+
+    private static DeviceGroup? ResolveGroup(
+        Device device,
+        IReadOnlyDictionary<int, DeviceGroup> groupsById,
+        IReadOnlyDictionary<string, DeviceGroup> groupsByName)
+    {
+        if (device.GroupId.HasValue && groupsById.TryGetValue(device.GroupId.Value, out var groupById))
+        {
+            return groupById;
+        }
+
+        return !string.IsNullOrWhiteSpace(device.GroupName) && groupsByName.TryGetValue(device.GroupName, out var groupByName)
+            ? groupByName
+            : null;
     }
 }

@@ -9,10 +9,10 @@ public sealed class SchedulePlan : ObservableObject
     private SchedulePlanTargetType _targetType = SchedulePlanTargetType.AllDevices;
     private string _targetValue = string.Empty;
     private string _targetDisplayName = string.Empty;
-    private int _intervalMinutes = 10;
-    private int _timeoutMs = 1000;
+    private int _intervalMinutes = AppSettings.DefaultSchedulePlanIntervalMinutes;
+    private int _timeoutMs = AppSettings.DefaultPingTimeoutMs;
     private int _maxParallelism = AppSettings.DefaultSchedulePlanMaxParallelism;
-    private int _failureThreshold = 3;
+    private int _failureThreshold = AppSettings.DefaultFailureThresholdValue;
     private bool _isActive = true;
     private string _description = string.Empty;
     private DateTime? _lastRunAt;

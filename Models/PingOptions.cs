@@ -1,6 +1,6 @@
 namespace NetworkHealthMonitor.Models;
 
-public sealed record PingOptions(int TimeoutMs, int MaxParallelPings, int FailureThreshold = 3)
+public sealed record PingOptions(int TimeoutMs, int MaxParallelPings, int FailureThreshold = AppSettings.DefaultFailureThresholdValue)
 {
     public int TimeoutMs { get; init; } = Math.Clamp(TimeoutMs, AppSettings.MinPingTimeoutMs, AppSettings.MaxPingTimeoutMs);
 

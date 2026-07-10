@@ -31,6 +31,34 @@ public sealed class DeviceGroupService : IDeviceGroupService
             return OperationResult.Fail($"Grup varsayılan kontrol aralığı {AppSettings.MinDeviceCheckIntervalSeconds} saniye ile 24 saat arasında olmalıdır.");
         }
 
+        if (group.DefaultPingTimeoutMs.HasValue
+            && (group.DefaultPingTimeoutMs.Value < AppSettings.MinPingTimeoutMs
+                || group.DefaultPingTimeoutMs.Value > AppSettings.MaxPingTimeoutMs))
+        {
+            return OperationResult.Fail($"Grup varsayılan timeout değeri {AppSettings.MinPingTimeoutMs} ile {AppSettings.MaxPingTimeoutMs} ms arasında olmalıdır.");
+        }
+
+        if (group.DefaultFailureRetryIntervalSeconds.HasValue
+            && (group.DefaultFailureRetryIntervalSeconds.Value < AppSettings.MinFailureRetryIntervalSeconds
+                || group.DefaultFailureRetryIntervalSeconds.Value > AppSettings.MaxFailureRetryIntervalSeconds))
+        {
+            return OperationResult.Fail($"Grup retry aralığı {AppSettings.MinFailureRetryIntervalSeconds} saniye ile {AppSettings.MaxFailureRetryIntervalSeconds} saniye arasında olmalıdır.");
+        }
+
+        if (group.DefaultFailureRetryLimit.HasValue
+            && (group.DefaultFailureRetryLimit.Value < AppSettings.MinFailureRetryLimit
+                || group.DefaultFailureRetryLimit.Value > AppSettings.MaxFailureRetryLimit))
+        {
+            return OperationResult.Fail($"Grup retry limiti {AppSettings.MinFailureRetryLimit} ile {AppSettings.MaxFailureRetryLimit} arasında olmalıdır.");
+        }
+
+        if (group.DefaultFailureThreshold.HasValue
+            && (group.DefaultFailureThreshold.Value < AppSettings.MinFailureThreshold
+                || group.DefaultFailureThreshold.Value > AppSettings.MaxFailureThreshold))
+        {
+            return OperationResult.Fail($"Grup başarısızlık eşiği {AppSettings.MinFailureThreshold} ile {AppSettings.MaxFailureThreshold} arasında olmalıdır.");
+        }
+
         group.Name = group.Name.Trim();
         if (group.Id == 0)
         {

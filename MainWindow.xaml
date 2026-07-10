@@ -275,23 +275,39 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <Border Grid.Row="0" Style="{StaticResource SectionBorderStyle}" Margin="0,0,0,12">
-                        <WrapPanel VerticalAlignment="Center">
-                            <TextBox Width="260" Text="{Binding DeviceSearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="Cihaz adı, IP, lokasyon, grup veya açıklama ara" />
-                            <ComboBox Width="150" ItemsSource="{Binding DeviceTypeFilterOptions}" SelectedItem="{Binding DeviceTypeFilter}" Margin="8,0,0,0" />
-                            <ComboBox Width="160" ItemsSource="{Binding DeviceStatusFilterOptions}" SelectedItem="{Binding DeviceStatusFilter}" Margin="8,0,0,0" />
-                            <ComboBox Width="170" ItemsSource="{Binding DeviceGroupFilterOptions}" SelectedItem="{Binding DeviceGroupFilter}" Margin="8,0,0,0" />
-                            <ComboBox Width="150" ItemsSource="{Binding CriticalFilterOptions}" SelectedItem="{Binding CriticalFilter}" Margin="8,0,0,0" />
-                            <Button Content="Tipe Ping" Command="{Binding PingSelectedTypeCommand}" Style="{StaticResource SecondaryButtonStyle}" />
-                            <Button Content="Yeni Cihaz" Command="{Binding NavigateDeviceEditCommand}" />
-                            <Button Content="CSV Şablonu" Command="{Binding CreateCsvTemplateCommand}" Style="{StaticResource SecondaryButtonStyle}" />
-                            <Button Content="CSV Import" Command="{Binding ImportDevicesCommand}" Style="{StaticResource SecondaryButtonStyle}" />
-                            <Button Content="CSV Export" Command="{Binding ExportDevicesCommand}" Style="{StaticResource SecondaryButtonStyle}" />
-                        </WrapPanel>
+                        <StackPanel>
+                            <WrapPanel VerticalAlignment="Center">
+                                <TextBox Width="260" Text="{Binding DeviceSearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="Cihaz adı, IP, lokasyon, grup veya açıklama ara" />
+                                <ComboBox Width="150" ItemsSource="{Binding DeviceTypeFilterOptions}" SelectedItem="{Binding DeviceTypeFilter}" Margin="8,0,0,0" />
+                                <ComboBox Width="160" ItemsSource="{Binding DeviceStatusFilterOptions}" SelectedItem="{Binding DeviceStatusFilter}" Margin="8,0,0,0" />
+                                <ComboBox Width="170" ItemsSource="{Binding DeviceGroupFilterOptions}" SelectedItem="{Binding DeviceGroupFilter}" Margin="8,0,0,0" />
+                                <ComboBox Width="150" ItemsSource="{Binding CriticalFilterOptions}" SelectedItem="{Binding CriticalFilter}" Margin="8,0,0,0" />
+                                <Button Content="Tipe Ping" Command="{Binding PingSelectedTypeCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                                <Button Content="Yeni Cihaz" Command="{Binding NavigateDeviceEditCommand}" />
+                                <Button Content="CSV Şablonu" Command="{Binding CreateCsvTemplateCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                                <Button Content="CSV Import" Command="{Binding ImportDevicesCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                                <Button Content="CSV Export" Command="{Binding ExportDevicesCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                            </WrapPanel>
+                            <WrapPanel VerticalAlignment="Center" Margin="0,8,0,0">
+                                <TextBlock Text="Toplu işlem:" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}" Margin="0,0,8,0" />
+                                <Button Content="Seçilileri Ping" Command="{Binding PingSelectedDevicesBulkCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" Style="{StaticResource SecondaryButtonStyle}" />
+                                <Button Content="Oto Aç" Command="{Binding EnableAutoCheckSelectedCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" Style="{StaticResource SecondaryButtonStyle}" />
+                                <Button Content="Oto Kapat" Command="{Binding DisableAutoCheckSelectedCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" Style="{StaticResource SecondaryButtonStyle}" />
+                                <ComboBox Width="150" ItemsSource="{Binding DeviceGroupOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding BulkTargetGroupId}" Margin="8,0,0,0" ToolTip="Seçili cihazları atanacak grup" />
+                                <Button Content="Gruba Ata" Command="{Binding AssignSelectedDevicesToGroupCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" Style="{StaticResource SecondaryButtonStyle}" />
+                                <TextBox Width="72" Text="{Binding BulkCheckIntervalSeconds, UpdateSourceTrigger=PropertyChanged}" ToolTip="Toplu özel kontrol aralığı saniye. 0 = politika devral." Margin="8,0,0,0" />
+                                <Button Content="Aralık Uygula" Command="{Binding ApplySelectedCheckIntervalCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" Style="{StaticResource SecondaryButtonStyle}" />
+                                <Button Content="Pasifleştir" Command="{Binding DeactivateSelectedDevicesCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" Style="{StaticResource DangerButtonStyle}" />
+                            </WrapPanel>
+                        </StackPanel>
                     </Border>
 
-                    <DataGrid Grid.Row="1"
+                    <DataGrid x:Name="DevicesGrid"
+                              Grid.Row="1"
                               ItemsSource="{Binding DevicesView}"
                               SelectedItem="{Binding SelectedDevice, Mode=TwoWay}"
+                              SelectionMode="Extended"
+                              SelectionUnit="FullRow"
                               ScrollViewer.HorizontalScrollBarVisibility="Auto">
                         <DataGrid.RowStyle>
                             <Style TargetType="DataGridRow">
@@ -321,7 +337,7 @@
                             <DataGridTextColumn Header="Grup" Binding="{Binding GroupName}" Width="1*" ElementStyle="{StaticResource TrimmedCellTextStyle}" />
                             <DataGridTextColumn Header="Son kontrol" Binding="{Binding LastCheckedAtText}" Width="145" ElementStyle="{StaticResource TrimmedCellTextStyle}" />
                             <DataGridTextColumn Header="Gecikme" Binding="{Binding LastLatencyText}" Width="85" ElementStyle="{StaticResource TrimmedCellTextStyle}" />
-                            <DataGridTextColumn Header="Uptime" Binding="{Binding Uptime30DaysText}" Width="85" ElementStyle="{StaticResource TrimmedCellTextStyle}" />
+                            <DataGridTextColumn Header="Uptime 30g" Binding="{Binding Uptime30DaysText}" Width="95" ElementStyle="{StaticResource TrimmedCellTextStyle}" />
                             <DataGridTemplateColumn Header="İşlem" Width="160">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -402,8 +418,32 @@
                                 </StackPanel>
                                 <StackPanel Width="220" Margin="0,0,18,8">
                                     <TextBlock Text="Otomatik kontrol" Style="{StaticResource DetailLabelTextStyle}" />
-                                    <TextBlock Text="{Binding SelectedDevice.AutoPolicyText, TargetNullValue='-'}" Style="{StaticResource DetailValueTextStyle}" />
-                                    <TextBlock Text="{Binding SelectedDevice.AutoCheckText, TargetNullValue='-'}" Style="{StaticResource TrimmedCellTextStyle}" />
+                                    <TextBlock Text="{Binding SelectedDevice.AutoCheckText, TargetNullValue='-'}" Style="{StaticResource DetailValueTextStyle}" />
+                                    <TextBlock Text="{Binding SelectedDevice.IsActiveText, TargetNullValue='-'}" Style="{StaticResource TrimmedCellTextStyle}" />
+                                </StackPanel>
+                                <StackPanel Width="320" Margin="0,0,18,8">
+                                    <TextBlock Text="Etkin politika" Style="{StaticResource DetailLabelTextStyle}" />
+                                    <TextBlock Text="{Binding SelectedDevice.EffectivePolicyText, TargetNullValue='-'}"
+                                               Style="{StaticResource DetailValueTextStyle}"
+                                               TextWrapping="Wrap"
+                                               ToolTip="{Binding SelectedDevice.EffectivePolicyText}" />
+                                </StackPanel>
+                                <StackPanel Width="280" Margin="0,0,18,8">
+                                    <TextBlock Text="Politika değerleri" Style="{StaticResource DetailLabelTextStyle}" />
+                                    <TextBlock Style="{StaticResource DetailValueTextStyle}">
+                                        <Run Text="Normal " />
+                                        <Run Text="{Binding SelectedDevice.CheckIntervalText, TargetNullValue='-'}" />
+                                        <Run Text=" / Timeout " />
+                                        <Run Text="{Binding SelectedDevice.PingTimeoutText, TargetNullValue='-'}" />
+                                    </TextBlock>
+                                    <TextBlock Style="{StaticResource TrimmedCellTextStyle}">
+                                        <Run Text="Retry " />
+                                        <Run Text="{Binding SelectedDevice.FailureRetryIntervalText, TargetNullValue='-'}" />
+                                        <Run Text=", limit " />
+                                        <Run Text="{Binding SelectedDevice.FailureRetryLimitText, TargetNullValue='-'}" />
+                                        <Run Text=", eşik " />
+                                        <Run Text="{Binding SelectedDevice.FailureThresholdText, TargetNullValue='-'}" />
+                                    </TextBlock>
                                 </StackPanel>
                                 <StackPanel Width="170" Margin="0,0,18,8">
                                     <TextBlock Text="Hata takibi" Style="{StaticResource DetailLabelTextStyle}" />
@@ -434,6 +474,7 @@
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
@@ -485,26 +526,36 @@
                                 <StackPanel Grid.Row="3" Grid.Column="0" Margin="0,0,10,12">
                                     <TextBlock Text="Özel kontrol aralığı (sn)"
                                                FontWeight="SemiBold"
-                                               ToolTip="0 yazılırsa cihaz grup, plan veya global varsayılan aralığı kullanır." />
+                                               ToolTip="0 yazılırsa cihaz grup, tip, plan veya global varsayılan aralığı kullanır." />
                                     <TextBox Text="{Binding FormCheckIntervalSeconds, UpdateSourceTrigger=PropertyChanged}"
-                                             ToolTip="0 = grup/plan/global varsayılanı"
+                                             ToolTip="0 = grup/tip/plan/global varsayılanı"
                                              Margin="0,4,0,0" />
                                 </StackPanel>
                                 <StackPanel Grid.Row="3" Grid.Column="1" Margin="10,0,0,12">
+                                    <TextBlock Text="Özel ping timeout (ms)" FontWeight="SemiBold" ToolTip="Boş = grup/tip/global timeout." />
+                                    <TextBox Text="{Binding FormPingTimeoutMs, UpdateSourceTrigger=PropertyChanged, TargetNullValue=''}"
+                                             ToolTip="Boş = grup/tip/global timeout"
+                                             Margin="0,4,0,0" />
+                                </StackPanel>
+                                <StackPanel Grid.Row="4" Grid.Column="0" Margin="0,0,10,12">
                                     <TextBlock Text="Hızlı retry aralığı (sn)" FontWeight="SemiBold" />
                                     <TextBox Text="{Binding FormFailureRetryIntervalSeconds, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,0" />
                                 </StackPanel>
-                                <StackPanel Grid.Row="4" Grid.Column="0" Margin="0,0,10,12">
+                                <StackPanel Grid.Row="4" Grid.Column="1" Margin="10,0,0,12">
                                     <TextBlock Text="Maksimum hızlı retry" FontWeight="SemiBold" />
                                     <TextBox Text="{Binding FormFailureRetryLimit, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,0" />
                                 </StackPanel>
-                                <TextBlock Grid.Row="4"
+                                <StackPanel Grid.Row="5" Grid.Column="0" Margin="0,0,10,12">
+                                    <TextBlock Text="Başarısızlık eşiği" FontWeight="SemiBold" ToolTip="0 = grup/tip/global eşik." />
+                                    <TextBox Text="{Binding FormFailureThreshold, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,0" />
+                                </StackPanel>
+                                <TextBlock Grid.Row="5"
                                            Grid.Column="1"
                                            Text="Başarısız ping önce kısa aralıkla tekrar denenir; tek hata kesin arıza sayılmaz, eşik ve retry limiti dolunca muhtemel erişilemiyor olarak izlenir."
                                            TextWrapping="Wrap"
                                            Foreground="{StaticResource MutedTextBrush}"
                                            Margin="10,2,0,12" />
-                                <TextBox Grid.Row="5"
+                                <TextBox Grid.Row="6"
                                          Grid.ColumnSpan="2"
                                          Text="{Binding FormDescription, UpdateSourceTrigger=PropertyChanged}"
                                          AcceptsReturn="True"
@@ -513,7 +564,7 @@
                                          VerticalContentAlignment="Top"
                                          Margin="0,4,0,12"
                                          ToolTip="Açıklama" />
-                                <WrapPanel Grid.Row="6" Grid.ColumnSpan="2">
+                                <WrapPanel Grid.Row="7" Grid.ColumnSpan="2">
                                     <CheckBox Content="Otomatik kontrol aktif" IsChecked="{Binding FormAutoCheckEnabled}" Margin="4,4,18,4" />
                                     <CheckBox Content="Kritik cihaz" IsChecked="{Binding FormIsCritical}" Margin="4,4,18,4" />
                                     <CheckBox Content="Aktif cihaz" IsChecked="{Binding FormIsActive}" Margin="4,4,18,4" />
@@ -540,6 +591,7 @@
                             <DataGridTextColumn Header="Grup adı" Binding="{Binding Name}" Width="1.2*" />
                             <DataGridTextColumn Header="Cihaz" Binding="{Binding DeviceCountText}" Width="80" />
                             <DataGridTextColumn Header="Varsayılan aralık" Binding="{Binding DefaultCheckIntervalText}" Width="125" />
+                            <DataGridTextColumn Header="Politika" Binding="{Binding DefaultPolicyText}" Width="1.4*" ElementStyle="{StaticResource TrimmedCellTextStyle}" />
                             <DataGridTextColumn Header="30 gün erişilebilirlik" Binding="{Binding Availability30DaysText}" Width="145" />
                             <DataGridTextColumn Header="Açıklama" Binding="{Binding Description}" Width="2*" />
                         </DataGrid.Columns>
@@ -561,9 +613,34 @@
                                           Margin="0,4,0,12" />
                                 <TextBlock Text="Grup varsayılan kontrol aralığı (sn)"
                                            FontWeight="SemiBold"
-                                           ToolTip="Boş bırakılırsa plan/global varsayılan kullanılır." />
+                                           ToolTip="Boş bırakılırsa tip/plan/global varsayılan kullanılır." />
                                 <TextBox Text="{Binding GroupFormDefaultCheckIntervalSeconds, UpdateSourceTrigger=PropertyChanged, TargetNullValue=''}"
-                                         ToolTip="Boş = plan/global varsayılan"
+                                         ToolTip="Boş = tip/plan/global varsayılan"
+                                         Margin="0,4,0,12" />
+                                <CheckBox Content="Grup otomatik kontrol değeri"
+                                          IsThreeState="True"
+                                          IsChecked="{Binding GroupFormDefaultAutoCheckEnabled}"
+                                          ToolTip="Boş = tip/global ayarı. İşaretli = açık, dolu işaretsiz = kapalı."
+                                          Margin="0,0,0,12" />
+                                <TextBlock Text="Grup varsayılan ping timeout (ms)"
+                                           FontWeight="SemiBold"
+                                           ToolTip="Boş bırakılırsa tip/global timeout kullanılır." />
+                                <TextBox Text="{Binding GroupFormDefaultPingTimeoutMs, UpdateSourceTrigger=PropertyChanged, TargetNullValue=''}"
+                                         ToolTip="Boş = tip/global timeout"
+                                         Margin="0,4,0,12" />
+                                <TextBlock Text="Grup hızlı retry aralığı (sn)"
+                                           FontWeight="SemiBold"
+                                           ToolTip="Boş bırakılırsa tip/global retry aralığı kullanılır." />
+                                <TextBox Text="{Binding GroupFormDefaultFailureRetryIntervalSeconds, UpdateSourceTrigger=PropertyChanged, TargetNullValue=''}"
+                                         ToolTip="Boş = tip/global retry aralığı"
+                                         Margin="0,4,0,12" />
+                                <TextBlock Text="Grup retry limiti" FontWeight="SemiBold" />
+                                <TextBox Text="{Binding GroupFormDefaultFailureRetryLimit, UpdateSourceTrigger=PropertyChanged, TargetNullValue=''}"
+                                         ToolTip="Boş = tip/global retry limiti"
+                                         Margin="0,4,0,12" />
+                                <TextBlock Text="Grup başarısızlık eşiği" FontWeight="SemiBold" />
+                                <TextBox Text="{Binding GroupFormDefaultFailureThreshold, UpdateSourceTrigger=PropertyChanged, TargetNullValue=''}"
+                                         ToolTip="Boş = tip/global başarısızlık eşiği"
                                          Margin="0,4,0,12" />
                                 <TextBlock Text="Açıklama" FontWeight="SemiBold" />
                                 <TextBox Text="{Binding GroupFormDescription, UpdateSourceTrigger=PropertyChanged}"
@@ -776,9 +853,13 @@
                         <StackPanel>
                             <TextBlock Text="Ping Ayarları" FontSize="18" FontWeight="Bold" Margin="0,0,0,14" />
                             <TextBlock Text="Varsayılan ping timeout (ms)" FontWeight="SemiBold" />
-                            <TextBox Text="{Binding PingTimeoutMs, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,12" />
+                            <TextBox Text="{Binding PingTimeoutMs, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="Cihaza, gruba, tipe veya plana özel timeout yoksa kullanılır."
+                                     Margin="0,4,0,12" />
                             <TextBlock Text="Varsayılan maksimum paralel ping sayısı" FontWeight="SemiBold" />
-                            <TextBox Text="{Binding MaxParallelPings, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,12" />
+                            <TextBox Text="{Binding MaxParallelPings, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="Toplu ve otomatik pinglerde aynı anda çalışacak en fazla ping sayısı."
+                                     Margin="0,4,0,12" />
 
                             <Separator Margin="0,8,0,14" />
                             <TextBlock Text="Otomatik Kontrol Ayarları" FontSize="18" FontWeight="Bold" Margin="0,0,0,12" />
@@ -786,6 +867,14 @@
                             <TextBox Text="{Binding AutoCheckIntervalMinutes, UpdateSourceTrigger=PropertyChanged}"
                                      ToolTip="Cihaz özel aralığı 0 ve grup varsayılanı boşsa kullanılır."
                                      Margin="0,4,0,12" />
+                            <TextBlock Text="Scheduler kontrol sıklığı (sn)" FontWeight="SemiBold" />
+                            <TextBox Text="{Binding SchedulerPollIntervalSeconds, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="Planların zamanı gelmiş mi kontrol eden düşük maliyetli döngü sıklığı."
+                                     Margin="0,4,0,12" />
+                            <CheckBox Content="Global otomatik kontrol aktif"
+                                      IsChecked="{Binding AutoCheckEnabled}"
+                                      FontWeight="SemiBold"
+                                      Margin="0,2,0,12" />
                             <CheckBox Content="Uygulama başlangıcında otomatik planları başlat"
                                       IsChecked="{Binding StartSchedulePlansOnStartup}"
                                       FontWeight="SemiBold"
@@ -794,16 +883,44 @@
                             <Separator Margin="0,8,0,14" />
                             <TextBlock Text="Retry / Akıllı Kontrol Ayarları" FontSize="18" FontWeight="Bold" Margin="0,0,0,12" />
                             <TextBlock Text="Varsayılan başarısızlık eşiği" FontWeight="SemiBold" />
-                            <TextBox Text="{Binding DefaultFailureThreshold, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,12" />
+                            <TextBox Text="{Binding DefaultFailureThreshold, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="Bu eşikten sonra cihaz takipte/şüpheli durumuna yaklaşır; tek hata kesin arıza sayılmaz."
+                                     Margin="0,4,0,12" />
                             <TextBlock Text="Varsayılan hızlı retry aralığı (sn)" FontWeight="SemiBold" />
-                            <TextBox Text="{Binding DefaultFailureRetryIntervalSeconds, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,12" />
+                            <TextBox Text="{Binding DefaultFailureRetryIntervalSeconds, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="Başarısız ping sonrası yalnız ilgili cihaz için uygulanacak kısa tekrar aralığı."
+                                     Margin="0,4,0,12" />
                             <TextBlock Text="Varsayılan hızlı retry limiti" FontWeight="SemiBold" />
-                            <TextBox Text="{Binding DefaultFailureRetryLimit, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,12" />
+                            <TextBox Text="{Binding DefaultFailureRetryLimit, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="Hızlı retry denemeleri bu limitten sonra normal politika akışına döner."
+                                     Margin="0,4,0,12" />
+
+                            <Separator Margin="0,8,0,14" />
+                            <TextBlock Text="Tip Bazlı Politikalar" FontSize="18" FontWeight="Bold" Margin="0,0,0,8" />
+                            <DataGrid ItemsSource="{Binding DeviceTypePolicies}"
+                                      AutoGenerateColumns="False"
+                                      CanUserAddRows="False"
+                                      CanUserDeleteRows="False"
+                                      Height="190"
+                                      ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                      ToolTip="Boş hücre = global varsayılan. Pozitif değer girilirse cihaz tipi varsayılanı olur.">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Tip" Binding="{Binding DeviceTypeText}" IsReadOnly="True" Width="120" />
+                                    <DataGridCheckBoxColumn Header="Oto" Binding="{Binding AutoCheckEnabled}" IsThreeState="True" Width="65" />
+                                    <DataGridTextColumn Header="Aralık" Binding="{Binding DefaultCheckIntervalSeconds, TargetNullValue=''}" Width="80" />
+                                    <DataGridTextColumn Header="Timeout" Binding="{Binding DefaultPingTimeoutMs, TargetNullValue=''}" Width="80" />
+                                    <DataGridTextColumn Header="Retry" Binding="{Binding DefaultFailureRetryIntervalSeconds, TargetNullValue=''}" Width="80" />
+                                    <DataGridTextColumn Header="Limit" Binding="{Binding DefaultFailureRetryLimit, TargetNullValue=''}" Width="70" />
+                                    <DataGridTextColumn Header="Eşik" Binding="{Binding DefaultFailureThreshold, TargetNullValue=''}" Width="70" />
+                                </DataGrid.Columns>
+                            </DataGrid>
 
                             <Separator Margin="0,8,0,14" />
                             <TextBlock Text="Log ve Uptime Ayarları" FontSize="18" FontWeight="Bold" Margin="0,0,0,12" />
                             <TextBlock Text="Log saklama süresi (gün, 0 = süresiz)" FontWeight="SemiBold" />
-                            <TextBox Text="{Binding LogRetentionDays, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,12" />
+                            <TextBox Text="{Binding LogRetentionDays, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="Eski ping logları manuel temizlikte bu süreye göre silinir."
+                                     Margin="0,4,0,12" />
 
                             <Separator Margin="0,8,0,14" />
                             <TextBlock Text="Dışa Aktarma Ayarları" FontSize="18" FontWeight="Bold" Margin="0,0,0,12" />
@@ -812,7 +929,9 @@
                                      ToolTip="Boş bırakılırsa dosya kaydetme penceresi son kullanılan Windows konumunu açar."
                                      Margin="0,4,0,12" />
                             <TextBlock Text="CSV ayırıcı" FontWeight="SemiBold" />
-                            <TextBox Text="{Binding CsvDelimiter, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,12" />
+                            <TextBox Text="{Binding CsvDelimiter, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="Türkiye Excel uyumu için varsayılan noktalı virgüldür."
+                                     Margin="0,4,0,12" />
 
                             <Separator Margin="0,8,0,14" />
                             <TextBlock Text="Görünüm" FontSize="18" FontWeight="Bold" Margin="0,0,0,12" />
@@ -829,6 +948,8 @@
                             <WrapPanel>
                                 <Button Content="Veritabanını Yedekle" Command="{Binding BackupDatabaseCommand}" Style="{StaticResource SecondaryButtonStyle}" />
                                 <Button Content="Veritabanını Geri Yükle" Command="{Binding RestoreDatabaseCommand}" Style="{StaticResource DangerButtonStyle}" />
+                                <Button Content="Veritabanını Optimize Et" Command="{Binding OptimizeDatabaseCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                                <Button Content="Eski Logları Temizle" Command="{Binding ClearOldLogsCommand}" Style="{StaticResource DangerButtonStyle}" />
                                 <Button Content="Ayarları Dışa Aktar" Command="{Binding ExportSettingsCommand}" Style="{StaticResource SecondaryButtonStyle}" />
                                 <Button Content="Ayarları İçe Aktar" Command="{Binding ImportSettingsCommand}" Style="{StaticResource SecondaryButtonStyle}" />
                             </WrapPanel>

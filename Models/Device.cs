@@ -16,9 +16,11 @@ public sealed class Device : ObservableObject
     private bool _isActive = true;
     private bool _autoCheckEnabled = true;
     private int? _defaultSchedulePlanId;
+    private int? _pingTimeoutMs;
     private int _checkIntervalSeconds;
-    private int _failureRetryIntervalSeconds = AppSettings.DefaultFailureRetryIntervalSecondsValue;
-    private int _failureRetryLimit = AppSettings.DefaultFailureRetryLimitValue;
+    private int _failureRetryIntervalSeconds;
+    private int _failureRetryLimit;
+    private int _failureThreshold;
     private string _description = string.Empty;
     private DeviceStatus _lastStatus = DeviceStatus.Unknown;
     private long? _lastLatencyMs;
@@ -36,6 +38,7 @@ public sealed class Device : ObservableObject
     private double? _uptimeOverallPercent;
     private long? _averageLatencyMs;
     private DateTime? _lastFailureAt;
+    private string _effectivePolicyText = "Global";
 
     public int Id
     {
@@ -141,6 +144,21 @@ public sealed class Device : ObservableObject
         set => SetProperty(ref _defaultSchedulePlanId, value);
     }
 
+    public int? PingTimeoutMs
+    {
+        get => _pingTimeoutMs;
+        set
+        {
+            var normalized = value.HasValue && value.Value > 0
+                ? Math.Clamp(value.Value, AppSettings.MinPingTimeoutMs, AppSettings.MaxPingTimeoutMs)
+                : null;
+            if (SetProperty(ref _pingTimeoutMs, normalized))
+            {
+                OnPropertyChanged(nameof(PingTimeoutText));
+            }
+        }
+    }
+
     public int CheckIntervalSeconds
     {
         get => _checkIntervalSeconds;
@@ -152,7 +170,6 @@ public sealed class Device : ObservableObject
             if (SetProperty(ref _checkIntervalSeconds, normalized))
             {
                 OnPropertyChanged(nameof(CheckIntervalText));
-                OnPropertyChanged(nameof(AutoPolicyText));
             }
         }
     }
@@ -162,10 +179,12 @@ public sealed class Device : ObservableObject
         get => _failureRetryIntervalSeconds;
         set
         {
-            if (SetProperty(ref _failureRetryIntervalSeconds, Math.Clamp(value, AppSettings.MinFailureRetryIntervalSeconds, AppSettings.MaxFailureRetryIntervalSeconds)))
+            var normalized = value <= 0
+                ? 0
+                : Math.Clamp(value, AppSettings.MinFailureRetryIntervalSeconds, AppSettings.MaxFailureRetryIntervalSeconds);
+            if (SetProperty(ref _failureRetryIntervalSeconds, normalized))
             {
                 OnPropertyChanged(nameof(FailureRetryIntervalText));
-                OnPropertyChanged(nameof(AutoPolicyText));
             }
         }
     }
@@ -175,11 +194,28 @@ public sealed class Device : ObservableObject
         get => _failureRetryLimit;
         set
         {
-            if (SetProperty(ref _failureRetryLimit, Math.Clamp(value, AppSettings.MinFailureRetryLimit, AppSettings.MaxFailureRetryLimit)))
+            var normalized = value <= 0
+                ? 0
+                : Math.Clamp(value, AppSettings.MinFailureRetryLimit, AppSettings.MaxFailureRetryLimit);
+            if (SetProperty(ref _failureRetryLimit, normalized))
             {
                 OnPropertyChanged(nameof(FailureRetryLimitText));
-                OnPropertyChanged(nameof(AutoPolicyText));
                 OnPropertyChanged(nameof(IsProblematic));
+            }
+        }
+    }
+
+    public int FailureThreshold
+    {
+        get => _failureThreshold;
+        set
+        {
+            var normalized = value <= 0
+                ? 0
+                : Math.Clamp(value, AppSettings.MinFailureThreshold, AppSettings.MaxFailureThreshold);
+            if (SetProperty(ref _failureThreshold, normalized))
+            {
+                OnPropertyChanged(nameof(FailureThresholdText));
             }
         }
     }
@@ -295,7 +331,7 @@ public sealed class Device : ObservableObject
         }
     }
 
-    public bool IsProblematic => LastStatus.IsProblematic() || ConsecutiveFailures >= FailureRetryLimit;
+    public bool IsProblematic => LastStatus.IsProblematic() || (FailureRetryLimit > 0 && ConsecutiveFailures >= FailureRetryLimit);
 
     public string ConsecutiveFailuresText => ConsecutiveFailures.ToString(CultureInfo.CurrentCulture);
 
@@ -385,6 +421,12 @@ public sealed class Device : ObservableObject
         }
     }
 
+    public string EffectivePolicyText
+    {
+        get => _effectivePolicyText;
+        set => SetProperty(ref _effectivePolicyText, string.IsNullOrWhiteSpace(value) ? "Global" : value);
+    }
+
     public string DeviceTypeText => DeviceType.ToDisplayName();
 
     public string LastStatusText => LastStatus.ToDisplayName();
@@ -392,7 +434,7 @@ public sealed class Device : ObservableObject
     public string HealthHintText => LastStatus switch
     {
         DeviceStatus.Online => "Son kontrolde ping yanıtı alındı.",
-        DeviceStatus.Warning => "Tekil veya erken hata var; cihaz kesin arızalı kabul edilmedi.",
+        DeviceStatus.Warning => "Tekil veya erken hata var; cihaz kesin sorunlu kabul edilmedi.",
         DeviceStatus.UnderWatch => "Hızlı tekrar denemeleri sonucunda takipte.",
         DeviceStatus.Offline => "Tekrarlı hatalar sonrası muhtemel erişilemiyor.",
         DeviceStatus.PingBlockedOrNoReply => "Cihaz çalışıyor olabilir ancak ping yanıtlamıyor olabilir.",
@@ -408,13 +450,15 @@ public sealed class Device : ObservableObject
 
     public string LastFailedCheckAtText => LastFailedCheckAt.HasValue ? LastFailedCheckAt.Value.ToString("dd.MM.yyyy HH:mm:ss", CultureInfo.CurrentCulture) : "-";
 
-    public string CheckIntervalText => CheckIntervalSeconds > 0 ? FormatDuration(CheckIntervalSeconds) : "Grup/plan/global";
+    public string CheckIntervalText => CheckIntervalSeconds > 0 ? FormatDuration(CheckIntervalSeconds) : "Grup/tip/plan/global";
 
-    public string FailureRetryIntervalText => FormatDuration(FailureRetryIntervalSeconds);
+    public string PingTimeoutText => PingTimeoutMs.HasValue ? $"{PingTimeoutMs.Value} ms" : "Grup/tip/global";
 
-    public string FailureRetryLimitText => FailureRetryLimit.ToString(CultureInfo.CurrentCulture);
+    public string FailureRetryIntervalText => FailureRetryIntervalSeconds > 0 ? FormatDuration(FailureRetryIntervalSeconds) : "Grup/tip/global";
 
-    public string AutoPolicyText => $"{CheckIntervalText} / hızlı {FailureRetryIntervalText}, limit {FailureRetryLimit}";
+    public string FailureRetryLimitText => FailureRetryLimit > 0 ? FailureRetryLimit.ToString(CultureInfo.CurrentCulture) : "Grup/tip/global";
+
+    public string FailureThresholdText => FailureThreshold > 0 ? FailureThreshold.ToString(CultureInfo.CurrentCulture) : "Grup/tip/global";
 
     public string Uptime24HoursText => FormatPercent(Uptime24HoursPercent);
 

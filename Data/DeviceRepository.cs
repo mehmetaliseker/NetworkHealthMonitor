@@ -8,8 +8,8 @@ public sealed class DeviceRepository
 {
     private const string DeviceSelectColumns = """
         Id, Name, IpAddress, DeviceType, Location, GroupId, GroupName, IsCritical,
-        IsActive, AutoCheckEnabled, DefaultSchedulePlanId, CheckIntervalSeconds,
-        FailureRetryIntervalSeconds, FailureRetryLimit, Description, LastStatus,
+        IsActive, AutoCheckEnabled, DefaultSchedulePlanId, PingTimeoutMs, CheckIntervalSeconds,
+        FailureRetryIntervalSeconds, FailureRetryLimit, FailureThreshold, Description, LastStatus,
         LastLatencyMs, LastCheckedAt, LastSuccessfulCheckAt, LastFailedCheckAt,
         ConsecutiveFailures, ConsecutiveSuccesses,
         LastStableStatus, CreatedAt, UpdatedAt
@@ -69,15 +69,15 @@ public sealed class DeviceRepository
         command.CommandText = """
             INSERT INTO Devices
                 (Name, IpAddress, DeviceType, Location, GroupId, GroupName, IsCritical, IsActive,
-                 AutoCheckEnabled, DefaultSchedulePlanId, CheckIntervalSeconds, FailureRetryIntervalSeconds,
-                 FailureRetryLimit, Description, LastStatus, LastLatencyMs,
+                 AutoCheckEnabled, DefaultSchedulePlanId, PingTimeoutMs, CheckIntervalSeconds, FailureRetryIntervalSeconds,
+                 FailureRetryLimit, FailureThreshold, Description, LastStatus, LastLatencyMs,
                  LastCheckedAt, LastSuccessfulCheckAt, LastFailedCheckAt,
                  ConsecutiveFailures, ConsecutiveSuccesses, LastStableStatus,
                  CreatedAt, UpdatedAt)
             VALUES
                 (@Name, @IpAddress, @DeviceType, @Location, @GroupId, @GroupName, @IsCritical, @IsActive,
-                 @AutoCheckEnabled, @DefaultSchedulePlanId, @CheckIntervalSeconds, @FailureRetryIntervalSeconds,
-                 @FailureRetryLimit, @Description, @LastStatus, @LastLatencyMs,
+                 @AutoCheckEnabled, @DefaultSchedulePlanId, @PingTimeoutMs, @CheckIntervalSeconds, @FailureRetryIntervalSeconds,
+                 @FailureRetryLimit, @FailureThreshold, @Description, @LastStatus, @LastLatencyMs,
                  @LastCheckedAt, @LastSuccessfulCheckAt, @LastFailedCheckAt,
                  @ConsecutiveFailures, @ConsecutiveSuccesses, @LastStableStatus,
                  @CreatedAt, @UpdatedAt);
@@ -114,9 +114,11 @@ public sealed class DeviceRepository
                 IsActive = @IsActive,
                 AutoCheckEnabled = @AutoCheckEnabled,
                 DefaultSchedulePlanId = @DefaultSchedulePlanId,
+                PingTimeoutMs = @PingTimeoutMs,
                 CheckIntervalSeconds = @CheckIntervalSeconds,
                 FailureRetryIntervalSeconds = @FailureRetryIntervalSeconds,
                 FailureRetryLimit = @FailureRetryLimit,
+                FailureThreshold = @FailureThreshold,
                 Description = @Description,
                 LastStatus = @LastStatus,
                 LastLatencyMs = @LastLatencyMs,
@@ -229,7 +231,10 @@ public sealed class DeviceRepository
                         Location = @Location,
                         GroupId = @GroupId,
                         GroupName = @GroupName,
-                        IsCritical = @IsCritical,
+                        AutoCheckEnabled = @AutoCheckEnabled,
+                        CheckIntervalSeconds = @CheckIntervalSeconds,
+                        FailureRetryIntervalSeconds = @FailureRetryIntervalSeconds,
+                        FailureRetryLimit = @FailureRetryLimit,
                         Description = @Description,
                         UpdatedAt = @UpdatedAt
                     WHERE Id = @Id;
@@ -239,8 +244,11 @@ public sealed class DeviceRepository
                 AddParameter(update, "@Location", row.Location);
                 AddParameter(update, "@GroupId", groupId);
                 AddParameter(update, "@GroupName", row.GroupName);
-                AddParameter(update, "@IsCritical", row.IsCritical ? 1 : 0);
-                AddParameter(update, "@Description", row.Note);
+                AddParameter(update, "@AutoCheckEnabled", row.AutoCheckEnabled ? 1 : 0);
+                AddParameter(update, "@CheckIntervalSeconds", row.CheckIntervalSeconds);
+                AddParameter(update, "@FailureRetryIntervalSeconds", row.RetryIntervalSeconds);
+                AddParameter(update, "@FailureRetryLimit", row.RetryLimit);
+                AddParameter(update, "@Description", row.Description);
                 AddParameter(update, "@UpdatedAt", ToStorageDate(now));
                 AddParameter(update, "@Id", existingId.Value);
                 await update.ExecuteNonQueryAsync();
@@ -253,14 +261,15 @@ public sealed class DeviceRepository
             insert.CommandText = """
                 INSERT INTO Devices
                     (Name, IpAddress, DeviceType, Location, GroupId, GroupName, IsCritical, IsActive,
-                     AutoCheckEnabled, DefaultSchedulePlanId, CheckIntervalSeconds, FailureRetryIntervalSeconds,
-                     FailureRetryLimit, Description, LastStatus, LastLatencyMs,
+                     AutoCheckEnabled, DefaultSchedulePlanId, PingTimeoutMs, CheckIntervalSeconds, FailureRetryIntervalSeconds,
+                     FailureRetryLimit, FailureThreshold, Description, LastStatus, LastLatencyMs,
                      LastCheckedAt, LastSuccessfulCheckAt, LastFailedCheckAt,
                      ConsecutiveFailures, ConsecutiveSuccesses, LastStableStatus,
                      CreatedAt, UpdatedAt)
                 VALUES
                     (@Name, @IpAddress, @DeviceType, @Location, @GroupId, @GroupName, @IsCritical, 1,
-                     1, NULL, 0, 60, 3, @Description, @LastStatus, NULL, NULL, NULL, NULL, 0, 0, @LastStableStatus,
+                     @AutoCheckEnabled, NULL, NULL, @CheckIntervalSeconds, @FailureRetryIntervalSeconds,
+                     @FailureRetryLimit, 0, @Description, @LastStatus, NULL, NULL, NULL, NULL, 0, 0, @LastStableStatus,
                      @CreatedAt, @UpdatedAt);
                 """;
             AddParameter(insert, "@Name", row.Name);
@@ -269,8 +278,12 @@ public sealed class DeviceRepository
             AddParameter(insert, "@Location", row.Location);
             AddParameter(insert, "@GroupId", groupId);
             AddParameter(insert, "@GroupName", row.GroupName);
-            AddParameter(insert, "@IsCritical", row.IsCritical ? 1 : 0);
-            AddParameter(insert, "@Description", row.Note);
+            AddParameter(insert, "@IsCritical", 0);
+            AddParameter(insert, "@AutoCheckEnabled", row.AutoCheckEnabled ? 1 : 0);
+            AddParameter(insert, "@CheckIntervalSeconds", row.CheckIntervalSeconds);
+            AddParameter(insert, "@FailureRetryIntervalSeconds", row.RetryIntervalSeconds);
+            AddParameter(insert, "@FailureRetryLimit", row.RetryLimit);
+            AddParameter(insert, "@Description", row.Description);
             AddParameter(insert, "@LastStatus", DeviceStatus.Unknown.ToStorageValue());
             AddParameter(insert, "@LastStableStatus", DeviceStatus.Unknown.ToStorageValue());
             AddParameter(insert, "@CreatedAt", ToStorageDate(now));
@@ -292,6 +305,51 @@ public sealed class DeviceRepository
         await command.ExecuteNonQueryAsync();
     }
 
+    public async Task<int> BulkSetAutoCheckAsync(IEnumerable<int> deviceIds, bool enabled)
+    {
+        return await BulkUpdateAsync(
+            deviceIds,
+            "UPDATE Devices SET AutoCheckEnabled = @Value, UpdatedAt = @UpdatedAt WHERE Id = @Id;",
+            command => AddParameter(command, "@Value", enabled ? 1 : 0));
+    }
+
+    public async Task<int> BulkSetActiveAsync(IEnumerable<int> deviceIds, bool isActive)
+    {
+        return await BulkUpdateAsync(
+            deviceIds,
+            "UPDATE Devices SET IsActive = @Value, UpdatedAt = @UpdatedAt WHERE Id = @Id;",
+            command => AddParameter(command, "@Value", isActive ? 1 : 0));
+    }
+
+    public async Task<int> BulkSetGroupAsync(IEnumerable<int> deviceIds, int? groupId, string groupName)
+    {
+        return await BulkUpdateAsync(
+            deviceIds,
+            """
+            UPDATE Devices
+            SET GroupId = @GroupId,
+                GroupName = @GroupName,
+                UpdatedAt = @UpdatedAt
+            WHERE Id = @Id;
+            """,
+            command =>
+            {
+                AddParameter(command, "@GroupId", groupId);
+                AddParameter(command, "@GroupName", groupName.Trim());
+            });
+    }
+
+    public async Task<int> BulkSetCheckIntervalAsync(IEnumerable<int> deviceIds, int checkIntervalSeconds)
+    {
+        var normalized = checkIntervalSeconds <= 0
+            ? 0
+            : Math.Clamp(checkIntervalSeconds, AppSettings.MinDeviceCheckIntervalSeconds, AppSettings.MaxDeviceCheckIntervalSeconds);
+        return await BulkUpdateAsync(
+            deviceIds,
+            "UPDATE Devices SET CheckIntervalSeconds = @Value, UpdatedAt = @UpdatedAt WHERE Id = @Id;",
+            command => AddParameter(command, "@Value", normalized));
+    }
+
     public async Task<bool> ExistsByIpAsync(string ipAddress, int? excludeDeviceId = null)
     {
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
@@ -307,6 +365,35 @@ public sealed class DeviceRepository
         AddParameter(command, "@ExcludeId", excludeDeviceId);
         var result = await command.ExecuteScalarAsync();
         return Convert.ToInt32(result, CultureInfo.InvariantCulture) > 0;
+    }
+
+    private async Task<int> BulkUpdateAsync(
+        IEnumerable<int> deviceIds,
+        string commandText,
+        Action<SqliteCommand> addParameters)
+    {
+        var ids = deviceIds.Where(id => id > 0).Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            return 0;
+        }
+
+        var affected = 0;
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
+        using var transaction = connection.BeginTransaction();
+        foreach (var id in ids)
+        {
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = commandText;
+            addParameters(command);
+            AddParameter(command, "@UpdatedAt", ToStorageDate(DateTime.Now));
+            AddParameter(command, "@Id", id);
+            affected += await command.ExecuteNonQueryAsync();
+        }
+
+        transaction.Commit();
+        return affected;
     }
 
     public async Task<int> CountByGroupAsync(int groupId)
@@ -386,20 +473,22 @@ public sealed class DeviceRepository
             IsActive = reader.GetInt32(8) == 1,
             AutoCheckEnabled = reader.GetInt32(9) == 1,
             DefaultSchedulePlanId = reader.IsDBNull(10) ? null : reader.GetInt32(10),
-            CheckIntervalSeconds = reader.GetInt32(11),
-            FailureRetryIntervalSeconds = reader.GetInt32(12),
-            FailureRetryLimit = reader.GetInt32(13),
-            Description = reader.GetString(14),
-            LastStatus = DeviceStatusExtensions.FromStorageValue(reader.GetString(15)),
-            LastLatencyMs = reader.IsDBNull(16) ? null : reader.GetInt64(16),
-            LastCheckedAt = reader.IsDBNull(17) ? null : FromStorageDate(reader.GetString(17)),
-            LastSuccessfulCheckAt = reader.IsDBNull(18) ? null : FromStorageDate(reader.GetString(18)),
-            LastFailedCheckAt = reader.IsDBNull(19) ? null : FromStorageDate(reader.GetString(19)),
-            ConsecutiveFailures = reader.GetInt32(20),
-            ConsecutiveSuccesses = reader.GetInt32(21),
-            LastStableStatus = DeviceStatusExtensions.FromStorageValue(reader.GetString(22)),
-            CreatedAt = FromStorageDate(reader.GetString(23)),
-            UpdatedAt = FromStorageDate(reader.GetString(24))
+            PingTimeoutMs = reader.IsDBNull(11) ? null : reader.GetInt32(11),
+            CheckIntervalSeconds = reader.GetInt32(12),
+            FailureRetryIntervalSeconds = reader.GetInt32(13),
+            FailureRetryLimit = reader.GetInt32(14),
+            FailureThreshold = reader.GetInt32(15),
+            Description = reader.GetString(16),
+            LastStatus = DeviceStatusExtensions.FromStorageValue(reader.GetString(17)),
+            LastLatencyMs = reader.IsDBNull(18) ? null : reader.GetInt64(18),
+            LastCheckedAt = reader.IsDBNull(19) ? null : FromStorageDate(reader.GetString(19)),
+            LastSuccessfulCheckAt = reader.IsDBNull(20) ? null : FromStorageDate(reader.GetString(20)),
+            LastFailedCheckAt = reader.IsDBNull(21) ? null : FromStorageDate(reader.GetString(21)),
+            ConsecutiveFailures = reader.GetInt32(22),
+            ConsecutiveSuccesses = reader.GetInt32(23),
+            LastStableStatus = DeviceStatusExtensions.FromStorageValue(reader.GetString(24)),
+            CreatedAt = FromStorageDate(reader.GetString(25)),
+            UpdatedAt = FromStorageDate(reader.GetString(26))
         };
     }
 
@@ -415,9 +504,11 @@ public sealed class DeviceRepository
         AddParameter(command, "@IsActive", device.IsActive ? 1 : 0);
         AddParameter(command, "@AutoCheckEnabled", device.AutoCheckEnabled ? 1 : 0);
         AddParameter(command, "@DefaultSchedulePlanId", device.DefaultSchedulePlanId);
+        AddParameter(command, "@PingTimeoutMs", device.PingTimeoutMs);
         AddParameter(command, "@CheckIntervalSeconds", device.CheckIntervalSeconds <= 0 ? 0 : Math.Clamp(device.CheckIntervalSeconds, AppSettings.MinDeviceCheckIntervalSeconds, AppSettings.MaxDeviceCheckIntervalSeconds));
-        AddParameter(command, "@FailureRetryIntervalSeconds", Math.Clamp(device.FailureRetryIntervalSeconds, AppSettings.MinFailureRetryIntervalSeconds, AppSettings.MaxFailureRetryIntervalSeconds));
-        AddParameter(command, "@FailureRetryLimit", Math.Clamp(device.FailureRetryLimit, AppSettings.MinFailureRetryLimit, AppSettings.MaxFailureRetryLimit));
+        AddParameter(command, "@FailureRetryIntervalSeconds", device.FailureRetryIntervalSeconds <= 0 ? 0 : Math.Clamp(device.FailureRetryIntervalSeconds, AppSettings.MinFailureRetryIntervalSeconds, AppSettings.MaxFailureRetryIntervalSeconds));
+        AddParameter(command, "@FailureRetryLimit", device.FailureRetryLimit <= 0 ? 0 : Math.Clamp(device.FailureRetryLimit, AppSettings.MinFailureRetryLimit, AppSettings.MaxFailureRetryLimit));
+        AddParameter(command, "@FailureThreshold", device.FailureThreshold <= 0 ? 0 : Math.Clamp(device.FailureThreshold, AppSettings.MinFailureThreshold, AppSettings.MaxFailureThreshold));
         AddParameter(command, "@Description", device.Description);
         AddParameter(command, "@LastStatus", device.LastStatus.ToStorageValue());
         AddParameter(command, "@LastLatencyMs", device.LastLatencyMs);

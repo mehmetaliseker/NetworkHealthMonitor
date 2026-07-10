@@ -5,8 +5,6 @@ namespace NetworkHealthMonitor.Services;
 
 public sealed class SchedulerService : ISchedulerService
 {
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(AppSettings.SchedulerPollIntervalSeconds);
-
     private readonly DeviceRepository _deviceRepository;
     private readonly DeviceGroupRepository _deviceGroupRepository;
     private readonly SchedulePlanRepository _schedulePlanRepository;
@@ -117,12 +115,23 @@ public sealed class SchedulerService : ISchedulerService
                 Notify($"Otomatik kontrol sırasında hata oluştu: {ex.Message}");
             }
 
-            await Task.Delay(PollInterval, cancellationToken);
+            var settings = await _settingsService.LoadAsync();
+            var pollIntervalSeconds = Math.Clamp(
+                settings.SchedulerPollIntervalSeconds,
+                AppSettings.MinSchedulerPollIntervalSeconds,
+                AppSettings.MaxSchedulerPollIntervalSeconds);
+            await Task.Delay(TimeSpan.FromSeconds(pollIntervalSeconds), cancellationToken);
         }
     }
 
     private async Task RunDuePlansAsync(CancellationToken cancellationToken)
     {
+        var settings = await _settingsService.LoadAsync();
+        if (!settings.AutoCheckEnabled)
+        {
+            return;
+        }
+
         var plans = await _schedulePlanRepository.GetActiveAsync();
         if (plans.Count == 0)
         {
@@ -131,7 +140,6 @@ public sealed class SchedulerService : ISchedulerService
 
         var devices = await _deviceRepository.GetAutoCheckCandidatesAsync();
         var groups = await _deviceGroupRepository.GetAllAsync();
-        var settings = await _settingsService.LoadAsync();
         var now = DateTime.Now;
         var groupsById = groups.ToDictionary(group => group.Id);
         var groupsByName = groups.ToDictionary(group => group.Name, StringComparer.OrdinalIgnoreCase);

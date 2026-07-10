@@ -19,11 +19,15 @@ public sealed class DeviceGroupRepository
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT g.Id, g.Name, g.Description, g.DefaultSchedulePlanId, g.DefaultCheckIntervalSeconds, g.CreatedAt, g.UpdatedAt,
+            SELECT g.Id, g.Name, g.Description, g.DefaultSchedulePlanId, g.DefaultAutoCheckEnabled,
+                   g.DefaultCheckIntervalSeconds, g.DefaultPingTimeoutMs, g.DefaultFailureRetryIntervalSeconds,
+                   g.DefaultFailureRetryLimit, g.DefaultFailureThreshold, g.CreatedAt, g.UpdatedAt,
                    COUNT(d.Id) AS DeviceCount
             FROM DeviceGroups g
             LEFT JOIN Devices d ON d.GroupId = g.Id
-            GROUP BY g.Id, g.Name, g.Description, g.DefaultSchedulePlanId, g.DefaultCheckIntervalSeconds, g.CreatedAt, g.UpdatedAt
+            GROUP BY g.Id, g.Name, g.Description, g.DefaultSchedulePlanId, g.DefaultAutoCheckEnabled,
+                     g.DefaultCheckIntervalSeconds, g.DefaultPingTimeoutMs, g.DefaultFailureRetryIntervalSeconds,
+                     g.DefaultFailureRetryLimit, g.DefaultFailureThreshold, g.CreatedAt, g.UpdatedAt
             ORDER BY g.Name COLLATE NOCASE;
             """;
 
@@ -45,8 +49,14 @@ public sealed class DeviceGroupRepository
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO DeviceGroups (Name, Description, DefaultSchedulePlanId, DefaultCheckIntervalSeconds, CreatedAt, UpdatedAt)
-            VALUES (@Name, @Description, @DefaultSchedulePlanId, @DefaultCheckIntervalSeconds, @CreatedAt, @UpdatedAt);
+            INSERT INTO DeviceGroups
+                (Name, Description, DefaultSchedulePlanId, DefaultAutoCheckEnabled, DefaultCheckIntervalSeconds,
+                 DefaultPingTimeoutMs, DefaultFailureRetryIntervalSeconds, DefaultFailureRetryLimit,
+                 DefaultFailureThreshold, CreatedAt, UpdatedAt)
+            VALUES
+                (@Name, @Description, @DefaultSchedulePlanId, @DefaultAutoCheckEnabled, @DefaultCheckIntervalSeconds,
+                 @DefaultPingTimeoutMs, @DefaultFailureRetryIntervalSeconds, @DefaultFailureRetryLimit,
+                 @DefaultFailureThreshold, @CreatedAt, @UpdatedAt);
             SELECT last_insert_rowid();
             """;
 
@@ -66,7 +76,12 @@ public sealed class DeviceGroupRepository
             SET Name = @Name,
                 Description = @Description,
                 DefaultSchedulePlanId = @DefaultSchedulePlanId,
+                DefaultAutoCheckEnabled = @DefaultAutoCheckEnabled,
                 DefaultCheckIntervalSeconds = @DefaultCheckIntervalSeconds,
+                DefaultPingTimeoutMs = @DefaultPingTimeoutMs,
+                DefaultFailureRetryIntervalSeconds = @DefaultFailureRetryIntervalSeconds,
+                DefaultFailureRetryLimit = @DefaultFailureRetryLimit,
+                DefaultFailureThreshold = @DefaultFailureThreshold,
                 UpdatedAt = @UpdatedAt
             WHERE Id = @Id;
             """;
@@ -139,10 +154,15 @@ public sealed class DeviceGroupRepository
             Name = reader.GetString(1),
             Description = reader.GetString(2),
             DefaultSchedulePlanId = reader.IsDBNull(3) ? null : reader.GetInt32(3),
-            DefaultCheckIntervalSeconds = reader.IsDBNull(4) ? null : reader.GetInt32(4),
-            CreatedAt = FromStorageDate(reader.GetString(5)),
-            UpdatedAt = FromStorageDate(reader.GetString(6)),
-            DeviceCount = reader.GetInt32(7)
+            DefaultAutoCheckEnabled = reader.IsDBNull(4) ? null : reader.GetInt32(4) == 1,
+            DefaultCheckIntervalSeconds = reader.IsDBNull(5) ? null : reader.GetInt32(5),
+            DefaultPingTimeoutMs = reader.IsDBNull(6) ? null : reader.GetInt32(6),
+            DefaultFailureRetryIntervalSeconds = reader.IsDBNull(7) ? null : reader.GetInt32(7),
+            DefaultFailureRetryLimit = reader.IsDBNull(8) ? null : reader.GetInt32(8),
+            DefaultFailureThreshold = reader.IsDBNull(9) ? null : reader.GetInt32(9),
+            CreatedAt = FromStorageDate(reader.GetString(10)),
+            UpdatedAt = FromStorageDate(reader.GetString(11)),
+            DeviceCount = reader.GetInt32(12)
         };
     }
 
@@ -151,7 +171,12 @@ public sealed class DeviceGroupRepository
         AddParameter(command, "@Name", group.Name.Trim());
         AddParameter(command, "@Description", group.Description);
         AddParameter(command, "@DefaultSchedulePlanId", group.DefaultSchedulePlanId);
+        AddParameter(command, "@DefaultAutoCheckEnabled", group.DefaultAutoCheckEnabled.HasValue ? (group.DefaultAutoCheckEnabled.Value ? 1 : 0) : null);
         AddParameter(command, "@DefaultCheckIntervalSeconds", group.DefaultCheckIntervalSeconds);
+        AddParameter(command, "@DefaultPingTimeoutMs", group.DefaultPingTimeoutMs);
+        AddParameter(command, "@DefaultFailureRetryIntervalSeconds", group.DefaultFailureRetryIntervalSeconds);
+        AddParameter(command, "@DefaultFailureRetryLimit", group.DefaultFailureRetryLimit);
+        AddParameter(command, "@DefaultFailureThreshold", group.DefaultFailureThreshold);
         AddParameter(command, "@CreatedAt", ToStorageDate(group.CreatedAt));
         AddParameter(command, "@UpdatedAt", ToStorageDate(group.UpdatedAt));
     }

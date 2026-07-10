@@ -21,20 +21,26 @@ public sealed record DeviceCsvRecord(
     string Name,
     string IpAddress,
     DeviceType DeviceType,
-    string Location,
     string GroupName,
-    bool IsCritical,
-    string Note);
+    string Location,
+    string Description,
+    bool AutoCheckEnabled,
+    int CheckIntervalSeconds,
+    int RetryIntervalSeconds,
+    int RetryLimit);
 
 public sealed record CsvImportError(
     int RowNumber,
     string Name,
     string IpAddress,
     string DeviceType,
-    string Location,
     string GroupName,
-    string IsCritical,
-    string Note,
+    string Location,
+    string Description,
+    string AutoCheckEnabled,
+    string CheckIntervalSeconds,
+    string RetryIntervalSeconds,
+    string RetryLimit,
     string Error);
 
 public sealed class CsvImportPreviewRow
@@ -47,13 +53,19 @@ public sealed class CsvImportPreviewRow
 
     public string DeviceType { get; init; } = string.Empty;
 
-    public string Location { get; init; } = string.Empty;
-
     public string GroupName { get; init; } = string.Empty;
 
-    public bool IsCritical { get; init; }
+    public string Location { get; init; } = string.Empty;
 
-    public string Note { get; init; } = string.Empty;
+    public string Description { get; init; } = string.Empty;
+
+    public bool AutoCheckEnabled { get; init; }
+
+    public int CheckIntervalSeconds { get; init; }
+
+    public int RetryIntervalSeconds { get; init; }
+
+    public int RetryLimit { get; init; }
 
     public CsvImportRowStatus Status { get; set; }
 
@@ -100,10 +112,13 @@ public sealed class CsvImportPreview
             row.Name,
             row.IpAddress,
             row.DeviceType,
-            row.Location,
             row.GroupName,
-            row.IsCritical.ToString().ToLowerInvariant(),
-            row.Note,
+            row.Location,
+            row.Description,
+            row.AutoCheckEnabled.ToString().ToLowerInvariant(),
+            row.CheckIntervalSeconds.ToString(),
+            row.RetryIntervalSeconds.ToString(),
+            row.RetryLimit.ToString(),
             row.ErrorMessage))
         .ToList();
 

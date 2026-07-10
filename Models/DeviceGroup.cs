@@ -8,7 +8,12 @@ public sealed class DeviceGroup : ObservableObject
     private string _name = string.Empty;
     private string _description = string.Empty;
     private int? _defaultSchedulePlanId;
+    private bool? _defaultAutoCheckEnabled;
     private int? _defaultCheckIntervalSeconds;
+    private int? _defaultPingTimeoutMs;
+    private int? _defaultFailureRetryIntervalSeconds;
+    private int? _defaultFailureRetryLimit;
+    private int? _defaultFailureThreshold;
     private DateTime _createdAt = DateTime.Now;
     private DateTime _updatedAt = DateTime.Now;
     private int _deviceCount;
@@ -38,6 +43,19 @@ public sealed class DeviceGroup : ObservableObject
         set => SetProperty(ref _defaultSchedulePlanId, value);
     }
 
+    public bool? DefaultAutoCheckEnabled
+    {
+        get => _defaultAutoCheckEnabled;
+        set
+        {
+            if (SetProperty(ref _defaultAutoCheckEnabled, value))
+            {
+                OnPropertyChanged(nameof(DefaultAutoCheckText));
+                OnPropertyChanged(nameof(DefaultPolicyText));
+            }
+        }
+    }
+
     public int? DefaultCheckIntervalSeconds
     {
         get => _defaultCheckIntervalSeconds;
@@ -49,6 +67,55 @@ public sealed class DeviceGroup : ObservableObject
             if (SetProperty(ref _defaultCheckIntervalSeconds, normalized))
             {
                 OnPropertyChanged(nameof(DefaultCheckIntervalText));
+                OnPropertyChanged(nameof(DefaultPolicyText));
+            }
+        }
+    }
+
+    public int? DefaultPingTimeoutMs
+    {
+        get => _defaultPingTimeoutMs;
+        set
+        {
+            if (SetProperty(ref _defaultPingTimeoutMs, NormalizeNullable(value, AppSettings.MinPingTimeoutMs, AppSettings.MaxPingTimeoutMs)))
+            {
+                OnPropertyChanged(nameof(DefaultPolicyText));
+            }
+        }
+    }
+
+    public int? DefaultFailureRetryIntervalSeconds
+    {
+        get => _defaultFailureRetryIntervalSeconds;
+        set
+        {
+            if (SetProperty(ref _defaultFailureRetryIntervalSeconds, NormalizeNullable(value, AppSettings.MinFailureRetryIntervalSeconds, AppSettings.MaxFailureRetryIntervalSeconds)))
+            {
+                OnPropertyChanged(nameof(DefaultPolicyText));
+            }
+        }
+    }
+
+    public int? DefaultFailureRetryLimit
+    {
+        get => _defaultFailureRetryLimit;
+        set
+        {
+            if (SetProperty(ref _defaultFailureRetryLimit, NormalizeNullable(value, AppSettings.MinFailureRetryLimit, AppSettings.MaxFailureRetryLimit)))
+            {
+                OnPropertyChanged(nameof(DefaultPolicyText));
+            }
+        }
+    }
+
+    public int? DefaultFailureThreshold
+    {
+        get => _defaultFailureThreshold;
+        set
+        {
+            if (SetProperty(ref _defaultFailureThreshold, NormalizeNullable(value, AppSettings.MinFailureThreshold, AppSettings.MaxFailureThreshold)))
+            {
+                OnPropertyChanged(nameof(DefaultPolicyText));
             }
         }
     }
@@ -93,7 +160,57 @@ public sealed class DeviceGroup : ObservableObject
 
     public string Availability30DaysText => Availability30DaysPercent.HasValue ? $"{Availability30DaysPercent.Value:0.0}%" : "-";
 
-    public string DefaultCheckIntervalText => DefaultCheckIntervalSeconds.HasValue ? FormatDuration(DefaultCheckIntervalSeconds.Value) : "Plan/global";
+    public string DefaultAutoCheckText => DefaultAutoCheckEnabled.HasValue
+        ? (DefaultAutoCheckEnabled.Value ? "Açık" : "Kapalı")
+        : "Tip/global";
+
+    public string DefaultCheckIntervalText => DefaultCheckIntervalSeconds.HasValue ? FormatDuration(DefaultCheckIntervalSeconds.Value) : "Tip/plan/global";
+
+    public string DefaultPolicyText
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (DefaultAutoCheckEnabled.HasValue)
+            {
+                parts.Add($"oto {DefaultAutoCheckText}");
+            }
+
+            if (DefaultCheckIntervalSeconds.HasValue)
+            {
+                parts.Add($"aralık {FormatDuration(DefaultCheckIntervalSeconds.Value)}");
+            }
+
+            if (DefaultPingTimeoutMs.HasValue)
+            {
+                parts.Add($"timeout {DefaultPingTimeoutMs.Value} ms");
+            }
+
+            if (DefaultFailureRetryIntervalSeconds.HasValue)
+            {
+                parts.Add($"retry {FormatDuration(DefaultFailureRetryIntervalSeconds.Value)}");
+            }
+
+            if (DefaultFailureRetryLimit.HasValue)
+            {
+                parts.Add($"limit {DefaultFailureRetryLimit.Value}");
+            }
+
+            if (DefaultFailureThreshold.HasValue)
+            {
+                parts.Add($"eşik {DefaultFailureThreshold.Value}");
+            }
+
+            return parts.Count == 0 ? "Tip/global" : string.Join(", ", parts);
+        }
+    }
+
+    private static int? NormalizeNullable(int? value, int minimum, int maximum)
+    {
+        return value.HasValue && value.Value > 0
+            ? Math.Clamp(value.Value, minimum, maximum)
+            : null;
+    }
 
     private static string FormatDuration(int seconds)
     {

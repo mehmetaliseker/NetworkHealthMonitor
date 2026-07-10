@@ -1,5 +1,6 @@
 using System.IO;
 using Microsoft.Data.Sqlite;
+using NetworkHealthMonitor.Models;
 
 namespace NetworkHealthMonitor.Data;
 
@@ -23,7 +24,7 @@ public sealed class SqliteConnectionFactory
         await connection.OpenAsync();
 
         await ExecuteAsync(connection, "PRAGMA foreign_keys = ON;");
-        await ExecuteAsync(connection, "PRAGMA busy_timeout = 5000;");
+        await ExecuteAsync(connection, $"PRAGMA busy_timeout = {AppSettings.SqliteBusyTimeoutMs};");
         return connection;
     }
 
@@ -54,16 +55,16 @@ public sealed class SqliteConnectionFactory
 
     private static async Task CreateSchedulePlansAsync(SqliteConnection connection)
     {
-        await ExecuteAsync(connection, """
+        await ExecuteAsync(connection, $"""
             CREATE TABLE IF NOT EXISTS SchedulePlans (
                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
                 Name TEXT NOT NULL,
                 TargetType TEXT NOT NULL,
                 TargetValue TEXT NOT NULL DEFAULT '',
-                IntervalMinutes INTEGER NOT NULL DEFAULT 10,
-                TimeoutMs INTEGER NOT NULL DEFAULT 1000,
-                MaxParallelism INTEGER NOT NULL DEFAULT 16,
-                FailureThreshold INTEGER NOT NULL DEFAULT 3,
+                IntervalMinutes INTEGER NOT NULL DEFAULT {AppSettings.DefaultSchedulePlanIntervalMinutes},
+                TimeoutMs INTEGER NOT NULL DEFAULT {AppSettings.DefaultPingTimeoutMs},
+                MaxParallelism INTEGER NOT NULL DEFAULT {AppSettings.DefaultSchedulePlanMaxParallelism},
+                FailureThreshold INTEGER NOT NULL DEFAULT {AppSettings.DefaultFailureThresholdValue},
                 IsActive INTEGER NOT NULL DEFAULT 1,
                 Description TEXT NOT NULL DEFAULT '',
                 LastRunAt TEXT NULL,
@@ -73,10 +74,10 @@ public sealed class SqliteConnectionFactory
             """);
 
         await EnsureColumnAsync(connection, "SchedulePlans", "TargetValue", "TEXT NOT NULL DEFAULT ''");
-        await EnsureColumnAsync(connection, "SchedulePlans", "IntervalMinutes", "INTEGER NOT NULL DEFAULT 10");
-        await EnsureColumnAsync(connection, "SchedulePlans", "TimeoutMs", "INTEGER NOT NULL DEFAULT 1000");
-        await EnsureColumnAsync(connection, "SchedulePlans", "MaxParallelism", "INTEGER NOT NULL DEFAULT 16");
-        await EnsureColumnAsync(connection, "SchedulePlans", "FailureThreshold", "INTEGER NOT NULL DEFAULT 3");
+        await EnsureColumnAsync(connection, "SchedulePlans", "IntervalMinutes", $"INTEGER NOT NULL DEFAULT {AppSettings.DefaultSchedulePlanIntervalMinutes}");
+        await EnsureColumnAsync(connection, "SchedulePlans", "TimeoutMs", $"INTEGER NOT NULL DEFAULT {AppSettings.DefaultPingTimeoutMs}");
+        await EnsureColumnAsync(connection, "SchedulePlans", "MaxParallelism", $"INTEGER NOT NULL DEFAULT {AppSettings.DefaultSchedulePlanMaxParallelism}");
+        await EnsureColumnAsync(connection, "SchedulePlans", "FailureThreshold", $"INTEGER NOT NULL DEFAULT {AppSettings.DefaultFailureThresholdValue}");
         await EnsureColumnAsync(connection, "SchedulePlans", "IsActive", "INTEGER NOT NULL DEFAULT 1");
         await EnsureColumnAsync(connection, "SchedulePlans", "Description", "TEXT NOT NULL DEFAULT ''");
         await EnsureColumnAsync(connection, "SchedulePlans", "LastRunAt", "TEXT NULL");
@@ -92,7 +93,12 @@ public sealed class SqliteConnectionFactory
                 Name TEXT NOT NULL UNIQUE,
                 Description TEXT NOT NULL DEFAULT '',
                 DefaultSchedulePlanId INTEGER NULL,
+                DefaultAutoCheckEnabled INTEGER NULL,
                 DefaultCheckIntervalSeconds INTEGER NULL,
+                DefaultPingTimeoutMs INTEGER NULL,
+                DefaultFailureRetryIntervalSeconds INTEGER NULL,
+                DefaultFailureRetryLimit INTEGER NULL,
+                DefaultFailureThreshold INTEGER NULL,
                 CreatedAt TEXT NOT NULL,
                 UpdatedAt TEXT NOT NULL
             );
@@ -100,7 +106,12 @@ public sealed class SqliteConnectionFactory
 
         await EnsureColumnAsync(connection, "DeviceGroups", "Description", "TEXT NOT NULL DEFAULT ''");
         await EnsureColumnAsync(connection, "DeviceGroups", "DefaultSchedulePlanId", "INTEGER NULL");
+        await EnsureColumnAsync(connection, "DeviceGroups", "DefaultAutoCheckEnabled", "INTEGER NULL");
         await EnsureColumnAsync(connection, "DeviceGroups", "DefaultCheckIntervalSeconds", "INTEGER NULL");
+        await EnsureColumnAsync(connection, "DeviceGroups", "DefaultPingTimeoutMs", "INTEGER NULL");
+        await EnsureColumnAsync(connection, "DeviceGroups", "DefaultFailureRetryIntervalSeconds", "INTEGER NULL");
+        await EnsureColumnAsync(connection, "DeviceGroups", "DefaultFailureRetryLimit", "INTEGER NULL");
+        await EnsureColumnAsync(connection, "DeviceGroups", "DefaultFailureThreshold", "INTEGER NULL");
         await EnsureColumnAsync(connection, "DeviceGroups", "CreatedAt", $"TEXT NOT NULL DEFAULT '{DateTime.Now:O}'");
         await EnsureColumnAsync(connection, "DeviceGroups", "UpdatedAt", $"TEXT NOT NULL DEFAULT '{DateTime.Now:O}'");
     }
@@ -120,9 +131,11 @@ public sealed class SqliteConnectionFactory
                 IsActive INTEGER NOT NULL DEFAULT 1,
                 AutoCheckEnabled INTEGER NOT NULL DEFAULT 1,
                 DefaultSchedulePlanId INTEGER NULL,
+                PingTimeoutMs INTEGER NULL,
                 CheckIntervalSeconds INTEGER NOT NULL DEFAULT 0,
-                FailureRetryIntervalSeconds INTEGER NOT NULL DEFAULT 60,
-                FailureRetryLimit INTEGER NOT NULL DEFAULT 3,
+                FailureRetryIntervalSeconds INTEGER NOT NULL DEFAULT 0,
+                FailureRetryLimit INTEGER NOT NULL DEFAULT 0,
+                FailureThreshold INTEGER NOT NULL DEFAULT 0,
                 Description TEXT NOT NULL DEFAULT '',
                 LastStatus TEXT NOT NULL DEFAULT 'Unknown',
                 LastLatencyMs INTEGER NULL,
@@ -144,9 +157,11 @@ public sealed class SqliteConnectionFactory
         await EnsureColumnAsync(connection, "Devices", "IsActive", "INTEGER NOT NULL DEFAULT 1");
         await EnsureColumnAsync(connection, "Devices", "AutoCheckEnabled", "INTEGER NOT NULL DEFAULT 1");
         await EnsureColumnAsync(connection, "Devices", "DefaultSchedulePlanId", "INTEGER NULL");
+        await EnsureColumnAsync(connection, "Devices", "PingTimeoutMs", "INTEGER NULL");
         await EnsureColumnAsync(connection, "Devices", "CheckIntervalSeconds", "INTEGER NOT NULL DEFAULT 0");
-        await EnsureColumnAsync(connection, "Devices", "FailureRetryIntervalSeconds", "INTEGER NOT NULL DEFAULT 60");
-        await EnsureColumnAsync(connection, "Devices", "FailureRetryLimit", "INTEGER NOT NULL DEFAULT 3");
+        await EnsureColumnAsync(connection, "Devices", "FailureRetryIntervalSeconds", "INTEGER NOT NULL DEFAULT 0");
+        await EnsureColumnAsync(connection, "Devices", "FailureRetryLimit", "INTEGER NOT NULL DEFAULT 0");
+        await EnsureColumnAsync(connection, "Devices", "FailureThreshold", "INTEGER NOT NULL DEFAULT 0");
         await EnsureColumnAsync(connection, "Devices", "Description", "TEXT NOT NULL DEFAULT ''");
         await EnsureColumnAsync(connection, "Devices", "LastStatus", "TEXT NOT NULL DEFAULT 'Unknown'");
         await EnsureColumnAsync(connection, "Devices", "LastLatencyMs", "INTEGER NULL");
@@ -272,7 +287,9 @@ public sealed class SqliteConnectionFactory
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_Outages_DeviceId ON Outages(DeviceId);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_Outages_IsResolved ON Outages(IsResolved);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_Outages_DeviceId_IsResolved ON Outages(DeviceId, IsResolved);");
+        await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_Outages_DeviceId_IsResolved_StartedAt ON Outages(DeviceId, IsResolved, StartedAt DESC);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_SchedulePlans_IsActive ON SchedulePlans(IsActive);");
+        await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_SchedulePlans_IsActive_Target ON SchedulePlans(IsActive, TargetType, TargetValue);");
     }
 
     private static async Task MigrateLegacyGroupNamesAsync(SqliteConnection connection)

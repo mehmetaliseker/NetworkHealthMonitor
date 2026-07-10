@@ -9,11 +9,11 @@ public sealed class CsvExportService
 {
     private static readonly UTF8Encoding Utf8Bom = new(encoderShouldEmitUTF8Identifier: true);
 
-    public async Task ExportDevicesAsync(IEnumerable<Device> devices, string filePath, string delimiter = ";")
+    public async Task ExportDevicesAsync(IEnumerable<Device> devices, string filePath, string delimiter = AppSettings.DefaultCsvDelimiter)
     {
         var separator = NormalizeDelimiter(delimiter);
         var builder = new StringBuilder();
-        AppendRow(builder, separator, "Name", "IpAddress", "DeviceType", "Location", "GroupName", "IsCritical", "Note");
+        AppendRow(builder, separator, "Name", "IpAddress", "DeviceType", "GroupName", "Location", "Description", "AutoCheckEnabled", "CheckIntervalSeconds", "RetryIntervalSeconds", "RetryLimit");
 
         foreach (var device in devices)
         {
@@ -23,26 +23,41 @@ public sealed class CsvExportService
                 device.Name,
                 device.IpAddress,
                 device.DeviceTypeText,
-                device.Location,
                 device.GroupName,
-                device.IsCritical.ToString().ToLowerInvariant(),
-                device.Description);
+                device.Location,
+                device.Description,
+                device.AutoCheckEnabled.ToString().ToLowerInvariant(),
+                device.CheckIntervalSeconds.ToString(CultureInfo.InvariantCulture),
+                device.FailureRetryIntervalSeconds.ToString(CultureInfo.InvariantCulture),
+                device.FailureRetryLimit.ToString(CultureInfo.InvariantCulture));
         }
 
         await File.WriteAllTextAsync(filePath, builder.ToString(), Utf8Bom);
     }
 
-    public async Task ExportDeviceTemplateAsync(string filePath, string delimiter = ";")
+    public async Task ExportDeviceTemplateAsync(string filePath, string delimiter = AppSettings.DefaultCsvDelimiter)
     {
         var separator = NormalizeDelimiter(delimiter);
         var builder = new StringBuilder();
-        AppendRow(builder, separator, "Name", "IpAddress", "DeviceType", "Location", "GroupName", "IsCritical", "Note");
-        AppendRow(builder, separator, "Kamera 1", "192.168.1.10", "Kamera", "Depo", "Kameralar", "true", "Örnek kamera");
-        AppendRow(builder, separator, "Switch Ana", "192.168.1.2", "Switch", "Sistem Odası", "Switchler", "true", "Örnek switch");
+        AppendRow(builder, separator, "Name", "IpAddress", "DeviceType", "GroupName", "Location", "Description", "AutoCheckEnabled", "CheckIntervalSeconds", "RetryIntervalSeconds", "RetryLimit");
+        AppendRow(builder, separator, "Kamera 1", "192.168.1.10", "Kamera", "Kameralar", "Depo", "Örnek kamera", "true", "0", "0", "0");
+        AppendRow(
+            builder,
+            separator,
+            "Switch Ana",
+            "192.168.1.2",
+            "Switch",
+            "Switchler",
+            "Sistem Odası",
+            "Örnek switch",
+            "true",
+            (AppSettings.DefaultAutoCheckIntervalMinutes * 60).ToString(CultureInfo.InvariantCulture),
+            AppSettings.DefaultFailureRetryIntervalSecondsValue.ToString(CultureInfo.InvariantCulture),
+            AppSettings.DefaultFailureRetryLimitValue.ToString(CultureInfo.InvariantCulture));
         await File.WriteAllTextAsync(filePath, builder.ToString(), Utf8Bom);
     }
 
-    public async Task ExportLogsAsync(IEnumerable<PingLog> logs, string filePath, string delimiter = ";")
+    public async Task ExportLogsAsync(IEnumerable<PingLog> logs, string filePath, string delimiter = AppSettings.DefaultCsvDelimiter)
     {
         var separator = NormalizeDelimiter(delimiter);
         var builder = new StringBuilder();
@@ -74,7 +89,7 @@ public sealed class CsvExportService
         await File.WriteAllTextAsync(filePath, builder.ToString(), Utf8Bom);
     }
 
-    public async Task ExportAvailabilityAsync(IEnumerable<AvailabilityReportItem> items, string filePath, string delimiter = ";")
+    public async Task ExportAvailabilityAsync(IEnumerable<AvailabilityReportItem> items, string filePath, string delimiter = AppSettings.DefaultCsvDelimiter)
     {
         var separator = NormalizeDelimiter(delimiter);
         var builder = new StringBuilder();
@@ -126,7 +141,7 @@ public sealed class CsvExportService
         await File.WriteAllTextAsync(filePath, builder.ToString(), Utf8Bom);
     }
 
-    public async Task ExportUptimeReportAsync(IEnumerable<UptimeReportItem> items, string filePath, string delimiter = ";")
+    public async Task ExportUptimeReportAsync(IEnumerable<UptimeReportItem> items, string filePath, string delimiter = AppSettings.DefaultCsvDelimiter)
     {
         var separator = NormalizeDelimiter(delimiter);
         var builder = new StringBuilder();
@@ -198,11 +213,11 @@ public sealed class CsvExportService
         await File.WriteAllTextAsync(filePath, builder.ToString(), Utf8Bom);
     }
 
-    public async Task ExportImportErrorsAsync(IEnumerable<CsvImportError> errors, string filePath, string delimiter = ";")
+    public async Task ExportImportErrorsAsync(IEnumerable<CsvImportError> errors, string filePath, string delimiter = AppSettings.DefaultCsvDelimiter)
     {
         var separator = NormalizeDelimiter(delimiter);
         var builder = new StringBuilder();
-        AppendRow(builder, separator, "RowNumber", "Name", "IpAddress", "DeviceType", "Location", "GroupName", "IsCritical", "Note", "Error");
+        AppendRow(builder, separator, "RowNumber", "Name", "IpAddress", "DeviceType", "GroupName", "Location", "Description", "AutoCheckEnabled", "CheckIntervalSeconds", "RetryIntervalSeconds", "RetryLimit", "Error");
 
         foreach (var error in errors)
         {
@@ -213,10 +228,13 @@ public sealed class CsvExportService
                 error.Name,
                 error.IpAddress,
                 error.DeviceType,
-                error.Location,
                 error.GroupName,
-                error.IsCritical,
-                error.Note,
+                error.Location,
+                error.Description,
+                error.AutoCheckEnabled,
+                error.CheckIntervalSeconds,
+                error.RetryIntervalSeconds,
+                error.RetryLimit,
                 error.Error);
         }
 
@@ -226,7 +244,7 @@ public sealed class CsvExportService
     public async Task<CsvImportPreview> ReadDeviceImportPreviewAsync(
         string filePath,
         IEnumerable<Device> existingDevices,
-        string delimiter = ";")
+        string delimiter = AppSettings.DefaultCsvDelimiter)
     {
         var separator = NormalizeDelimiter(delimiter);
         var lines = await File.ReadAllLinesAsync(filePath, Encoding.UTF8);
@@ -282,28 +300,39 @@ public sealed class CsvExportService
             var name = GetValue(values, indexes, "Name").Trim();
             var ipAddress = GetValue(values, indexes, "IpAddress").Trim();
             var deviceTypeText = GetValue(values, indexes, "DeviceType").Trim();
-            var location = indexes.ContainsKey("Location") ? GetValue(values, indexes, "Location").Trim() : string.Empty;
             var groupName = indexes.ContainsKey("GroupName") ? GetValue(values, indexes, "GroupName").Trim() : string.Empty;
-            var isCriticalText = indexes.ContainsKey("IsCritical") ? GetValue(values, indexes, "IsCritical").Trim() : "false";
-            var note = indexes.ContainsKey("Note") ? GetValue(values, indexes, "Note").Trim() : string.Empty;
+            var location = indexes.ContainsKey("Location") ? GetValue(values, indexes, "Location").Trim() : string.Empty;
+            var description = indexes.ContainsKey("Description")
+                ? GetValue(values, indexes, "Description").Trim()
+                : indexes.ContainsKey("Note") ? GetValue(values, indexes, "Note").Trim() : string.Empty;
+            var autoCheckText = indexes.ContainsKey("AutoCheckEnabled") ? GetValue(values, indexes, "AutoCheckEnabled").Trim() : "true";
+            var checkIntervalText = indexes.ContainsKey("CheckIntervalSeconds") ? GetValue(values, indexes, "CheckIntervalSeconds").Trim() : "0";
+            var retryIntervalText = indexes.ContainsKey("RetryIntervalSeconds") ? GetValue(values, indexes, "RetryIntervalSeconds").Trim() : "0";
+            var retryLimitText = indexes.ContainsKey("RetryLimit") ? GetValue(values, indexes, "RetryLimit").Trim() : "0";
 
             var error = ValidateImportRow(
                 name,
                 ipAddress,
                 deviceTypeText,
-                isCriticalText,
+                autoCheckText,
+                checkIntervalText,
+                retryIntervalText,
+                retryLimitText,
                 seenCsvIps,
                 out var deviceType,
-                out var isCritical);
+                out var autoCheckEnabled,
+                out var checkIntervalSeconds,
+                out var retryIntervalSeconds,
+                out var retryLimit);
 
             if (error is not null)
             {
-                rows.Add(CreateInvalidRow(rowNumber, name, ipAddress, deviceTypeText, location, groupName, isCriticalText, note, error));
+                rows.Add(CreateInvalidRow(rowNumber, name, ipAddress, deviceTypeText, groupName, location, description, autoCheckText, checkIntervalText, retryIntervalText, retryLimitText, error));
                 continue;
             }
 
             seenCsvIps.Add(ipAddress);
-            var record = new DeviceCsvRecord(rowNumber, name, ipAddress, deviceType, location, groupName, isCritical, note);
+            var record = new DeviceCsvRecord(rowNumber, name, ipAddress, deviceType, groupName, location, description, autoCheckEnabled, checkIntervalSeconds, retryIntervalSeconds, retryLimit);
             var exists = existingIps.Contains(ipAddress);
             rows.Add(new CsvImportPreviewRow
             {
@@ -311,10 +340,13 @@ public sealed class CsvExportService
                 Name = name,
                 IpAddress = ipAddress,
                 DeviceType = deviceType.ToDisplayName(),
-                Location = location,
                 GroupName = groupName,
-                IsCritical = isCritical,
-                Note = note,
+                Location = location,
+                Description = description,
+                AutoCheckEnabled = autoCheckEnabled,
+                CheckIntervalSeconds = checkIntervalSeconds,
+                RetryIntervalSeconds = retryIntervalSeconds,
+                RetryLimit = retryLimit,
                 Status = exists ? CsvImportRowStatus.Duplicate : CsvImportRowStatus.Add,
                 Record = record,
                 ExistsInDatabase = exists
@@ -329,10 +361,13 @@ public sealed class CsvExportService
         string name,
         string ipAddress,
         string deviceType,
-        string location,
         string groupName,
-        string isCritical,
-        string note,
+        string location,
+        string description,
+        string autoCheckEnabled,
+        string checkIntervalSeconds,
+        string retryIntervalSeconds,
+        string retryLimit,
         string error)
     {
         return new CsvImportPreviewRow
@@ -341,10 +376,13 @@ public sealed class CsvExportService
             Name = name,
             IpAddress = ipAddress,
             DeviceType = deviceType,
-            Location = location,
             GroupName = groupName,
-            IsCritical = bool.TryParse(isCritical, out var parsed) && parsed,
-            Note = note,
+            Location = location,
+            Description = description,
+            AutoCheckEnabled = bool.TryParse(autoCheckEnabled, out var parsedAutoCheck) && parsedAutoCheck,
+            CheckIntervalSeconds = int.TryParse(checkIntervalSeconds, out var parsedCheckInterval) ? parsedCheckInterval : 0,
+            RetryIntervalSeconds = int.TryParse(retryIntervalSeconds, out var parsedRetryInterval) ? parsedRetryInterval : 0,
+            RetryLimit = int.TryParse(retryLimit, out var parsedRetryLimit) ? parsedRetryLimit : 0,
             Status = CsvImportRowStatus.Invalid,
             ErrorMessage = error
         };
@@ -354,13 +392,22 @@ public sealed class CsvExportService
         string name,
         string ipAddress,
         string deviceTypeText,
-        string isCriticalText,
+        string autoCheckText,
+        string checkIntervalText,
+        string retryIntervalText,
+        string retryLimitText,
         HashSet<string> seenCsvIps,
         out DeviceType deviceType,
-        out bool isCritical)
+        out bool autoCheckEnabled,
+        out int checkIntervalSeconds,
+        out int retryIntervalSeconds,
+        out int retryLimit)
     {
         deviceType = DeviceType.Other;
-        isCritical = false;
+        autoCheckEnabled = true;
+        checkIntervalSeconds = 0;
+        retryIntervalSeconds = 0;
+        retryLimit = 0;
 
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -387,12 +434,47 @@ public sealed class CsvExportService
             return "Cihaz tipi geçersiz.";
         }
 
-        if (!TryParseBoolean(isCriticalText, out isCritical))
+        if (!TryParseBoolean(autoCheckText, out autoCheckEnabled))
         {
-            return "Kritik alanı true/false, evet/hayır veya 1/0 olmalıdır.";
+            return "AutoCheckEnabled alanı true/false, evet/hayır veya 1/0 olmalıdır.";
+        }
+
+        if (!TryParseOptionalInt(checkIntervalText, out checkIntervalSeconds)
+            || checkIntervalSeconds < 0
+            || (checkIntervalSeconds > 0
+                && (checkIntervalSeconds < AppSettings.MinDeviceCheckIntervalSeconds
+                    || checkIntervalSeconds > AppSettings.MaxDeviceCheckIntervalSeconds)))
+        {
+            return $"CheckIntervalSeconds 0 veya {AppSettings.MinDeviceCheckIntervalSeconds}-{AppSettings.MaxDeviceCheckIntervalSeconds} aralığında olmalıdır.";
+        }
+
+        if (!TryParseOptionalInt(retryIntervalText, out retryIntervalSeconds)
+            || retryIntervalSeconds < 0
+            || (retryIntervalSeconds > 0
+                && (retryIntervalSeconds < AppSettings.MinFailureRetryIntervalSeconds
+                    || retryIntervalSeconds > AppSettings.MaxFailureRetryIntervalSeconds)))
+        {
+            return $"RetryIntervalSeconds 0 veya {AppSettings.MinFailureRetryIntervalSeconds}-{AppSettings.MaxFailureRetryIntervalSeconds} aralığında olmalıdır.";
+        }
+
+        if (!TryParseOptionalInt(retryLimitText, out retryLimit)
+            || retryLimit < 0
+            || (retryLimit > 0
+                && (retryLimit < AppSettings.MinFailureRetryLimit
+                    || retryLimit > AppSettings.MaxFailureRetryLimit)))
+        {
+            return $"RetryLimit 0 veya {AppSettings.MinFailureRetryLimit}-{AppSettings.MaxFailureRetryLimit} aralığında olmalıdır.";
         }
 
         return null;
+    }
+
+    private static bool TryParseOptionalInt(string value, out int result)
+    {
+        result = 0;
+        return string.IsNullOrWhiteSpace(value)
+            || int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out result)
+            || int.TryParse(value, NumberStyles.Integer, CultureInfo.CurrentCulture, out result);
     }
 
     private static bool TryParseBoolean(string value, out bool result)
@@ -486,6 +568,6 @@ public sealed class CsvExportService
 
     private static char NormalizeDelimiter(string? delimiter)
     {
-        return string.IsNullOrEmpty(delimiter) ? ';' : delimiter[0];
+        return string.IsNullOrEmpty(delimiter) ? AppSettings.DefaultCsvDelimiter[0] : delimiter[0];
     }
 }
