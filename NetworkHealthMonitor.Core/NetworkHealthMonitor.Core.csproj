@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <RootNamespace>NetworkHealthMonitor</RootNamespace>
+    <AssemblyName>NetworkHealthMonitor.Core</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.9" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Data\**\*.cs" Link="Data\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\Models\**\*.cs" Link="Models\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\Services\*.cs" Exclude="..\Services\WpfDialogService.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\Infrastructure\ObservableObject.cs" Link="Infrastructure\ObservableObject.cs" />
+    <Compile Include="..\Infrastructure\AppErrorLogger.cs" Link="Infrastructure\AppErrorLogger.cs" />
+  </ItemGroup>
+
+</Project>

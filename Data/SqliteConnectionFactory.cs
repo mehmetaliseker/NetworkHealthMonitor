@@ -1,5 +1,6 @@
 using System.IO;
 using Microsoft.Data.Sqlite;
+using NetworkHealthMonitor.Infrastructure;
 using NetworkHealthMonitor.Models;
 
 namespace NetworkHealthMonitor.Data;
@@ -10,6 +11,7 @@ public sealed class SqliteConnectionFactory
 
     public SqliteConnectionFactory()
     {
+        DatabasePaths.EnsureDirectories();
         _connectionString = new SqliteConnectionStringBuilder
         {
             DataSource = DatabasePaths.DatabaseFilePath,
@@ -30,7 +32,13 @@ public sealed class SqliteConnectionFactory
 
     public async Task InitializeAsync()
     {
-        Directory.CreateDirectory(DatabasePaths.AppDataDirectory);
+        using var initializationLock = AcquireInitializationLock();
+
+        var migrationResult = await LegacyDataMigrationService.MigrateIfNeededAsync();
+        if (!migrationResult.Success)
+        {
+            AppErrorLogger.LogInfo($"Legacy data migration skipped: {migrationResult.Message}");
+        }
 
         await using var connection = await CreateOpenConnectionAsync();
         await ExecuteAsync(connection, "PRAGMA journal_mode = WAL;");
@@ -45,6 +53,41 @@ public sealed class SqliteConnectionFactory
         await CreateAppSettingsAsync(connection);
         await CreateIndexesAsync(connection);
         await MigrateLegacyGroupNamesAsync(connection);
+    }
+
+    private static IDisposable AcquireInitializationLock()
+    {
+        var mutex = new Mutex(false, @"Global\NetworkHealthMonitorDatabaseInitialization");
+        if (!mutex.WaitOne(TimeSpan.FromSeconds(60)))
+        {
+            mutex.Dispose();
+            throw new TimeoutException("Veritabanı başlatma kilidi zaman aşımına uğradı.");
+        }
+
+        return new MutexLease(mutex);
+    }
+
+    private sealed class MutexLease : IDisposable
+    {
+        private readonly Mutex _mutex;
+        private bool _disposed;
+
+        public MutexLease(Mutex mutex)
+        {
+            _mutex = mutex;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _mutex.ReleaseMutex();
+            _mutex.Dispose();
+            _disposed = true;
+        }
     }
 
     public async Task CheckpointAsync()
@@ -68,6 +111,8 @@ public sealed class SqliteConnectionFactory
                 IsActive INTEGER NOT NULL DEFAULT 1,
                 Description TEXT NOT NULL DEFAULT '',
                 LastRunAt TEXT NULL,
+                NextRunAt TEXT NULL,
+                LastStatus TEXT NOT NULL DEFAULT '',
                 CreatedAt TEXT NOT NULL,
                 UpdatedAt TEXT NOT NULL
             );
@@ -81,6 +126,8 @@ public sealed class SqliteConnectionFactory
         await EnsureColumnAsync(connection, "SchedulePlans", "IsActive", "INTEGER NOT NULL DEFAULT 1");
         await EnsureColumnAsync(connection, "SchedulePlans", "Description", "TEXT NOT NULL DEFAULT ''");
         await EnsureColumnAsync(connection, "SchedulePlans", "LastRunAt", "TEXT NULL");
+        await EnsureColumnAsync(connection, "SchedulePlans", "NextRunAt", "TEXT NULL");
+        await EnsureColumnAsync(connection, "SchedulePlans", "LastStatus", "TEXT NOT NULL DEFAULT ''");
         await EnsureColumnAsync(connection, "SchedulePlans", "CreatedAt", $"TEXT NOT NULL DEFAULT '{DateTime.Now:O}'");
         await EnsureColumnAsync(connection, "SchedulePlans", "UpdatedAt", $"TEXT NOT NULL DEFAULT '{DateTime.Now:O}'");
     }
@@ -290,6 +337,7 @@ public sealed class SqliteConnectionFactory
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_Outages_DeviceId_IsResolved_StartedAt ON Outages(DeviceId, IsResolved, StartedAt DESC);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_SchedulePlans_IsActive ON SchedulePlans(IsActive);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_SchedulePlans_IsActive_Target ON SchedulePlans(IsActive, TargetType, TargetValue);");
+        await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_SchedulePlans_IsActive_NextRunAt ON SchedulePlans(IsActive, NextRunAt);");
     }
 
     private static async Task MigrateLegacyGroupNamesAsync(SqliteConnection connection)

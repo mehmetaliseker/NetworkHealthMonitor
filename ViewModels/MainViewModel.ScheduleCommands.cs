@@ -2,6 +2,7 @@
 using System.Windows;
 using NetworkHealthMonitor.Models;
 using NetworkHealthMonitor.Services;
+using WpfApplication = System.Windows.Application;
 
 namespace NetworkHealthMonitor.ViewModels;
 
@@ -123,26 +124,44 @@ public sealed partial class MainViewModel
             return;
         }
 
-        await RunManualPingAsync(targets, PingTriggerType.Scheduled, plan);
-        await _schedulePlanRepository.UpdateLastRunAsync(plan.Id, DateTime.Now);
+        await RunManualPingAsync(targets, PingTriggerType.Manual, plan);
         await LoadSchedulePlansAsync();
     }
 
     private async Task StartSchedulerAsync()
     {
-        await _schedulerService.StartAsync();
-        IsSchedulerRunning = _schedulerService.IsRunning;
+        await ShowServiceControlInfoAsync();
     }
 
     private async Task StopSchedulerAsync()
     {
-        await _schedulerService.StopAsync();
-        IsSchedulerRunning = _schedulerService.IsRunning;
+        await ShowServiceControlInfoAsync();
+    }
+
+    private async Task ShowServiceControlInfoAsync()
+    {
+        await RefreshWorkerServiceStatusAsync();
+        _dialogService.ShowInfo(
+            "Windows Service yönetimi",
+            "Otomatik izleme Windows Service tarafından çalıştırılır. Başlatma, durdurma ve kurulum işlemleri için yönetici PowerShell ile scripts klasöründeki servis scriptlerini kullanın. Arayüz kapanırsa izleme servisi çalışmaya devam eder.");
+    }
+
+    private async Task RefreshWorkerServiceStatusAsync()
+    {
+        var status = await _windowsServiceStatusService.GetStatusAsync();
+        SchedulerStatusText = status.DisplayText;
+        IsSchedulerRunning = status.Code == "Running";
+    }
+
+    public async Task<string> GetWorkerServiceStatusTextAsync()
+    {
+        await RefreshWorkerServiceStatusAsync();
+        return SchedulerStatusText;
     }
 
     private void SchedulerStatusChanged(object? sender, SchedulerStatusChangedEventArgs e)
     {
-        var dispatcher = Application.Current?.Dispatcher;
+        var dispatcher = WpfApplication.Current?.Dispatcher;
         if (dispatcher is null || dispatcher.CheckAccess())
         {
             StatusMessage = e.Message;

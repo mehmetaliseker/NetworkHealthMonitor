@@ -20,7 +20,7 @@ public sealed class SchedulePlanRepository
         await using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT Id, Name, TargetType, TargetValue, IntervalMinutes, TimeoutMs, MaxParallelism,
-                   FailureThreshold, IsActive, Description, LastRunAt, CreatedAt, UpdatedAt
+                   FailureThreshold, IsActive, Description, LastRunAt, NextRunAt, LastStatus, CreatedAt, UpdatedAt
             FROM SchedulePlans
             ORDER BY IsActive DESC, Name COLLATE NOCASE;
             """;
@@ -41,10 +41,10 @@ public sealed class SchedulePlanRepository
         await using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT Id, Name, TargetType, TargetValue, IntervalMinutes, TimeoutMs, MaxParallelism,
-                   FailureThreshold, IsActive, Description, LastRunAt, CreatedAt, UpdatedAt
+                   FailureThreshold, IsActive, Description, LastRunAt, NextRunAt, LastStatus, CreatedAt, UpdatedAt
             FROM SchedulePlans
             WHERE IsActive = 1
-            ORDER BY Name COLLATE NOCASE;
+            ORDER BY COALESCE(NextRunAt, LastRunAt, CreatedAt), Name COLLATE NOCASE;
             """;
 
         await using var reader = await command.ExecuteReaderAsync();
@@ -67,10 +67,10 @@ public sealed class SchedulePlanRepository
         command.CommandText = """
             INSERT INTO SchedulePlans
                 (Name, TargetType, TargetValue, IntervalMinutes, TimeoutMs, MaxParallelism,
-                 FailureThreshold, IsActive, Description, LastRunAt, CreatedAt, UpdatedAt)
+                 FailureThreshold, IsActive, Description, LastRunAt, NextRunAt, LastStatus, CreatedAt, UpdatedAt)
             VALUES
                 (@Name, @TargetType, @TargetValue, @IntervalMinutes, @TimeoutMs, @MaxParallelism,
-                 @FailureThreshold, @IsActive, @Description, @LastRunAt, @CreatedAt, @UpdatedAt);
+                 @FailureThreshold, @IsActive, @Description, @LastRunAt, @NextRunAt, @LastStatus, @CreatedAt, @UpdatedAt);
             SELECT last_insert_rowid();
             """;
 
@@ -97,6 +97,8 @@ public sealed class SchedulePlanRepository
                 IsActive = @IsActive,
                 Description = @Description,
                 LastRunAt = @LastRunAt,
+                NextRunAt = @NextRunAt,
+                LastStatus = @LastStatus,
                 UpdatedAt = @UpdatedAt
             WHERE Id = @Id;
             """;
@@ -117,15 +119,24 @@ public sealed class SchedulePlanRepository
 
     public async Task UpdateLastRunAsync(int id, DateTime lastRunAt)
     {
+        await UpdateRunStateAsync(id, lastRunAt, lastRunAt.AddMinutes(AppSettings.DefaultSchedulePlanIntervalMinutes), string.Empty);
+    }
+
+    public async Task UpdateRunStateAsync(int id, DateTime lastRunAt, DateTime? nextRunAt, string lastStatus)
+    {
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
         await using var command = connection.CreateCommand();
         command.CommandText = """
             UPDATE SchedulePlans
             SET LastRunAt = @LastRunAt,
+                NextRunAt = @NextRunAt,
+                LastStatus = @LastStatus,
                 UpdatedAt = @UpdatedAt
             WHERE Id = @Id;
             """;
         AddParameter(command, "@LastRunAt", ToStorageDate(lastRunAt));
+        AddParameter(command, "@NextRunAt", nextRunAt.HasValue ? ToStorageDate(nextRunAt.Value) : null);
+        AddParameter(command, "@LastStatus", lastStatus);
         AddParameter(command, "@UpdatedAt", ToStorageDate(DateTime.Now));
         AddParameter(command, "@Id", id);
         await command.ExecuteNonQueryAsync();
@@ -162,8 +173,10 @@ public sealed class SchedulePlanRepository
             IsActive = reader.GetInt32(8) == 1,
             Description = reader.GetString(9),
             LastRunAt = reader.IsDBNull(10) ? null : FromStorageDate(reader.GetString(10)),
-            CreatedAt = FromStorageDate(reader.GetString(11)),
-            UpdatedAt = FromStorageDate(reader.GetString(12))
+            NextRunAt = reader.IsDBNull(11) ? null : FromStorageDate(reader.GetString(11)),
+            LastStatus = reader.GetString(12),
+            CreatedAt = FromStorageDate(reader.GetString(13)),
+            UpdatedAt = FromStorageDate(reader.GetString(14))
         };
     }
 
@@ -179,6 +192,8 @@ public sealed class SchedulePlanRepository
         AddParameter(command, "@IsActive", plan.IsActive ? 1 : 0);
         AddParameter(command, "@Description", plan.Description);
         AddParameter(command, "@LastRunAt", plan.LastRunAt.HasValue ? ToStorageDate(plan.LastRunAt.Value) : null);
+        AddParameter(command, "@NextRunAt", plan.NextRunAt.HasValue ? ToStorageDate(plan.NextRunAt.Value) : null);
+        AddParameter(command, "@LastStatus", plan.LastStatus);
         AddParameter(command, "@CreatedAt", ToStorageDate(plan.CreatedAt));
         AddParameter(command, "@UpdatedAt", ToStorageDate(plan.UpdatedAt));
     }

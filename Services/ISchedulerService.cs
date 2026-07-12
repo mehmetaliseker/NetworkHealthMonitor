@@ -8,5 +8,7 @@ public interface ISchedulerService : IAsyncDisposable
 
     Task StartAsync(CancellationToken cancellationToken = default);
 
+    Task RunDuePlansOnceAsync(CancellationToken cancellationToken = default);
+
     Task StopAsync();
 }

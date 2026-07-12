@@ -22,7 +22,7 @@ public sealed class SchedulePlanService : ISchedulePlanService
 
         plan.Name = plan.Name.Trim();
         plan.TargetValue = NormalizeTargetValue(plan);
-        plan.IntervalMinutes = Math.Max(1, plan.IntervalMinutes);
+        plan.IntervalMinutes = Math.Clamp(plan.IntervalMinutes, AppSettings.MinSchedulePlanIntervalMinutes, AppSettings.MaxSchedulePlanIntervalMinutes);
         plan.TimeoutMs = Math.Clamp(plan.TimeoutMs, AppSettings.MinPingTimeoutMs, AppSettings.MaxPingTimeoutMs);
         plan.MaxParallelism = Math.Clamp(plan.MaxParallelism, AppSettings.MinParallelPings, AppSettings.MaxParallelPingsLimit);
         plan.FailureThreshold = Math.Clamp(plan.FailureThreshold, AppSettings.MinFailureThreshold, AppSettings.MaxFailureThreshold);
@@ -60,9 +60,9 @@ public sealed class SchedulePlanService : ISchedulePlanService
             return OperationResult.Fail("Bu plan adı zaten kullanılıyor.");
         }
 
-        if (plan.IntervalMinutes < 1)
+        if (plan.IntervalMinutes < AppSettings.MinSchedulePlanIntervalMinutes || plan.IntervalMinutes > AppSettings.MaxSchedulePlanIntervalMinutes)
         {
-            return OperationResult.Fail("Kontrol sıklığı en az 1 dakika olmalıdır.");
+            return OperationResult.Fail($"Kontrol sıklığı {AppSettings.MinSchedulePlanIntervalMinutes} dakika ile {AppSettings.MaxSchedulePlanIntervalMinutes / 60} saat arasında olmalıdır.");
         }
 
         if (plan.TimeoutMs < AppSettings.MinPingTimeoutMs || plan.TimeoutMs > AppSettings.MaxPingTimeoutMs)

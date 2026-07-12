@@ -39,6 +39,10 @@ public sealed class PingService : IPingService
                 $"Yanıt alınamadı: {statusText}",
                 statusText);
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (PingException ex)
         {
             return new PingDeviceResult(

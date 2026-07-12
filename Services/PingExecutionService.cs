@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.IO;
 using NetworkHealthMonitor.Data;
 using NetworkHealthMonitor.Models;
 
@@ -49,16 +50,24 @@ public sealed class PingExecutionService : IPingExecutionService
             .DistinctBy(device => device.Id)
             .ToList();
 
-        var acquired = new List<Device>();
+        var acquired = new List<DevicePingLease>();
         var skipped = 0;
         foreach (var device in candidates)
         {
-            if (_runningDeviceIds.TryAdd(device.Id, 0))
+            if (!_runningDeviceIds.TryAdd(device.Id, 0))
             {
-                acquired.Add(device);
+                skipped++;
                 continue;
             }
 
+            var lease = DevicePingLease.TryAcquire(device);
+            if (lease is not null)
+            {
+                acquired.Add(lease);
+                continue;
+            }
+
+            _runningDeviceIds.TryRemove(device.Id, out _);
             skipped++;
         }
 
@@ -73,7 +82,8 @@ public sealed class PingExecutionService : IPingExecutionService
             var groups = await _deviceGroupRepository.GetAllAsync();
             var groupsById = groups.ToDictionary(group => group.Id);
             var groupsByName = groups.ToDictionary(group => group.Name, StringComparer.OrdinalIgnoreCase);
-            var policies = acquired.ToDictionary(
+            var acquiredDevices = acquired.Select(item => item.Device).ToList();
+            var policies = acquiredDevices.ToDictionary(
                 device => device.Id,
                 device => _deviceCheckPolicyService.ResolvePolicy(
                     device,
@@ -81,7 +91,7 @@ public sealed class PingExecutionService : IPingExecutionService
                     schedulePlan,
                     settings,
                     options));
-            var rawResults = await PingByEffectiveTimeoutAsync(acquired, policies, options, progress, cancellationToken);
+            var rawResults = await PingByEffectiveTimeoutAsync(acquiredDevices, policies, options, progress, cancellationToken);
             var results = rawResults
                 .Select(result =>
                 {
@@ -103,7 +113,8 @@ public sealed class PingExecutionService : IPingExecutionService
         {
             foreach (var device in acquired)
             {
-                _runningDeviceIds.TryRemove(device.Id, out _);
+                _runningDeviceIds.TryRemove(device.Device.Id, out _);
+                device.Dispose();
             }
         }
     }
@@ -193,5 +204,50 @@ public sealed class PingExecutionService : IPingExecutionService
         return !string.IsNullOrWhiteSpace(device.GroupName) && groupsByName.TryGetValue(device.GroupName, out var groupByName)
             ? groupByName
             : null;
+    }
+
+    private sealed class DevicePingLease : IDisposable
+    {
+        private readonly FileStream _lockStream;
+        private bool _disposed;
+
+        private DevicePingLease(Device device, FileStream lockStream)
+        {
+            Device = device;
+            _lockStream = lockStream;
+        }
+
+        public Device Device { get; }
+
+        public static DevicePingLease? TryAcquire(Device device)
+        {
+            var lockDirectory = Path.Combine(DatabasePaths.DataDirectory, "locks");
+            Directory.CreateDirectory(lockDirectory);
+            var lockPath = Path.Combine(lockDirectory, $"device-{device.Id}.lock");
+            try
+            {
+                var stream = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                return new DevicePingLease(device, stream);
+            }
+            catch (IOException)
+            {
+                return null;
+            }
+            catch
+            {
+                throw;
+            }
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _lockStream.Dispose();
+            _disposed = true;
+        }
     }
 }

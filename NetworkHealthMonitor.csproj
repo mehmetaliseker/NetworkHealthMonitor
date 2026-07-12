@@ -6,10 +6,27 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.9" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="NetworkHealthMonitor.Core\NetworkHealthMonitor.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="Data\**\*.cs" />
+    <Compile Remove="Models\**\*.cs" />
+    <Compile Remove="Services\**\*.cs" />
+    <Compile Remove="Infrastructure\AppErrorLogger.cs" />
+    <Compile Remove="Infrastructure\ObservableObject.cs" />
+    <Compile Remove="NetworkHealthMonitor.Core\**\*.cs" />
+    <Compile Remove="NetworkHealthMonitor.Worker\**\*.cs" />
+    <Compile Remove="NetworkHealthMonitor.Tests\**\*.cs" />
+    <Compile Include="Services\WpfDialogService.cs" />
   </ItemGroup>
 
 </Project>

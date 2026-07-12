@@ -1,8 +1,14 @@
 using System.ComponentModel;
+using System.Drawing;
 using System.Windows;
+using System.Windows.Threading;
 using NetworkHealthMonitor.Data;
+using NetworkHealthMonitor.Infrastructure;
 using NetworkHealthMonitor.Services;
 using NetworkHealthMonitor.ViewModels;
+using Forms = System.Windows.Forms;
+using WpfApplication = System.Windows.Application;
+using WpfMessageBox = System.Windows.MessageBox;
 
 namespace NetworkHealthMonitor;
 
@@ -10,8 +16,10 @@ public partial class MainWindow : Window
 {
     private readonly SqliteConnectionFactory _connectionFactory;
     private readonly MainViewModel _viewModel;
+    private readonly Forms.NotifyIcon _notifyIcon;
     private bool _loaded;
     private bool _closingHandled;
+    private bool _exitRequested;
 
     public MainWindow()
     {
@@ -43,6 +51,7 @@ public partial class MainWindow : Window
             deviceRepository,
             deviceGroupRepository,
             schedulePlanRepository,
+            pingLogRepository,
             pingExecutionService,
             schedulePlanTargetResolver,
             deviceCheckPolicyService,
@@ -71,6 +80,9 @@ public partial class MainWindow : Window
         DataContext = _viewModel;
         Loaded += MainWindowLoaded;
         Closing += MainWindowClosing;
+        StateChanged += MainWindowStateChanged;
+
+        _notifyIcon = CreateNotifyIcon();
     }
 
     private async void MainWindowLoaded(object sender, RoutedEventArgs e)
@@ -89,11 +101,13 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(
-                $"Uygulama başlatılamadı.\n\n{ex.Message}",
+            AppErrorLogger.Log(ex, "Startup");
+            WpfMessageBox.Show(
+                $"Uygulama başlatılamadı. Teknik ayrıntılar log dosyasına yazıldı:\n{AppErrorLogger.LogFilePath}",
                 "Başlatma hatası",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
+            WpfApplication.Current.Shutdown(1);
         }
     }
 
@@ -106,7 +120,87 @@ public partial class MainWindow : Window
 
         e.Cancel = true;
         _closingHandled = true;
-        await _viewModel.DisposeAsync();
+
+        try
+        {
+            if (!_exitRequested && !string.Equals(Environment.GetEnvironmentVariable("NHM_SUPPRESS_CLOSE_NOTICE"), "1", StringComparison.Ordinal))
+            {
+                WpfMessageBox.Show(
+                    "Arayüz kapanacak. Network Health Monitor Worker servisi kurulu ve çalışıyorsa izleme arka planda devam eder.",
+                    "Arayüz kapatılıyor",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+
+            await _viewModel.DisposeAsync();
+        }
+        catch (Exception ex)
+        {
+            AppErrorLogger.Log(ex, "Shutdown");
+        }
+        finally
+        {
+            _notifyIcon.Visible = false;
+            _notifyIcon.Dispose();
+            Closing -= MainWindowClosing;
+            _ = Dispatcher.BeginInvoke(Close, DispatcherPriority.Background);
+        }
+    }
+
+    private Forms.NotifyIcon CreateNotifyIcon()
+    {
+        var contextMenu = new Forms.ContextMenuStrip();
+        contextMenu.Items.Add("Uygulamayı Aç", null, (_, _) => ShowFromTray());
+        contextMenu.Items.Add("Servis Durumu", null, async (_, _) => await ShowServiceStatusAsync());
+        contextMenu.Items.Add("Son Kontrol Özeti", null, (_, _) => ShowLastSummary());
+        contextMenu.Items.Add(new Forms.ToolStripSeparator());
+        contextMenu.Items.Add("Arayüzden Çık", null, (_, _) => ExitFromTray());
+
+        var notifyIcon = new Forms.NotifyIcon
+        {
+            Icon = SystemIcons.Application,
+            Text = "Ağ Cihazları Kontrol Paneli",
+            ContextMenuStrip = contextMenu,
+            Visible = true
+        };
+        notifyIcon.DoubleClick += (_, _) => ShowFromTray();
+        return notifyIcon;
+    }
+
+    private void MainWindowStateChanged(object? sender, EventArgs e)
+    {
+        if (WindowState != WindowState.Minimized)
+        {
+            return;
+        }
+
+        Hide();
+        _notifyIcon.BalloonTipTitle = "Ağ Cihazları Kontrol Paneli";
+        _notifyIcon.BalloonTipText = "Arayüz sistem tepsisine alındı. İzleme servisi ayrı çalışır.";
+        _notifyIcon.ShowBalloonTip(2500);
+    }
+
+    private void ShowFromTray()
+    {
+        Show();
+        WindowState = WindowState.Normal;
+        Activate();
+    }
+
+    private async Task ShowServiceStatusAsync()
+    {
+        var status = await _viewModel.GetWorkerServiceStatusTextAsync();
+        WpfMessageBox.Show($"Network Health Monitor Worker durumu: {status}", "Servis Durumu", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void ShowLastSummary()
+    {
+        WpfMessageBox.Show(_viewModel.StatusMessage, "Son Kontrol Özeti", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void ExitFromTray()
+    {
+        _exitRequested = true;
         Close();
     }
 }

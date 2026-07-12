@@ -26,10 +26,7 @@ public sealed partial class MainViewModel
             ApplySettings(settings);
             await RunStartupRetentionCleanupAsync(settings);
             await ReloadAllAsync();
-            if (StartSchedulePlansOnStartup)
-            {
-                await StartSchedulerAsync();
-            }
+            await RefreshWorkerServiceStatusAsync();
 
             StatusMessage = "Hazır.";
         }
@@ -43,7 +40,7 @@ public sealed partial class MainViewModel
     {
         _pingCancellationTokenSource?.Cancel();
         _pingCancellationTokenSource?.Dispose();
-        await _schedulerService.StopAsync();
+        await _schedulerService.DisposeAsync();
         _schedulerService.StatusChanged -= SchedulerStatusChanged;
     }
 

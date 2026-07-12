@@ -9,6 +9,8 @@ public sealed class AppSettings
     public const int MaxParallelPingsLimit = 128;
     public const int DefaultMaxParallelPings = 32;
     public const int DefaultSchedulePlanIntervalMinutes = 10;
+    public const int MinSchedulePlanIntervalMinutes = 10;
+    public const int MaxSchedulePlanIntervalMinutes = 360;
     public const int DefaultSchedulePlanMaxParallelism = 16;
     public const int MinFailureThreshold = 1;
     public const int MaxFailureThreshold = 20;

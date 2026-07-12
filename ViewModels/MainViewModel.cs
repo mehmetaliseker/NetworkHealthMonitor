@@ -44,6 +44,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly AppSettingsService _settingsService;
     private readonly IDialogService _dialogService;
     private readonly DataMaintenanceService _maintenanceService;
+    private readonly IWindowsServiceStatusService _windowsServiceStatusService;
 
     private CancellationTokenSource? _pingCancellationTokenSource;
     private bool _isInitialized;
@@ -126,6 +127,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private int _pingSuccessCount;
     private int _pingFailureCount;
     private bool _isSchedulerRunning;
+    private string _schedulerStatusText = "Bilinmiyor";
 
     public MainViewModel(
         DeviceRepository deviceRepository,
@@ -145,7 +147,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         IDeviceCheckPolicyService deviceCheckPolicyService,
         AppSettingsService settingsService,
         IDialogService dialogService,
-        DataMaintenanceService maintenanceService)
+        DataMaintenanceService maintenanceService,
+        IWindowsServiceStatusService? windowsServiceStatusService = null)
     {
         _deviceRepository = deviceRepository;
         _deviceGroupRepository = deviceGroupRepository;
@@ -165,6 +168,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _settingsService = settingsService;
         _dialogService = dialogService;
         _maintenanceService = maintenanceService;
+        _windowsServiceStatusService = windowsServiceStatusService ?? new WindowsServiceStatusService();
 
         DeviceTypeOptions = new ObservableCollection<DeviceTypeOption>(DeviceTypeOption.CreateAll());
         DeviceTypeFilterOptions = new ObservableCollection<string>(new[] { AllDeviceTypesText }.Concat(DeviceTypeOptions.Select(option => option.Label)));
@@ -242,8 +246,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         EditSelectedSchedulePlanCommand = new RelayCommand(() => StartEditSchedulePlan(SelectedSchedulePlan), () => SelectedSchedulePlan is not null && !IsBusy);
         DeleteSelectedSchedulePlanCommand = new AsyncRelayCommand(() => DeleteSchedulePlanAsync(SelectedSchedulePlan), () => SelectedSchedulePlan is not null && !IsBusy);
         RunSelectedSchedulePlanCommand = new AsyncRelayCommand(() => SelectedSchedulePlan is null ? Task.CompletedTask : RunSchedulePlanNowAsync(SelectedSchedulePlan), () => SelectedSchedulePlan is { IsActive: true } && !IsBusy);
-        StartSchedulerCommand = new AsyncRelayCommand(StartSchedulerAsync, () => !IsSchedulerRunning && !IsBusy);
-        StopSchedulerCommand = new AsyncRelayCommand(StopSchedulerAsync, () => IsSchedulerRunning && !IsBusy);
+        StartSchedulerCommand = new AsyncRelayCommand(ShowServiceControlInfoAsync, () => !IsBusy);
+        StopSchedulerCommand = new AsyncRelayCommand(ShowServiceControlInfoAsync, () => !IsBusy);
 
         RefreshLogsCommand = new AsyncRelayCommand(LoadLogsAsync, () => !IsBusy);
         ClearLogsCommand = new AsyncRelayCommand(ClearLogsAsync, () => Logs.Count > 0 && !IsBusy);
@@ -976,7 +980,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    public string SchedulerStatusText => IsSchedulerRunning ? "Çalışıyor" : "Durduruldu";
+    public string SchedulerStatusText
+    {
+        get => _schedulerStatusText;
+        private set => SetProperty(ref _schedulerStatusText, value ?? "Bilinmiyor");
+    }
 
     public int PingTotalCount
     {

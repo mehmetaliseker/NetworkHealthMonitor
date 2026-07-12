@@ -565,13 +565,31 @@ public sealed class CsvExportService
 
     private static string Escape(string? value, char separator)
     {
-        var safeValue = value ?? string.Empty;
+        var safeValue = SanitizeSpreadsheetFormula(value ?? string.Empty);
         if (safeValue.Contains(separator) || safeValue.Contains('"') || safeValue.Contains('\r') || safeValue.Contains('\n'))
         {
             return $"\"{safeValue.Replace("\"", "\"\"")}\"";
         }
 
         return safeValue;
+    }
+
+    private static string SanitizeSpreadsheetFormula(string value)
+    {
+        var firstContentIndex = 0;
+        while (firstContentIndex < value.Length && char.IsWhiteSpace(value[firstContentIndex]))
+        {
+            firstContentIndex++;
+        }
+
+        if (firstContentIndex >= value.Length)
+        {
+            return value;
+        }
+
+        return value[firstContentIndex] is '=' or '+' or '-' or '@'
+            ? value.Insert(firstContentIndex, "'")
+            : value;
     }
 
     private static string FormatPercent(double? value)

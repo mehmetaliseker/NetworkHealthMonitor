@@ -16,6 +16,8 @@ public sealed class SchedulePlan : ObservableObject
     private bool _isActive = true;
     private string _description = string.Empty;
     private DateTime? _lastRunAt;
+    private DateTime? _nextRunAt;
+    private string _lastStatus = string.Empty;
     private DateTime _createdAt = DateTime.Now;
     private DateTime _updatedAt = DateTime.Now;
 
@@ -115,6 +117,24 @@ public sealed class SchedulePlan : ObservableObject
         }
     }
 
+    public DateTime? NextRunAt
+    {
+        get => _nextRunAt;
+        set
+        {
+            if (SetProperty(ref _nextRunAt, value))
+            {
+                OnPropertyChanged(nameof(NextRunAtText));
+            }
+        }
+    }
+
+    public string LastStatus
+    {
+        get => _lastStatus;
+        set => SetProperty(ref _lastStatus, value ?? string.Empty);
+    }
+
     public DateTime CreatedAt
     {
         get => _createdAt;
@@ -134,6 +154,8 @@ public sealed class SchedulePlan : ObservableObject
     public string IsActiveText => IsActive ? "Aktif" : "Pasif";
 
     public string LastRunAtText => LastRunAt.HasValue ? LastRunAt.Value.ToString("dd.MM.yyyy HH:mm:ss") : "-";
+
+    public string NextRunAtText => NextRunAt.HasValue ? NextRunAt.Value.ToString("dd.MM.yyyy HH:mm:ss") : "-";
 
     public PingOptions ToPingOptions()
     {

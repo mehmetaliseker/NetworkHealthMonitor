@@ -60,7 +60,7 @@
                 </StackPanel>
 
                 <StackPanel DockPanel.Dock="Bottom" VerticalAlignment="Bottom">
-                    <TextBlock Text="Scheduler"
+                    <TextBlock Text="Worker Servisi"
                                Foreground="{StaticResource SidebarMutedBrush}"
                                FontSize="12" />
                     <TextBlock Text="{Binding SchedulerStatusText}"
@@ -678,11 +678,10 @@
                     </Grid.RowDefinitions>
                     <Border Grid.Row="0" Grid.ColumnSpan="2" Style="{StaticResource SectionBorderStyle}" Margin="0,0,0,12">
                         <WrapPanel VerticalAlignment="Center">
-                            <TextBlock Text="Scheduler:" VerticalAlignment="Center" FontWeight="SemiBold" Margin="4,0,4,0" />
+                            <TextBlock Text="Worker Servisi:" VerticalAlignment="Center" FontWeight="SemiBold" Margin="4,0,4,0" />
                             <TextBlock Text="{Binding SchedulerStatusText}" VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}" Margin="0,0,14,0" />
-                            <Button Content="Başlat" Command="{Binding StartSchedulerCommand}" />
-                            <Button Content="Durdur" Command="{Binding StopSchedulerCommand}" Style="{StaticResource DangerButtonStyle}" />
-                            <Button Content="Seçili Planı Çalıştır" Command="{Binding RunSelectedSchedulePlanCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                            <Button Content="Servis Yönetimi" Command="{Binding StartSchedulerCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                            <Button Content="Seçili Planı Manuel Çalıştır" Command="{Binding RunSelectedSchedulePlanCommand}" Style="{StaticResource SecondaryButtonStyle}" />
                         </WrapPanel>
                     </Border>
                     <DataGrid Grid.Row="1"
@@ -699,6 +698,8 @@
                             <DataGridTextColumn Header="Eşik" Binding="{Binding FailureThreshold}" Width="60" />
                             <DataGridTextColumn Header="Durum" Binding="{Binding IsActiveText}" Width="80" />
                             <DataGridTextColumn Header="Son çalışma" Binding="{Binding LastRunAtText}" Width="145" />
+                            <DataGridTextColumn Header="Sonraki" Binding="{Binding NextRunAtText}" Width="145" />
+                            <DataGridTextColumn Header="Son sonuç" Binding="{Binding LastStatus}" Width="120" />
                         </DataGrid.Columns>
                     </DataGrid>
                     <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource SectionBorderStyle}">
@@ -867,7 +868,7 @@
                             <TextBox Text="{Binding AutoCheckIntervalMinutes, UpdateSourceTrigger=PropertyChanged}"
                                      ToolTip="Cihaz özel aralığı 0 ve grup varsayılanı boşsa kullanılır."
                                      Margin="0,4,0,12" />
-                            <TextBlock Text="Scheduler kontrol sıklığı (sn)" FontWeight="SemiBold" />
+                            <TextBlock Text="Worker servis kontrol sıklığı (sn)" FontWeight="SemiBold" />
                             <TextBox Text="{Binding SchedulerPollIntervalSeconds, UpdateSourceTrigger=PropertyChanged}"
                                      ToolTip="Planların zamanı gelmiş mi kontrol eden düşük maliyetli döngü sıklığı."
                                      Margin="0,4,0,12" />
@@ -875,10 +876,10 @@
                                       IsChecked="{Binding AutoCheckEnabled}"
                                       FontWeight="SemiBold"
                                       Margin="0,2,0,12" />
-                            <CheckBox Content="Uygulama başlangıcında otomatik planları başlat"
-                                      IsChecked="{Binding StartSchedulePlansOnStartup}"
-                                      FontWeight="SemiBold"
-                                      Margin="0,2,0,12" />
+                            <TextBlock Text="Aktif planlar Windows Service tarafından çalıştırılır; arayüz kapansa da servis çalışmaya devam eder."
+                                       Foreground="{StaticResource MutedTextBrush}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,12" />
 
                             <Separator Margin="0,8,0,14" />
                             <TextBlock Text="Retry / Akıllı Kontrol Ayarları" FontSize="18" FontWeight="Bold" Margin="0,0,0,12" />
@@ -938,7 +939,15 @@
                             <TextBlock Text="Tema" FontWeight="SemiBold" />
                             <ComboBox ItemsSource="{Binding ThemeOptions}" SelectedItem="{Binding Theme}" Margin="0,4,0,12" />
                             <TextBlock Text="Veritabanı konumu" FontWeight="SemiBold" />
-                            <TextBox Text="{Binding DatabaseLocation, Mode=OneWay}" IsReadOnly="True" Margin="0,4,0,16" />
+                            <Border BorderBrush="{StaticResource PanelBorderBrush}"
+                                    BorderThickness="1"
+                                    Padding="9,6"
+                                    Margin="0,4,0,16">
+                                <TextBlock Text="{Binding DatabaseLocation, Mode=OneWay}"
+                                           TextWrapping="Wrap"
+                                           TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding DatabaseLocation, Mode=OneWay}" />
+                            </Border>
                             <WrapPanel>
                                 <Button Content="Ayarları Kaydet" Command="{Binding SaveSettingsCommand}" />
                                 <Button Content="Ayarları Sıfırla" Command="{Binding ResetSettingsCommand}" Style="{StaticResource SecondaryButtonStyle}" />

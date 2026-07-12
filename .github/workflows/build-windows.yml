@@ -1,4 +1,4 @@
-name: Build Windows Publish
+name: Build Windows Server Package
 
 on:
   workflow_dispatch:
@@ -23,39 +23,63 @@ jobs:
         with:
           dotnet-version: '9.0.x'
 
-      - name: Find project file
+      - name: Restore solution
         shell: pwsh
-        run: |
-          $project = Get-ChildItem -Recurse -Filter *.csproj | Select-Object -First 1
-
-          if ($null -eq $project) {
-            throw "No .csproj file found."
-          }
-
-          "PROJECT_PATH=$($project.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "Project found: $($project.FullName)"
-
-      - name: Restore
-        shell: pwsh
-        run: dotnet restore "$env:PROJECT_PATH"
+        run: dotnet restore .\NetworkHealthMonitor.sln
 
       - name: Build Release
         shell: pwsh
-        run: dotnet build "$env:PROJECT_PATH" -c Release --no-restore
+        run: dotnet build .\NetworkHealthMonitor.sln -c Release --no-restore
 
-      - name: Publish Windows x64 self-contained
+      - name: Test Release
+        shell: pwsh
+        run: dotnet test .\NetworkHealthMonitor.sln -c Release --no-build
+
+      - name: Publish WPF UI
         shell: pwsh
         run: |
-          dotnet publish "$env:PROJECT_PATH" `
+          dotnet publish .\NetworkHealthMonitor.csproj `
             -c Release `
             -r win-x64 `
             --self-contained true `
-            -p:PublishSingleFile=false `
-            -p:EnableCompressionInSingleFile=false `
-            -o "$env:GITHUB_WORKSPACE\publish"
+            -o .\publish\server\ui `
+            /p:PublishSingleFile=true `
+            /p:IncludeNativeLibrariesForSelfExtract=true `
+            /p:EnableCompressionInSingleFile=true `
+            /p:DebugType=None `
+            /p:DebugSymbols=false
 
-      - name: Upload publish artifact
+      - name: Publish Worker Service
+        shell: pwsh
+        run: |
+          dotnet publish .\NetworkHealthMonitor.Worker\NetworkHealthMonitor.Worker.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -o .\publish\server\worker `
+            /p:PublishSingleFile=true `
+            /p:IncludeNativeLibrariesForSelfExtract=true `
+            /p:EnableCompressionInSingleFile=true `
+            /p:DebugType=None `
+            /p:DebugSymbols=false
+
+      - name: Stage server package
+        shell: pwsh
+        run: |
+          $stage = ".\publish\server-package"
+          if (Test-Path $stage) {
+            Remove-Item $stage -Recurse -Force
+          }
+
+          New-Item -ItemType Directory -Force -Path "$stage\ui", "$stage\worker", "$stage\scripts" | Out-Null
+          Copy-Item .\publish\server\ui\NetworkHealthMonitor.exe "$stage\ui\"
+          Copy-Item .\publish\server\worker\NetworkHealthMonitor.Worker.exe "$stage\worker\"
+          Copy-Item .\scripts\install-service.ps1, .\scripts\uninstall-service.ps1, .\scripts\start-service.ps1, .\scripts\stop-service.ps1, .\scripts\service-status.ps1 "$stage\scripts\"
+          Copy-Item .\README-SERVER.md "$stage\README-SERVER.md"
+
+      - name: Upload server artifact
         uses: actions/upload-artifact@v4
         with:
-          name: NetworkHealthMonitor-win-x64
-          path: publish
+          name: NetworkHealthMonitor-Server-win-x64
+          path: publish/server-package
+          if-no-files-found: error
