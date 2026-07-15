@@ -29,6 +29,8 @@ public sealed partial class MainViewModel
         device.FailureThreshold = FormFailureThreshold;
         device.IsCritical = FormIsCritical;
         device.IsActive = FormIsActive;
+        device.IsEnabled = FormIsActive && !device.IsDeleted;
+        device.SlaTargetAvailabilityPercent = FormSlaTargetAvailabilityPercent;
 
         IsBusy = true;
         try
@@ -74,6 +76,7 @@ public sealed partial class MainViewModel
         FormFailureThreshold = device.FailureThreshold;
         FormIsCritical = device.IsCritical;
         FormIsActive = device.IsActive;
+        FormSlaTargetAvailabilityPercent = device.SlaTargetAvailabilityPercent;
         OnPropertyChanged(nameof(DeviceFormTitle));
         OnPropertyChanged(nameof(DeviceFormActionText));
         CurrentSection = SectionDeviceEdit;
@@ -97,6 +100,7 @@ public sealed partial class MainViewModel
         FormFailureThreshold = 0;
         FormIsCritical = false;
         FormIsActive = true;
+        FormSlaTargetAvailabilityPercent = null;
         OnPropertyChanged(nameof(DeviceFormTitle));
         OnPropertyChanged(nameof(DeviceFormActionText));
     }
@@ -108,7 +112,21 @@ public sealed partial class MainViewModel
             return;
         }
 
-        if (!_dialogService.Confirm("Cihaz silinsin mi?", $"{device.Name} cihazı silinecek. Ping logları korunur."))
+        var activePlanCount = SchedulePlans.Count(plan =>
+            plan.IsActive
+            && _schedulePlanTargetResolver.ResolveTargets(plan, new[] { device }, DeviceGroups, respectAutoCheck: false).Any());
+        var message = $"""
+            Cihaz adi: {device.Name}
+            IP adresi: {device.IpAddress}
+            Cihaz tipi: {device.DeviceType.ToDisplayName()}
+            Grup: {(string.IsNullOrWhiteSpace(device.GroupName) ? "-" : device.GroupName)}
+            Etkilenecek aktif plan sayisi: {activePlanCount}
+
+            Bu cihaz otomatik kontrollerden cikarilacaktir.
+            Gecmis ping ve kesinti kayitlari korunacaktir.
+            """;
+
+        if (!_dialogService.Confirm("Cihaz silinsin mi?", message))
         {
             return;
         }
@@ -117,6 +135,31 @@ public sealed partial class MainViewModel
         try
         {
             var result = await _deviceService.DeleteAsync(device);
+            StatusMessage = result.Message;
+            await ReloadAllAsync();
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task RestoreDeviceAsync(Device? device)
+    {
+        if (device is null)
+        {
+            return;
+        }
+
+        if (!_dialogService.Confirm("Cihaz geri yuklensin mi?", $"{device.Name} tekrar aktif hale getirilecek. Otomatik kontrol tekrar acilir."))
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var result = await _deviceService.RestoreAsync(device);
             StatusMessage = result.Message;
             await ReloadAllAsync();
         }
@@ -141,6 +184,7 @@ public sealed partial class MainViewModel
         group.DefaultFailureRetryIntervalSeconds = GroupFormDefaultFailureRetryIntervalSeconds;
         group.DefaultFailureRetryLimit = GroupFormDefaultFailureRetryLimit;
         group.DefaultFailureThreshold = GroupFormDefaultFailureThreshold;
+        group.TargetAvailabilityPercent = GroupFormTargetAvailabilityPercent;
 
         IsBusy = true;
         try
@@ -179,6 +223,7 @@ public sealed partial class MainViewModel
         GroupFormDefaultFailureRetryIntervalSeconds = group.DefaultFailureRetryIntervalSeconds;
         GroupFormDefaultFailureRetryLimit = group.DefaultFailureRetryLimit;
         GroupFormDefaultFailureThreshold = group.DefaultFailureThreshold;
+        GroupFormTargetAvailabilityPercent = group.TargetAvailabilityPercent;
         OnPropertyChanged(nameof(GroupFormTitle));
         OnPropertyChanged(nameof(GroupFormActionText));
     }
@@ -195,6 +240,7 @@ public sealed partial class MainViewModel
         GroupFormDefaultFailureRetryIntervalSeconds = null;
         GroupFormDefaultFailureRetryLimit = null;
         GroupFormDefaultFailureThreshold = null;
+        GroupFormTargetAvailabilityPercent = null;
         OnPropertyChanged(nameof(GroupFormTitle));
         OnPropertyChanged(nameof(GroupFormActionText));
     }
@@ -215,6 +261,52 @@ public sealed partial class MainViewModel
         try
         {
             var result = await _deviceGroupService.DeleteAsync(group);
+            StatusMessage = result.Message;
+            await ReloadAllAsync();
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task DeleteGroupDevicesAsync(DeviceGroup? group)
+    {
+        if (group is null)
+        {
+            return;
+        }
+
+        var devices = Devices.Where(device => !device.IsDeleted && device.GroupId == group.Id).ToList();
+        var activePlanCount = SchedulePlans.Count(plan =>
+            plan.IsActive
+            && _schedulePlanTargetResolver.ResolveTargets(plan, devices, DeviceGroups, respectAutoCheck: false).Any());
+
+        if (devices.Count == 0)
+        {
+            _dialogService.ShowWarning("Cihaz bulunamadi", "Bu grupta silinecek aktif cihaz yok.");
+            return;
+        }
+
+        var message = $"""
+            Grup: {group.Name}
+            Bu grupta {devices.Count} aktif cihaz bulunmaktadir.
+            Aktif plan sayisi: {activePlanCount}
+
+            {devices.Count} cihaz otomatik kontrollerden cikarilacaktir.
+            Gecmis ping ve kesinti kayitlari korunacaktir.
+            {(DeleteEmptyGroupAfterDeviceDelete ? "Cihazlar silindikten sonra bos grup da silinecektir." : "Grup kaydi korunacaktir.")}
+            """;
+
+        if (!_dialogService.Confirm("Bu gruptaki tum cihazlar silinsin mi?", message))
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var result = await _deviceService.DeleteGroupDevicesAsync(group, DeleteEmptyGroupAfterDeviceDelete);
             StatusMessage = result.Message;
             await ReloadAllAsync();
         }
@@ -252,7 +344,7 @@ public sealed partial class MainViewModel
         PingTriggerType triggerType,
         SchedulePlan? schedulePlan = null)
     {
-        var targets = devices.Where(device => device.IsActive).DistinctBy(device => device.Id).ToList();
+        var targets = devices.Where(device => device.IsActive && device.IsEnabled && !device.IsDeleted).DistinctBy(device => device.Id).ToList();
         if (targets.Count == 0)
         {
             _dialogService.ShowWarning("Cihaz bulunamadı", "Kontrol edilecek aktif cihaz bulunamadı.");

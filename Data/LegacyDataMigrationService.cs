@@ -12,40 +12,58 @@ public static class LegacyDataMigrationService
 
         if (File.Exists(DatabasePaths.DatabaseFilePath))
         {
-            return LegacyMigrationResult.Skipped("ProgramData veritabanı zaten mevcut.");
+            return LegacyMigrationResult.Skipped("ProgramData database already exists.");
+        }
+
+        if (File.Exists(DatabasePaths.LegacyProgramDataDatabaseFilePath))
+        {
+            return await CopyLegacyDatabaseAsync(
+                DatabasePaths.LegacyProgramDataDatabaseFilePath,
+                DatabasePaths.LegacyProgramDataSettingsFilePath,
+                "programdata-root");
         }
 
         if (!File.Exists(DatabasePaths.LegacyDatabaseFilePath))
         {
-            return LegacyMigrationResult.Skipped("Taşınacak eski LocalAppData veritabanı bulunamadı.");
+            return LegacyMigrationResult.Skipped("No legacy LocalAppData database was found.");
         }
 
-        if (!await CanOpenSqliteDatabaseAsync(DatabasePaths.LegacyDatabaseFilePath))
+        return await CopyLegacyDatabaseAsync(
+            DatabasePaths.LegacyDatabaseFilePath,
+            DatabasePaths.LegacySettingsFilePath,
+            "legacy-localappdata");
+    }
+
+    private static async Task<LegacyMigrationResult> CopyLegacyDatabaseAsync(
+        string sourceDatabasePath,
+        string sourceSettingsPath,
+        string sourceName)
+    {
+        if (!await CanOpenSqliteDatabaseAsync(sourceDatabasePath))
         {
-            return LegacyMigrationResult.Failed("Eski veritabanı SQLite olarak açılamadı.");
+            return LegacyMigrationResult.Failed("Legacy database could not be opened as SQLite.");
         }
 
         var backupPath = Path.Combine(
             DatabasePaths.BackupDirectory,
-            $"legacy-localappdata-{DateTime.Now:yyyyMMdd-HHmmss}.db");
+            $"{sourceName}-{DateTime.UtcNow:yyyyMMdd-HHmmss}.db");
 
-        File.Copy(DatabasePaths.LegacyDatabaseFilePath, backupPath, overwrite: false);
-        File.Copy(DatabasePaths.LegacyDatabaseFilePath, DatabasePaths.DatabaseFilePath, overwrite: false);
+        File.Copy(sourceDatabasePath, backupPath, overwrite: false);
+        File.Copy(sourceDatabasePath, DatabasePaths.DatabaseFilePath, overwrite: false);
 
         if (!await CanOpenSqliteDatabaseAsync(DatabasePaths.DatabaseFilePath))
         {
             File.Delete(DatabasePaths.DatabaseFilePath);
-            return LegacyMigrationResult.Failed("Kopyalanan ProgramData veritabanı açılamadı.");
+            return LegacyMigrationResult.Failed("Copied ProgramData database could not be opened.");
         }
 
-        if (!File.Exists(DatabasePaths.SettingsFilePath) && File.Exists(DatabasePaths.LegacySettingsFilePath))
+        if (!File.Exists(DatabasePaths.SettingsFilePath) && File.Exists(sourceSettingsPath))
         {
-            File.Copy(DatabasePaths.LegacySettingsFilePath, DatabasePaths.SettingsFilePath, overwrite: false);
+            File.Copy(sourceSettingsPath, DatabasePaths.SettingsFilePath, overwrite: false);
         }
 
-        var result = LegacyMigrationResult.Migrated(backupPath);
         AppErrorLogger.LogInfo($"Legacy data migration completed. Backup: {backupPath}");
-        return result;
+        return LegacyMigrationResult.Migrated(backupPath);
     }
 
     private static async Task<bool> CanOpenSqliteDatabaseAsync(string path)
@@ -83,7 +101,7 @@ public sealed record LegacyMigrationResult(bool WasMigrated, bool Success, strin
 
     public static LegacyMigrationResult Migrated(string backupPath)
     {
-        return new LegacyMigrationResult(true, true, "Eski LocalAppData veritabanı ProgramData altına taşındı.", backupPath);
+        return new LegacyMigrationResult(true, true, "Legacy data was copied to ProgramData.", backupPath);
     }
 
     public static LegacyMigrationResult Failed(string message)

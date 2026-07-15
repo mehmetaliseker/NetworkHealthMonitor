@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:converters="clr-namespace:NetworkHealthMonitor.Converters"
+        xmlns:infra="clr-namespace:NetworkHealthMonitor.Infrastructure"
         mc:Ignorable="d"
         Title="Ağ Cihazları Kontrol Paneli"
         Height="860"
@@ -54,8 +55,12 @@
                     <Button Content="Cihaz Ekle / Düzenle" Command="{Binding NavigateDeviceEditCommand}" Style="{StaticResource SidebarButtonStyle}" />
                     <Button Content="Cihaz Grupları" Command="{Binding NavigateGroupsCommand}" Style="{StaticResource SidebarButtonStyle}" />
                     <Button Content="Otomatik Kontrol Planları" Command="{Binding NavigateSchedulesCommand}" Style="{StaticResource SidebarButtonStyle}" />
-                    <Button Content="Uptime / Erişilebilirlik" Command="{Binding NavigateAvailabilityCommand}" Style="{StaticResource SidebarButtonStyle}" />
+                    <Button Content="Ag Erisilebilirligi" Command="{Binding NavigateAvailabilityCommand}" Style="{StaticResource SidebarButtonStyle}" />
+                    <Button Content="Bakim" Command="{Binding NavigateMaintenanceCommand}" Style="{StaticResource SidebarButtonStyle}" />
+                    <Button Content="Izleme Takvimleri" Command="{Binding NavigateCalendarsCommand}" Style="{StaticResource SidebarButtonStyle}" />
                     <Button Content="Ping Logları" Command="{Binding NavigateLogsCommand}" Style="{StaticResource SidebarButtonStyle}" />
+                    <Button Content="Bildirim Kuyrugu" Command="{Binding NavigateNotificationsCommand}" Style="{StaticResource SidebarButtonStyle}" />
+                    <Button Content="Sistem Durumu" Command="{Binding NavigateReadinessCommand}" Style="{StaticResource SidebarButtonStyle}" />
                     <Button Content="Ayarlar" Command="{Binding NavigateSettingsCommand}" Style="{StaticResource SidebarButtonStyle}" />
                 </StackPanel>
 
@@ -263,6 +268,52 @@
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
+
+                                <TextBlock Text="Son 30 Gun Availability Trendi" FontSize="16" FontWeight="Bold" Margin="0,16,0,8" />
+                                <DataGrid ItemsSource="{Binding DashboardAvailabilityTrend}" Height="210" Margin="0,0,0,14">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Gun" Binding="{Binding DateText}" Width="70" />
+                                        <DataGridTextColumn Header="Availability" Binding="{Binding AvailabilityText}" Width="105" />
+                                        <DataGridTextColumn Header="Coverage" Binding="{Binding CoverageText}" Width="95" />
+                                        <DataGridTextColumn Header="Unknown" Binding="{Binding UnknownText}" Width="*" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+
+                                <TextBlock Text="En Uzun 10 Kesinti" FontSize="16" FontWeight="Bold" Margin="0,0,0,8" />
+                                <DataGrid ItemsSource="{Binding LongestOutages}" Height="210" Margin="0,0,0,14">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Cihaz" Binding="{Binding Title}" Width="*" />
+                                        <DataGridTextColumn Header="IP / Grup" Binding="{Binding Subtitle}" Width="130" />
+                                        <DataGridTextColumn Header="Sure" Binding="{Binding Value}" Width="95" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+
+                                <TextBlock Text="En Cok Incident Yasayan 10 Cihaz" FontSize="16" FontWeight="Bold" Margin="0,0,0,8" />
+                                <DataGrid ItemsSource="{Binding IncidentRanking}" Height="210" Margin="0,0,0,14">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Cihaz" Binding="{Binding Title}" Width="*" />
+                                        <DataGridTextColumn Header="IP / Grup" Binding="{Binding Subtitle}" Width="130" />
+                                        <DataGridTextColumn Header="Incident" Binding="{Binding Value}" Width="80" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+
+                                <TextBlock Text="Unknown Suresi En Yuksek Cihazlar" FontSize="16" FontWeight="Bold" Margin="0,0,0,8" />
+                                <DataGrid ItemsSource="{Binding UnknownDurationRanking}" Height="210" Margin="0,0,0,14">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Cihaz" Binding="{Binding Title}" Width="*" />
+                                        <DataGridTextColumn Header="IP" Binding="{Binding Subtitle}" Width="130" />
+                                        <DataGridTextColumn Header="Unknown" Binding="{Binding Value}" Width="95" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+
+                                <TextBlock Text="Veri Kapsami Dusuk Cihazlar" FontSize="16" FontWeight="Bold" Margin="0,0,0,8" />
+                                <DataGrid ItemsSource="{Binding LowCoverageRanking}" Height="210">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Cihaz" Binding="{Binding Title}" Width="*" />
+                                        <DataGridTextColumn Header="IP" Binding="{Binding Subtitle}" Width="130" />
+                                        <DataGridTextColumn Header="Coverage" Binding="{Binding Value}" Width="95" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
                             </StackPanel>
                         </ScrollViewer>
                     </Border>
@@ -273,6 +324,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <Border Grid.Row="0" Style="{StaticResource SectionBorderStyle}" Margin="0,0,0,12">
                         <StackPanel>
@@ -282,6 +334,7 @@
                                 <ComboBox Width="160" ItemsSource="{Binding DeviceStatusFilterOptions}" SelectedItem="{Binding DeviceStatusFilter}" Margin="8,0,0,0" />
                                 <ComboBox Width="170" ItemsSource="{Binding DeviceGroupFilterOptions}" SelectedItem="{Binding DeviceGroupFilter}" Margin="8,0,0,0" />
                                 <ComboBox Width="150" ItemsSource="{Binding CriticalFilterOptions}" SelectedItem="{Binding CriticalFilter}" Margin="8,0,0,0" />
+                                <ComboBox Width="150" ItemsSource="{Binding DeviceDeletedFilterOptions}" SelectedItem="{Binding DeletedDeviceFilter}" Margin="8,0,0,0" />
                                 <Button Content="Tipe Ping" Command="{Binding PingSelectedTypeCommand}" Style="{StaticResource SecondaryButtonStyle}" />
                                 <Button Content="Yeni Cihaz" Command="{Binding NavigateDeviceEditCommand}" />
                                 <Button Content="CSV Şablonu" Command="{Binding CreateCsvTemplateCommand}" Style="{StaticResource SecondaryButtonStyle}" />
@@ -289,7 +342,16 @@
                                 <Button Content="CSV Export" Command="{Binding ExportDevicesCommand}" Style="{StaticResource SecondaryButtonStyle}" />
                             </WrapPanel>
                             <WrapPanel VerticalAlignment="Center" Margin="0,8,0,0">
+                                <TextBlock Text="CSV modu:" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}" Margin="0,0,8,0" />
+                                <ComboBox Width="210" ItemsSource="{Binding CsvImportModeOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding CsvImportMode}" />
+                                <ComboBox Width="230" ItemsSource="{Binding CsvImportScopeOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding CsvImportScope}" Margin="8,0,0,0" />
+                                <ComboBox Width="170" ItemsSource="{Binding DeviceGroupOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding CsvImportGroupId}" Margin="8,0,0,0" ToolTip="Grup kapsamli esitleme icin secili grup" />
+                                <Button Content="CSV Onizle" Command="{Binding ImportDevicesCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                                <Button Content="Ice Aktar" Command="{Binding ApplyCsvImportCommand}" />
+                            </WrapPanel>
+                            <WrapPanel VerticalAlignment="Center" Margin="0,8,0,0">
                                 <TextBlock Text="Toplu işlem:" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}" Margin="0,0,8,0" />
+                                <TextBlock Text="{Binding SelectedDeviceCountText}" VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}" Margin="0,0,8,0" />
                                 <Button Content="Seçilileri Ping" Command="{Binding PingSelectedDevicesBulkCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" Style="{StaticResource SecondaryButtonStyle}" />
                                 <Button Content="Oto Aç" Command="{Binding EnableAutoCheckSelectedCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" Style="{StaticResource SecondaryButtonStyle}" />
                                 <Button Content="Oto Kapat" Command="{Binding DisableAutoCheckSelectedCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" Style="{StaticResource SecondaryButtonStyle}" />
@@ -298,7 +360,10 @@
                                 <TextBox Width="72" Text="{Binding BulkCheckIntervalSeconds, UpdateSourceTrigger=PropertyChanged}" ToolTip="Toplu özel kontrol aralığı saniye. 0 = politika devral." Margin="8,0,0,0" />
                                 <Button Content="Aralık Uygula" Command="{Binding ApplySelectedCheckIntervalCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" Style="{StaticResource SecondaryButtonStyle}" />
                                 <Button Content="Pasifleştir" Command="{Binding DeactivateSelectedDevicesCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" Style="{StaticResource DangerButtonStyle}" />
+                                <Button Content="Seçilenleri Sil" Command="{Binding DeleteSelectedDevicesBulkCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" Style="{StaticResource DangerButtonStyle}" />
+                                <Button Content="Secilenleri Geri Yukle" Command="{Binding RestoreSelectedDevicesBulkCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" Style="{StaticResource SecondaryButtonStyle}" />
                             </WrapPanel>
+                            <TextBlock Text="{Binding CsvImportPreviewSummary}" Margin="0,8,0,0" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
 
@@ -308,13 +373,37 @@
                               SelectedItem="{Binding SelectedDevice, Mode=TwoWay}"
                               SelectionMode="Extended"
                               SelectionUnit="FullRow"
+                              EnableRowVirtualization="True"
+                              EnableColumnVirtualization="True"
                               ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                        <DataGrid.InputBindings>
+                            <KeyBinding Key="Delete" Command="{Binding DeleteSelectedDeviceCommand}" />
+                        </DataGrid.InputBindings>
+                        <DataGrid.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Secilen cihazlari sil" Command="{Binding PlacementTarget.DataContext.DeleteSelectedDevicesBulkCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding PlacementTarget.SelectedItems, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                <MenuItem Header="Secilen cihazlari geri yukle" Command="{Binding PlacementTarget.DataContext.RestoreSelectedDevicesBulkCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding PlacementTarget.SelectedItems, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                <MenuItem Header="Cihazı sil" Command="{Binding DeleteSelectedDeviceCommand}" />
+                                <MenuItem Header="Geri yükle" Command="{Binding RestoreSelectedDeviceCommand}" />
+                                <MenuItem Header="Ping" Command="{Binding PingSelectedDeviceCommand}" />
+                            </ContextMenu>
+                        </DataGrid.ContextMenu>
                         <DataGrid.RowStyle>
                             <Style TargetType="DataGridRow">
                                 <Setter Property="Background" Value="{Binding LastStatus, Converter={StaticResource RowStatusBackgroundConverter}}" />
                             </Style>
                         </DataGrid.RowStyle>
                         <DataGrid.Columns>
+                            <DataGridTemplateColumn Width="42">
+                                <DataGridTemplateColumn.Header>
+                                    <CheckBox IsChecked="{Binding DataContext.SelectAllVisibleDevices, RelativeSource={RelativeSource AncestorType=DataGrid}, Mode=TwoWay}" ToolTip="Tum gorunenleri sec" />
+                                </DataGridTemplateColumn.Header>
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                             <DataGridTemplateColumn Header="Durum" Width="165">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -335,10 +424,11 @@
                             <DataGridTextColumn Header="IP" Binding="{Binding IpAddress}" Width="125" SortMemberPath="IpSortKey" ElementStyle="{StaticResource TrimmedCellTextStyle}" />
                             <DataGridTextColumn Header="Tip" Binding="{Binding DeviceTypeText}" Width="110" ElementStyle="{StaticResource TrimmedCellTextStyle}" />
                             <DataGridTextColumn Header="Grup" Binding="{Binding GroupName}" Width="1*" ElementStyle="{StaticResource TrimmedCellTextStyle}" />
+                            <DataGridTextColumn Header="Kayıt" Binding="{Binding IsDeletedOrDisabledText}" Width="90" ElementStyle="{StaticResource TrimmedCellTextStyle}" />
                             <DataGridTextColumn Header="Son kontrol" Binding="{Binding LastCheckedAtText}" Width="145" ElementStyle="{StaticResource TrimmedCellTextStyle}" />
                             <DataGridTextColumn Header="Gecikme" Binding="{Binding LastLatencyText}" Width="85" ElementStyle="{StaticResource TrimmedCellTextStyle}" />
-                            <DataGridTextColumn Header="Uptime 30g" Binding="{Binding Uptime30DaysText}" Width="95" ElementStyle="{StaticResource TrimmedCellTextStyle}" />
-                            <DataGridTemplateColumn Header="İşlem" Width="160">
+                            <DataGridTextColumn Header="Aktif plan" Binding="{Binding EffectivePolicyText}" Width="130" ElementStyle="{StaticResource TrimmedCellTextStyle}" />
+                            <DataGridTemplateColumn Header="İşlem" Width="215">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <StackPanel Orientation="Horizontal">
@@ -354,6 +444,10 @@
                                                     Style="{StaticResource SmallDangerButtonStyle}"
                                                     Command="{Binding DataContext.DeleteDeviceCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
                                                     CommandParameter="{Binding}" />
+                                            <Button Content="Geri"
+                                                    Style="{StaticResource SmallSecondaryButtonStyle}"
+                                                    Command="{Binding DataContext.RestoreDeviceCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                    CommandParameter="{Binding}" />
                                         </StackPanel>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
@@ -362,6 +456,72 @@
                     </DataGrid>
 
                     <Border Grid.Row="2" Style="{StaticResource SectionBorderStyle}" Margin="0,12,0,0">
+                        <TabControl Height="210">
+                            <TabItem Header="Yeni / Geri Yuklenecek">
+                                <DataGrid ItemsSource="{Binding CsvNewRows}" AutoGenerateColumns="False">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Satir" Binding="{Binding RowNumber}" Width="60" />
+                                        <DataGridTextColumn Header="Durum" Binding="{Binding StatusText}" Width="120" />
+                                        <DataGridTextColumn Header="Ad" Binding="{Binding Name}" Width="*" />
+                                        <DataGridTextColumn Header="IP" Binding="{Binding IpAddress}" Width="130" />
+                                        <DataGridTextColumn Header="Grup" Binding="{Binding GroupName}" Width="140" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </TabItem>
+                            <TabItem Header="Guncellenecek">
+                                <DataGrid ItemsSource="{Binding CsvUpdateRows}" AutoGenerateColumns="False">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Satir" Binding="{Binding RowNumber}" Width="60" />
+                                        <DataGridTextColumn Header="Ad" Binding="{Binding Name}" Width="*" />
+                                        <DataGridTextColumn Header="IP" Binding="{Binding IpAddress}" Width="130" />
+                                        <DataGridTextColumn Header="Degisiklik" Binding="{Binding ChangeSummary}" Width="2*" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </TabItem>
+                            <TabItem Header="Silinecek">
+                                <DataGrid ItemsSource="{Binding CsvDeleteRows}" AutoGenerateColumns="False">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Ad" Binding="{Binding Name}" Width="*" />
+                                        <DataGridTextColumn Header="IP" Binding="{Binding IpAddress}" Width="130" />
+                                        <DataGridTextColumn Header="Grup" Binding="{Binding GroupName}" Width="140" />
+                                        <DataGridTextColumn Header="Neden" Binding="{Binding ChangeSummary}" Width="2*" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </TabItem>
+                            <TabItem Header="Hatali Satirlar">
+                                <DataGrid ItemsSource="{Binding CsvInvalidRows}" AutoGenerateColumns="False">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Satir" Binding="{Binding RowNumber}" Width="60" />
+                                        <DataGridTextColumn Header="Ad" Binding="{Binding Name}" Width="*" />
+                                        <DataGridTextColumn Header="IP" Binding="{Binding IpAddress}" Width="130" />
+                                        <DataGridTextColumn Header="Hata" Binding="{Binding ErrorMessage}" Width="2*" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </TabItem>
+                            <TabItem Header="Duplicate">
+                                <DataGrid ItemsSource="{Binding CsvDuplicateRows}" AutoGenerateColumns="False">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Satir" Binding="{Binding RowNumber}" Width="60" />
+                                        <DataGridTextColumn Header="Ad" Binding="{Binding Name}" Width="*" />
+                                        <DataGridTextColumn Header="IP" Binding="{Binding IpAddress}" Width="130" />
+                                        <DataGridTextColumn Header="Hata" Binding="{Binding ErrorMessage}" Width="2*" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </TabItem>
+                            <TabItem Header="Degismeyen / Atlanan">
+                                <DataGrid ItemsSource="{Binding CsvUnchangedRows}" AutoGenerateColumns="False">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Satir" Binding="{Binding RowNumber}" Width="60" />
+                                        <DataGridTextColumn Header="Durum" Binding="{Binding StatusText}" Width="120" />
+                                        <DataGridTextColumn Header="Ad" Binding="{Binding Name}" Width="*" />
+                                        <DataGridTextColumn Header="IP" Binding="{Binding IpAddress}" Width="130" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </TabItem>
+                        </TabControl>
+                    </Border>
+
+                    <Border Grid.Row="3" Style="{StaticResource SectionBorderStyle}" Margin="0,12,0,0">
                         <DockPanel LastChildFill="True">
                             <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
                                 <TextBlock Text="Cihaz Detayı" FontSize="16" FontWeight="Bold" VerticalAlignment="Center" />
@@ -378,6 +538,7 @@
                                 <Button Content="Ping" Command="{Binding PingSelectedDeviceCommand}" Style="{StaticResource SmallButtonStyle}" Margin="12,0,0,0" />
                                 <Button Content="Düzenle" Command="{Binding EditSelectedDeviceCommand}" Style="{StaticResource SmallSecondaryButtonStyle}" Margin="4,0,0,0" />
                                 <Button Content="Sil" Command="{Binding DeleteSelectedDeviceCommand}" Style="{StaticResource SmallDangerButtonStyle}" Margin="4,0,0,0" />
+                                <Button Content="Geri Yükle" Command="{Binding RestoreSelectedDeviceCommand}" Style="{StaticResource SmallSecondaryButtonStyle}" Margin="4,0,0,0" />
                             </StackPanel>
 
                             <WrapPanel>
@@ -402,7 +563,7 @@
                                     <TextBlock Text="{Binding SelectedDevice.LastFailedCheckAtText, TargetNullValue='-'}" Style="{StaticResource TrimmedCellTextStyle}" />
                                 </StackPanel>
                                 <StackPanel Width="240" Margin="0,0,18,8">
-                                    <TextBlock Text="Uptime" Style="{StaticResource DetailLabelTextStyle}" />
+                                    <TextBlock Text="Ag erisilebilirligi" Style="{StaticResource DetailLabelTextStyle}" />
                                     <TextBlock Style="{StaticResource DetailValueTextStyle}">
                                         <Run Text="24s " />
                                         <Run Text="{Binding SelectedDevice.Uptime24HoursText, TargetNullValue='-'}" />
@@ -460,6 +621,77 @@
                                     <TextBlock Text="{Binding SelectedDevice.HealthHintText, TargetNullValue='-'}" Style="{StaticResource TrimmedCellTextStyle}" />
                                 </StackPanel>
                             </WrapPanel>
+                            <TabControl Height="250" Margin="0,12,0,0">
+                                <TabItem Header="Availability Detay">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <WrapPanel Margin="8">
+                                            <StackPanel Width="210" Margin="0,0,18,8">
+                                                <TextBlock Text="Mevcut durum" Style="{StaticResource DetailLabelTextStyle}" />
+                                                <TextBlock Text="{Binding SelectedDeviceAvailabilityDetail.CurrentStatus}" Style="{StaticResource DetailValueTextStyle}" />
+                                                <TextBlock Text="{Binding SelectedDeviceAvailabilityDetail.CurrentStatusSince}" Style="{StaticResource TrimmedCellTextStyle}" />
+                                            </StackPanel>
+                                            <StackPanel Width="230" Margin="0,0,18,8">
+                                                <TextBlock Text="Kesintisiz erisilebilir sure" Style="{StaticResource DetailLabelTextStyle}" />
+                                                <TextBlock Text="{Binding SelectedDeviceAvailabilityDetail.CurrentContinuousAvailability}" Style="{StaticResource DetailValueTextStyle}" />
+                                                <TextBlock Text="{Binding SelectedDeviceAvailabilityDetail.OngoingDowntime}" Style="{StaticResource TrimmedCellTextStyle}" />
+                                            </StackPanel>
+                                            <StackPanel Width="230" Margin="0,0,18,8">
+                                                <TextBlock Text="Ilk hata / Down dogrulama" Style="{StaticResource DetailLabelTextStyle}" />
+                                                <TextBlock Text="{Binding SelectedDeviceAvailabilityDetail.FirstFailureAt}" Style="{StaticResource DetailValueTextStyle}" />
+                                                <TextBlock Text="{Binding SelectedDeviceAvailabilityDetail.ConfirmedDownAt}" Style="{StaticResource TrimmedCellTextStyle}" />
+                                            </StackPanel>
+                                            <StackPanel Width="230" Margin="0,0,18,8">
+                                                <TextBlock Text="Son basarili / Son kontrol" Style="{StaticResource DetailLabelTextStyle}" />
+                                                <TextBlock Text="{Binding SelectedDeviceAvailabilityDetail.LastSuccessfulCheck}" Style="{StaticResource DetailValueTextStyle}" />
+                                                <TextBlock Text="{Binding SelectedDeviceAvailabilityDetail.LastCheck}" Style="{StaticResource TrimmedCellTextStyle}" />
+                                            </StackPanel>
+                                            <StackPanel Width="230" Margin="0,0,18,8">
+                                                <TextBlock Text="24s / 7g / 30g" Style="{StaticResource DetailLabelTextStyle}" />
+                                                <TextBlock Style="{StaticResource DetailValueTextStyle}">
+                                                    <Run Text="{Binding SelectedDeviceAvailabilityDetail.Availability24Hours}" />
+                                                    <Run Text=" / " />
+                                                    <Run Text="{Binding SelectedDeviceAvailabilityDetail.Availability7Days}" />
+                                                </TextBlock>
+                                                <TextBlock Text="{Binding SelectedDeviceAvailabilityDetail.Availability30Days}" Style="{StaticResource TrimmedCellTextStyle}" />
+                                            </StackPanel>
+                                            <StackPanel Width="210" Margin="0,0,18,8">
+                                                <TextBlock Text="Coverage / Incident" Style="{StaticResource DetailLabelTextStyle}" />
+                                                <TextBlock Text="{Binding SelectedDeviceAvailabilityDetail.Coverage}" Style="{StaticResource DetailValueTextStyle}" />
+                                                <TextBlock Text="{Binding SelectedDeviceAvailabilityDetail.IncidentCount}" Style="{StaticResource TrimmedCellTextStyle}" />
+                                            </StackPanel>
+                                            <StackPanel Width="210" Margin="0,0,18,8">
+                                                <TextBlock Text="MTTR / MTBF" Style="{StaticResource DetailLabelTextStyle}" />
+                                                <TextBlock Text="{Binding SelectedDeviceAvailabilityDetail.Mttr}" Style="{StaticResource DetailValueTextStyle}" />
+                                                <TextBlock Text="{Binding SelectedDeviceAvailabilityDetail.Mtbf}" Style="{StaticResource TrimmedCellTextStyle}" />
+                                            </StackPanel>
+                                            <StackPanel Width="210" Margin="0,0,18,8">
+                                                <TextBlock Text="SLA" Style="{StaticResource DetailLabelTextStyle}" />
+                                                <TextBlock Text="{Binding SelectedDeviceAvailabilityDetail.SlaTarget}" Style="{StaticResource DetailValueTextStyle}" />
+                                                <TextBlock Text="{Binding SelectedDeviceAvailabilityDetail.SlaStatus}" Style="{StaticResource TrimmedCellTextStyle}" />
+                                            </StackPanel>
+                                        </WrapPanel>
+                                    </ScrollViewer>
+                                </TabItem>
+                                <TabItem Header="Period Timeline">
+                                    <DockPanel Margin="8">
+                                        <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                                            <ComboBox Width="150" ItemsSource="{Binding TimelineRangeOptions}" SelectedItem="{Binding SelectedTimelineRange}" />
+                                            <DatePicker Width="130" SelectedDate="{Binding CustomTimelineStartDate}" Margin="8,0,0,0" />
+                                            <DatePicker Width="130" SelectedDate="{Binding CustomTimelineEndDate}" Margin="8,0,0,0" />
+                                            <Button Content="Yenile" Command="{Binding RefreshSelectedDeviceTimelineCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                                        </WrapPanel>
+                                        <DataGrid ItemsSource="{Binding SelectedDeviceAvailabilityTimeline}">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Header="Durum" Binding="{Binding StatusText}" Width="130" />
+                                                <DataGridTextColumn Header="Baslangic" Binding="{Binding StartedAtText}" Width="150" />
+                                                <DataGridTextColumn Header="Bitis" Binding="{Binding EndedAtText}" Width="150" />
+                                                <DataGridTextColumn Header="Neden" Binding="{Binding ReasonText}" Width="2*" />
+                                                <DataGridTextColumn Header="Kaynak" Binding="{Binding DetectionSource}" Width="120" />
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+                                    </DockPanel>
+                                </TabItem>
+                            </TabControl>
                         </DockPanel>
                     </Border>
                 </Grid>
@@ -565,6 +797,13 @@
                                          Margin="0,4,0,12"
                                          ToolTip="Açıklama" />
                                 <WrapPanel Grid.Row="7" Grid.ColumnSpan="2">
+                                    <TextBlock Text="SLA hedefi" FontWeight="SemiBold" VerticalAlignment="Center" Margin="4,4,8,4" />
+                                    <ComboBox Width="135"
+                                              ItemsSource="{Binding SlaTargetOptions}"
+                                              DisplayMemberPath="Label"
+                                              SelectedValuePath="Value"
+                                              SelectedValue="{Binding FormSlaTargetAvailabilityPercent}"
+                                              Margin="0,4,18,4" />
                                     <CheckBox Content="Otomatik kontrol aktif" IsChecked="{Binding FormAutoCheckEnabled}" Margin="4,4,18,4" />
                                     <CheckBox Content="Kritik cihaz" IsChecked="{Binding FormIsCritical}" Margin="4,4,18,4" />
                                     <CheckBox Content="Aktif cihaz" IsChecked="{Binding FormIsActive}" Margin="4,4,18,4" />
@@ -643,6 +882,12 @@
                                          ToolTip="Boş = tip/global başarısızlık eşiği"
                                          Margin="0,4,0,12" />
                                 <TextBlock Text="Açıklama" FontWeight="SemiBold" />
+                                <TextBlock Text="Grup SLA hedefi" FontWeight="SemiBold" />
+                                <ComboBox ItemsSource="{Binding SlaTargetOptions}"
+                                          DisplayMemberPath="Label"
+                                          SelectedValuePath="Value"
+                                          SelectedValue="{Binding GroupFormTargetAvailabilityPercent}"
+                                          Margin="0,4,0,12" />
                                 <TextBox Text="{Binding GroupFormDescription, UpdateSourceTrigger=PropertyChanged}"
                                          Height="90"
                                          AcceptsReturn="True"
@@ -661,7 +906,11 @@
                                     <Button Content="Ping" Command="{Binding PingSelectedGroupCommand}" Style="{StaticResource SmallButtonStyle}" />
                                     <Button Content="Düzenle" Command="{Binding EditSelectedGroupCommand}" Style="{StaticResource SmallSecondaryButtonStyle}" />
                                     <Button Content="Sil" Command="{Binding DeleteSelectedGroupCommand}" Style="{StaticResource SmallDangerButtonStyle}" />
+                                    <Button Content="Bu gruptaki tum cihazlari sil" Command="{Binding DeleteSelectedGroupDevicesCommand}" Style="{StaticResource SmallDangerButtonStyle}" />
                                 </WrapPanel>
+                                <CheckBox Content="Cihazlar silindikten sonra bos grubu da sil"
+                                          IsChecked="{Binding DeleteEmptyGroupAfterDeviceDelete}"
+                                          Margin="0,8,0,0" />
                             </StackPanel>
                         </ScrollViewer>
                     </Border>
@@ -767,9 +1016,13 @@
                             <TextBlock Text="{Binding AvailabilityNotice}" TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" />
                             <WrapPanel Grid.Column="1">
                                 <Button Content="Yenile" Command="{Binding RefreshAvailabilityCommand}" Style="{StaticResource SecondaryButtonStyle}" />
-                                <Button Content="Uptime CSV Dışa Aktar"
+                                <Button Content="Verileri Yeniden Hesapla" Command="{Binding RecalculateAvailabilityCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                                <Button Content="Availability CSV Disa Aktar"
                                         Command="{Binding ExportAvailabilityCommand}"
-                                        ToolTip="Tüm cihazlar için 24 saat, 7 gün, 30 gün ve genel uptime sayımlarını CSV olarak dışa aktarır." />
+                                        ToolTip="Son 30 gun icin sure agirlikli ag erisilebilirligi, Unknown, Maintenance ve coverage alanlarini CSV olarak aktarir." />
+                                <Button Content="Incident CSV Disa Aktar"
+                                        Command="{Binding ExportAvailabilityIncidentsCommand}"
+                                        Style="{StaticResource SecondaryButtonStyle}" />
                             </WrapPanel>
                         </Grid>
                     </Border>
@@ -779,22 +1032,194 @@
                             <DataGridTextColumn Header="IP" Binding="{Binding IpAddress}" Width="120" />
                             <DataGridTextColumn Header="Tip" Binding="{Binding DeviceTypeText}" Width="110" />
                             <DataGridTextColumn Header="Grup" Binding="{Binding GroupName}" Width="130" />
-                            <DataGridTextColumn Header="Son durum" Binding="{Binding LastStatusText}" Width="115" />
+                            <DataGridTextColumn Header="Mevcut durum" Binding="{Binding CurrentAvailabilityStatusText}" Width="125" />
+                            <DataGridTextColumn Header="Durum baslangici" Binding="{Binding CurrentStatusSinceText}" Width="145" />
+                            <DataGridTextColumn Header="Kesintisiz erisilebilir sure" Binding="{Binding CurrentContinuousAvailabilityText}" Width="155" />
                             <DataGridTextColumn Header="Son başarılı" Binding="{Binding LastSuccessfulCheckAtText}" Width="145" />
                             <DataGridTextColumn Header="Son başarısız" Binding="{Binding LastFailedCheckAtText}" Width="145" />
-                            <DataGridTextColumn Header="Başarılı" Binding="{Binding TotalSuccessCount}" Width="75" />
-                            <DataGridTextColumn Header="Başarısız" Binding="{Binding TotalFailureCount}" Width="80" />
-                            <DataGridTextColumn Header="Ölçülen" Binding="{Binding MeasuredAvailabilityText}" Width="90" />
-                            <DataGridTextColumn Header="24 saat" Binding="{Binding Availability24HoursText}" Width="85" />
-                            <DataGridTextColumn Header="7 gün" Binding="{Binding Availability7DaysText}" Width="85" />
-                            <DataGridTextColumn Header="30 gün" Binding="{Binding Availability30DaysText}" Width="85" />
-                            <DataGridTextColumn Header="Genel" Binding="{Binding AvailabilityOverallText}" Width="85" />
+                            <DataGridTextColumn Header="Availability" Binding="{Binding MeasuredAvailabilityText}" Width="95" />
+                            <DataGridTextColumn Header="Strict" Binding="{Binding StrictAvailabilityText}" Width="85" />
+                            <DataGridTextColumn Header="Coverage" Binding="{Binding CoverageText}" Width="85" />
+                            <DataGridTextColumn Header="Unknown" Binding="{Binding UnknownDurationText}" Width="95" />
+                            <DataGridTextColumn Header="Maintenance" Binding="{Binding MaintenanceDurationText}" Width="105" />
                             <DataGridTextColumn Header="Kesinti" Binding="{Binding OutageCount}" Width="70" />
                             <DataGridTextColumn Header="Son kesinti" Binding="{Binding LastOutageStartedAtText}" Width="145" />
-                            <DataGridTextColumn Header="Toparlanma" Binding="{Binding LastRecoveryAtText}" Width="145" />
-                            <DataGridTextColumn Header="Kesinti süresi" Binding="{Binding EstimatedOutageDurationText}" Width="100" />
+                            <DataGridTextColumn Header="Kesinti suresi" Binding="{Binding DownDurationText}" Width="100" />
                         </DataGrid.Columns>
                     </DataGrid>
+                </Grid>
+
+                <Grid Visibility="{Binding IsMaintenanceSection, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="390" />
+                    </Grid.ColumnDefinitions>
+                    <DataGrid ItemsSource="{Binding MaintenanceWindows}"
+                              SelectedItem="{Binding SelectedMaintenanceWindow}"
+                              Margin="0,0,12,0">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Ad" Binding="{Binding Name}" Width="1.2*" />
+                            <DataGridTextColumn Header="Durum" Binding="{Binding StatusText}" Width="90" />
+                            <DataGridTextColumn Header="Baslangic" Binding="{Binding StartedAtText}" Width="145" />
+                            <DataGridTextColumn Header="Bitis" Binding="{Binding EndedAtText}" Width="145" />
+                            <DataGridTextColumn Header="Hedef" Binding="{Binding TargetText}" Width="160" />
+                            <DataGridTextColumn Header="Bildirim bastir" Binding="{Binding SuppressNotificationsText}" Width="105" />
+                            <DataGridTextColumn Header="Ping devam" Binding="{Binding ContinuePingsText}" Width="95" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <Border Grid.Column="1" Style="{StaticResource SectionBorderStyle}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <TextBlock Text="Bakim Penceresi" FontSize="18" FontWeight="Bold" Margin="0,0,0,12" />
+                                <TextBlock Text="Ad" FontWeight="SemiBold" />
+                                <TextBox Text="{Binding MaintenanceFormName, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,12" />
+                                <TextBlock Text="Baslangic" FontWeight="SemiBold" />
+                                <DatePicker SelectedDate="{Binding MaintenanceFormStart}" Margin="0,4,0,12" />
+                                <TextBlock Text="Bitis" FontWeight="SemiBold" />
+                                <DatePicker SelectedDate="{Binding MaintenanceFormEnd}" Margin="0,4,0,12" />
+                                <TextBlock Text="Hedef tipi" FontWeight="SemiBold" />
+                                <ComboBox ItemsSource="{Binding MonitoringTargetTypeOptions}"
+                                          DisplayMemberPath="Label"
+                                          SelectedValuePath="Value"
+                                          SelectedValue="{Binding MaintenanceFormTargetType}"
+                                          Margin="0,4,0,12" />
+                                <TextBlock Text="Hedef" FontWeight="SemiBold" />
+                                <ComboBox ItemsSource="{Binding DeviceGroupOptions}"
+                                          DisplayMemberPath="Label"
+                                          SelectedValuePath="Value"
+                                          SelectedValue="{Binding MaintenanceFormTargetId}"
+                                          Margin="0,4,0,12" />
+                                <CheckBox Content="Bildirimleri bastir" IsChecked="{Binding MaintenanceSuppressNotifications}" Margin="0,0,0,8" />
+                                <CheckBox Content="Ping islemlerine devam et" IsChecked="{Binding MaintenanceContinuePings}" Margin="0,0,0,12" />
+                                <TextBlock Text="Sebep" FontWeight="SemiBold" />
+                                <TextBox Text="{Binding MaintenanceFormReason, UpdateSourceTrigger=PropertyChanged}"
+                                         Height="90"
+                                         AcceptsReturn="True"
+                                         TextWrapping="Wrap"
+                                         Margin="0,4,0,12" />
+                                <WrapPanel>
+                                    <Button Content="{Binding MaintenanceFormActionText}" Command="{Binding SaveMaintenanceWindowCommand}" />
+                                    <Button Content="Temizle" Command="{Binding ClearMaintenanceWindowFormCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                                </WrapPanel>
+                                <Separator Margin="0,16,0,14" />
+                                <WrapPanel>
+                                    <Button Content="Duzenle" Command="{Binding EditSelectedMaintenanceWindowCommand}" Style="{StaticResource SmallSecondaryButtonStyle}" />
+                                    <Button Content="Iptal et" Command="{Binding CancelSelectedMaintenanceWindowCommand}" Style="{StaticResource SmallDangerButtonStyle}" />
+                                    <Button Content="Bitir" Command="{Binding CompleteSelectedMaintenanceWindowCommand}" Style="{StaticResource SmallButtonStyle}" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+
+                <Grid Visibility="{Binding IsCalendarsSection, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="390" />
+                    </Grid.ColumnDefinitions>
+                    <DataGrid ItemsSource="{Binding MonitoringCalendars}"
+                              SelectedItem="{Binding SelectedMonitoringCalendar}"
+                              Margin="0,0,12,0">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Ad" Binding="{Binding Name}" Width="1.2*" />
+                            <DataGridTextColumn Header="Timezone" Binding="{Binding TimezoneId}" Width="160" />
+                            <DataGridTextColumn Header="Varsayilan" Binding="{Binding IsDefaultText}" Width="90" />
+                            <DataGridTextColumn Header="Kurallar" Binding="{Binding RulesText}" Width="2*" />
+                            <DataGridTextColumn Header="Atamalar" Binding="{Binding AssignmentsText}" Width="1.4*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <Border Grid.Column="1" Style="{StaticResource SectionBorderStyle}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <TextBlock Text="Izleme Takvimi" FontSize="18" FontWeight="Bold" Margin="0,0,0,12" />
+                                <TextBlock Text="Ad" FontWeight="SemiBold" />
+                                <TextBox Text="{Binding CalendarFormName, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,12" />
+                                <TextBlock Text="Timezone" FontWeight="SemiBold" />
+                                <TextBox Text="{Binding CalendarTimezoneId, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,12" />
+                                <CheckBox Content="Varsayilan takvim" IsChecked="{Binding CalendarIsDefault}" Margin="0,0,0,8" />
+                                <CheckBox Content="7/24" IsChecked="{Binding CalendarIs24x7}" Margin="0,0,0,12" />
+                                <TextBlock Text="Gunler" FontWeight="SemiBold" />
+                                <WrapPanel Margin="0,4,0,12">
+                                    <CheckBox Content="Pzt" IsChecked="{Binding CalendarMonday}" Margin="0,0,8,4" />
+                                    <CheckBox Content="Sal" IsChecked="{Binding CalendarTuesday}" Margin="0,0,8,4" />
+                                    <CheckBox Content="Car" IsChecked="{Binding CalendarWednesday}" Margin="0,0,8,4" />
+                                    <CheckBox Content="Per" IsChecked="{Binding CalendarThursday}" Margin="0,0,8,4" />
+                                    <CheckBox Content="Cum" IsChecked="{Binding CalendarFriday}" Margin="0,0,8,4" />
+                                    <CheckBox Content="Cmt" IsChecked="{Binding CalendarSaturday}" Margin="0,0,8,4" />
+                                    <CheckBox Content="Paz" IsChecked="{Binding CalendarSunday}" Margin="0,0,8,4" />
+                                </WrapPanel>
+                                <TextBlock Text="Saat araligi" FontWeight="SemiBold" />
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,12">
+                                    <TextBox Width="90" Text="{Binding CalendarStartTime, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBox Width="90" Text="{Binding CalendarEndTime, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,0,0" />
+                                </StackPanel>
+                                <TextBlock Text="Atama tipi" FontWeight="SemiBold" />
+                                <ComboBox ItemsSource="{Binding MonitoringTargetTypeOptions}"
+                                          DisplayMemberPath="Label"
+                                          SelectedValuePath="Value"
+                                          SelectedValue="{Binding CalendarAssignmentTargetType}"
+                                          Margin="0,4,0,12" />
+                                <TextBlock Text="Atama hedefi" FontWeight="SemiBold" />
+                                <ComboBox ItemsSource="{Binding DeviceGroupOptions}"
+                                          DisplayMemberPath="Label"
+                                          SelectedValuePath="Value"
+                                          SelectedValue="{Binding CalendarAssignmentTargetId}"
+                                          Margin="0,4,0,12" />
+                                <WrapPanel>
+                                    <Button Content="{Binding CalendarFormActionText}" Command="{Binding SaveMonitoringCalendarCommand}" />
+                                    <Button Content="Temizle" Command="{Binding ClearMonitoringCalendarFormCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                                </WrapPanel>
+                                <Separator Margin="0,16,0,14" />
+                                <WrapPanel>
+                                    <Button Content="Duzenle" Command="{Binding EditSelectedMonitoringCalendarCommand}" Style="{StaticResource SmallSecondaryButtonStyle}" />
+                                    <Button Content="Sil" Command="{Binding DeleteSelectedMonitoringCalendarCommand}" Style="{StaticResource SmallDangerButtonStyle}" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+
+                <Grid Visibility="{Binding IsReadinessSection, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Border Grid.Row="0" Style="{StaticResource SectionBorderStyle}" Margin="0,0,0,12">
+                        <WrapPanel>
+                            <TextBlock Text="Service readiness ve uzun sureli calisma diagnostics" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0" />
+                            <Button Content="Yenile" Command="{Binding RefreshReadinessCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                        </WrapPanel>
+                    </Border>
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Border Style="{StaticResource SectionBorderStyle}" Margin="0,0,12,0">
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Top" Text="Readiness Kontrolleri" FontSize="16" FontWeight="Bold" Margin="0,0,0,10" />
+                                <DataGrid ItemsSource="{Binding ServiceReadinessChecks}">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Durum" Binding="{Binding LevelText}" Width="80" />
+                                        <DataGridTextColumn Header="Kontrol" Binding="{Binding Name}" Width="1.2*" />
+                                        <DataGridTextColumn Header="Deger" Binding="{Binding Value}" Width="130" />
+                                        <DataGridTextColumn Header="Detay" Binding="{Binding Detail}" Width="2*" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </DockPanel>
+                        </Border>
+                        <Border Grid.Column="1" Style="{StaticResource SectionBorderStyle}">
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Top" Text="Diagnostics" FontSize="16" FontWeight="Bold" Margin="0,0,0,10" />
+                                <DataGrid ItemsSource="{Binding ServiceDiagnostics}">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Metrik" Binding="{Binding Name}" Width="1.4*" />
+                                        <DataGridTextColumn Header="Deger" Binding="{Binding Value}" Width="2*" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </DockPanel>
+                        </Border>
+                    </Grid>
                 </Grid>
 
                 <Grid Visibility="{Binding IsLogsSection, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -849,6 +1274,57 @@
                     </DataGrid>
                 </Grid>
 
+                <Grid Visibility="{Binding IsNotificationsSection, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Border Grid.Row="0" Style="{StaticResource SectionBorderStyle}" Margin="0,0,0,12">
+                        <WrapPanel>
+                            <ComboBox Width="140" ItemsSource="{Binding OutboxStatusOptions}" SelectedItem="{Binding OutboxStatusFilter}" />
+                            <ComboBox Width="160" ItemsSource="{Binding OutboxEventTypeOptions}" SelectedItem="{Binding OutboxEventTypeFilter}" Margin="8,0,0,0" />
+                            <ComboBox Width="220" ItemsSource="{Binding DeviceOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding OutboxDeviceFilterId}" Margin="8,0,0,0" ToolTip="Cihaz filtresi" />
+                            <DatePicker SelectedDate="{Binding OutboxStartDate}" Width="130" Margin="8,0,0,0" />
+                            <DatePicker SelectedDate="{Binding OutboxEndDate}" Width="130" Margin="8,0,0,0" />
+                            <Button Content="Yenile" Command="{Binding RefreshOutboxCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                            <Button Content="Secili Failed Tekrar Dene" Command="{Binding RetrySelectedOutboxCommand}" CommandParameter="{Binding SelectedItems, ElementName=OutboxGrid}" />
+                        </WrapPanel>
+                    </Border>
+                    <DataGrid x:Name="OutboxGrid"
+                              Grid.Row="1"
+                              ItemsSource="{Binding NotificationOutboxItems}"
+                              SelectedItem="{Binding SelectedNotificationOutboxItem}"
+                              SelectionMode="Extended"
+                              SelectionUnit="FullRow"
+                              AutoGenerateColumns="False"
+                              ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                        <DataGrid.Columns>
+                            <DataGridCheckBoxColumn Header="" Binding="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="42" />
+                            <DataGridTextColumn Header="Durum" Binding="{Binding Status}" Width="100" />
+                            <DataGridTextColumn Header="Bildirim turu" Binding="{Binding EventType}" Width="130" />
+                            <DataGridTextColumn Header="Cihaz" Binding="{Binding DeviceName}" Width="1.2*" />
+                            <DataGridTextColumn Header="Incident" Binding="{Binding IncidentText}" Width="85" />
+                            <DataGridTextColumn Header="Olusturulma" Binding="{Binding CreatedAtText}" Width="145" />
+                            <DataGridTextColumn Header="Gonderilme" Binding="{Binding SentAtText}" Width="145" />
+                            <DataGridTextColumn Header="Deneme" Binding="{Binding AttemptCount}" Width="75" />
+                            <DataGridTextColumn Header="Son deneme" Binding="{Binding LastAttemptAtText}" Width="145" />
+                            <DataGridTextColumn Header="Sonraki deneme" Binding="{Binding NextAttemptAtText}" Width="145" />
+                            <DataGridTextColumn Header="Son hata" Binding="{Binding LastError}" Width="2*" />
+                            <DataGridTemplateColumn Header="Islem" Width="210">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button Content="Tekrar" Style="{StaticResource SmallButtonStyle}" Command="{Binding DataContext.RetryOutboxCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" />
+                                            <Button Content="Iptal" Style="{StaticResource SmallDangerButtonStyle}" Command="{Binding DataContext.CancelPendingOutboxCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" />
+                                            <Button Content="Detay" Style="{StaticResource SmallSecondaryButtonStyle}" Command="{Binding DataContext.ShowOutboxDetailCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+
                 <ScrollViewer Visibility="{Binding IsSettingsSection, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <Border Style="{StaticResource SectionBorderStyle}" MaxWidth="760" HorizontalAlignment="Left">
                         <StackPanel>
@@ -881,6 +1357,15 @@
                                        TextWrapping="Wrap"
                                        Margin="0,0,0,12" />
 
+                            <CheckBox Content="Windows'a giris yaptigimda yonetim ekranini ac"
+                                      IsChecked="{Binding OpenUiOnWindowsLogin}"
+                                      FontWeight="SemiBold"
+                                      Margin="0,0,0,4" />
+                            <TextBlock Text="Bu secenek yalnizca WPF yonetim ekranini acar; Worker Windows Service olarak UI acilmadan calismaya devam eder."
+                                       Foreground="{StaticResource MutedTextBrush}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,12" />
+
                             <Separator Margin="0,8,0,14" />
                             <TextBlock Text="Retry / Akıllı Kontrol Ayarları" FontSize="18" FontWeight="Bold" Margin="0,0,0,12" />
                             <TextBlock Text="Varsayılan başarısızlık eşiği" FontWeight="SemiBold" />
@@ -895,6 +1380,66 @@
                             <TextBox Text="{Binding DefaultFailureRetryLimit, UpdateSourceTrigger=PropertyChanged}"
                                      ToolTip="Hızlı retry denemeleri bu limitten sonra normal politika akışına döner."
                                      Margin="0,4,0,12" />
+
+                            <Separator Margin="0,8,0,14" />
+                            <TextBlock Text="Bildirimler" FontSize="18" FontWeight="Bold" Margin="0,0,0,12" />
+                            <CheckBox Content="ntfy bildirimleri aktif" IsChecked="{Binding NotificationEnabled}" FontWeight="SemiBold" Margin="0,2,0,12" />
+                            <TextBlock Text="Sunucu URL'si" FontWeight="SemiBold" />
+                            <TextBox Text="{Binding NotificationBaseUrl, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,12" />
+                            <TextBlock Text="Konu" FontWeight="SemiBold" />
+                            <TextBox Text="{Binding NotificationTopic, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,12" />
+                            <TextBlock Text="Access token" FontWeight="SemiBold" />
+                            <PasswordBox infra:PasswordBoxAssistant.BoundPassword="{Binding NotificationAccessToken, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,12" />
+                            <WrapPanel Margin="0,0,0,12">
+                                <CheckBox Content="Kesinti" IsChecked="{Binding NotificationNotifyOnDown}" Margin="0,0,14,0" />
+                                <CheckBox Content="Duzelme" IsChecked="{Binding NotificationNotifyOnRecovered}" Margin="0,0,14,0" />
+                                <CheckBox Content="IP dahil" IsChecked="{Binding NotificationIncludeIpAddress}" />
+                            </WrapPanel>
+                            <UniformGrid Columns="2" Margin="0,0,0,12">
+                                <StackPanel Margin="0,0,8,8">
+                                    <TextBlock Text="Basarisizlik esigi" FontWeight="SemiBold" />
+                                    <TextBox Text="{Binding NotificationDownFailureThreshold, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Margin="8,0,0,8">
+                                    <TextBlock Text="Duzelme esigi" FontWeight="SemiBold" />
+                                    <TextBox Text="{Binding NotificationRecoverySuccessThreshold, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,8,8">
+                                    <TextBlock Text="Cooldown (dk)" FontWeight="SemiBold" />
+                                    <TextBox Text="{Binding NotificationCooldownMinutes, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Margin="8,0,0,8">
+                                    <TextBlock Text="HTTP timeout (sn)" FontWeight="SemiBold" />
+                                    <TextBox Text="{Binding NotificationRequestTimeoutSeconds, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,8,8">
+                                    <TextBlock Text="Maks retry" FontWeight="SemiBold" />
+                                    <TextBox Text="{Binding NotificationMaxRetryCount, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Margin="8,0,0,8">
+                                    <TextBlock Text="Ilk retry gecikmesi (sn)" FontWeight="SemiBold" />
+                                    <TextBox Text="{Binding NotificationInitialRetryDelaySeconds, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                            </UniformGrid>
+                            <Button Content="Test bildirimi gönder" Command="{Binding SendTestNotificationCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,0,10" />
+                            <TextBlock Text="{Binding NotificationLastTestResult}" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding NotificationLastSuccessfulAtText, StringFormat=Son başarılı: {0}}" Foreground="{StaticResource MutedTextBrush}" />
+                            <TextBlock Text="{Binding NotificationLastError, StringFormat=Son hata: {0}}" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" />
+
+                            <Separator Margin="0,8,0,14" />
+                            <TextBlock Text="Worker Sagligi" FontSize="18" FontWeight="Bold" Margin="0,0,0,12" />
+                            <UniformGrid Columns="2" Margin="0,0,0,12">
+                                <TextBlock Text="{Binding WorkerHealthText, StringFormat=Durum: {0}}" />
+                                <TextBlock Text="{Binding WorkerVersionText, StringFormat=Surum: {0}}" />
+                                <TextBlock Text="{Binding WorkerStartedAtText, StringFormat=Baslangic: {0}}" />
+                                <TextBlock Text="{Binding WorkerLastSeenAtText, StringFormat=Heartbeat: {0}}" />
+                                <TextBlock Text="{Binding WorkerLastSchedulerCycleText, StringFormat=Son scheduler: {0}}" />
+                                <TextBlock Text="{Binding WorkerLastScheduledPingText, StringFormat=Son ping: {0}}" />
+                                <TextBlock Text="{Binding WorkerLastNotificationText, StringFormat=Son bildirim: {0}}" />
+                                <TextBlock Text="{Binding PendingNotificationCount, StringFormat=Bekleyen bildirim: {0}}" />
+                                <TextBlock Text="{Binding FailedNotificationCount, StringFormat=Basarisiz bildirim: {0}}" />
+                            </UniformGrid>
+                            <Button Content="Log klasörünü aç" Command="{Binding OpenLogFolderCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,0,12" />
 
                             <Separator Margin="0,8,0,14" />
                             <TextBlock Text="Tip Bazlı Politikalar" FontSize="18" FontWeight="Bold" Margin="0,0,0,8" />
@@ -917,11 +1462,31 @@
                             </DataGrid>
 
                             <Separator Margin="0,8,0,14" />
-                            <TextBlock Text="Log ve Uptime Ayarları" FontSize="18" FontWeight="Bold" Margin="0,0,0,12" />
+                            <TextBlock Text="Log ve Availability Ayarlari" FontSize="18" FontWeight="Bold" Margin="0,0,0,12" />
                             <TextBlock Text="Log saklama süresi (gün, 0 = süresiz)" FontWeight="SemiBold" />
                             <TextBox Text="{Binding LogRetentionDays, UpdateSourceTrigger=PropertyChanged}"
                                      ToolTip="Eski ping logları manuel temizlikte bu süreye göre silinir."
                                      Margin="0,4,0,12" />
+                            <TextBlock Text="Heartbeat toleransi (saniye)" FontWeight="SemiBold" />
+                            <TextBox Text="{Binding HeartbeatGraceSeconds, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="Worker heartbeat bu sureyi asarsa izleme boslugu Unknown kabul edilir."
+                                     Margin="0,4,0,12" />
+                            <TextBlock Text="Beklenen kontrol boslugu katsayisi" FontWeight="SemiBold" />
+                            <TextBox Text="{Binding ExpectedCheckGraceMultiplier, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="Kontrol araliginin bu kati asilirsa cihaz Unknown kabul edilebilir."
+                                     Margin="0,4,0,12" />
+                            <TextBlock Text="Downtime baslangic politikasi" FontWeight="SemiBold" />
+                            <ComboBox ItemsSource="{Binding DowntimeStartPolicyOptions}"
+                                      DisplayMemberPath="Label"
+                                      SelectedValuePath="Value"
+                                      SelectedValue="{Binding DowntimeStartPolicy}"
+                                      Margin="0,4,0,12" />
+                            <TextBlock Text="Availability period saklama (gun, 0 = suresiz)" FontWeight="SemiBold" />
+                            <TextBox Text="{Binding AvailabilityPeriodRetentionDays, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,12" />
+                            <TextBlock Text="Incident saklama (gun, 0 = suresiz)" FontWeight="SemiBold" />
+                            <TextBox Text="{Binding IncidentRetentionDays, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,12" />
+                            <TextBlock Text="Daily aggregate saklama (gun, 0 = suresiz)" FontWeight="SemiBold" />
+                            <TextBox Text="{Binding DailyAggregateRetentionDays, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,12" />
 
                             <Separator Margin="0,8,0,14" />
                             <TextBlock Text="Dışa Aktarma Ayarları" FontSize="18" FontWeight="Bold" Margin="0,0,0,12" />

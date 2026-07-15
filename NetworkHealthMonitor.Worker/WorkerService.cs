@@ -9,7 +9,7 @@ public sealed class WorkerService : BackgroundService
 {
     private readonly WorkerOptions _options;
     private readonly ILogger<WorkerService> _logger;
-    private ISchedulerService? _schedulerService;
+    private WorkerRuntime? _runtime;
 
     public WorkerService(WorkerOptions options, ILogger<WorkerService> logger)
     {
@@ -21,10 +21,14 @@ public sealed class WorkerService : BackgroundService
     {
         try
         {
-            _schedulerService = await WorkerComposition.CreateSchedulerAsync(_options);
-            _schedulerService.StatusChanged += SchedulerStatusChanged;
-            await _schedulerService.StartAsync(stoppingToken);
+            _runtime = await WorkerComposition.CreateRuntimeAsync(_options);
+            _runtime.Scheduler.StatusChanged += SchedulerStatusChanged;
+            await _runtime.Scheduler.StartAsync(stoppingToken);
+
+            var heartbeatTask = RunHeartbeatAsync(_runtime, stoppingToken);
+            var dispatcherTask = _runtime.NotificationDispatcher.RunAsync(stoppingToken);
             await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);
+            await Task.WhenAll(heartbeatTask, dispatcherTask);
         }
         catch (OperationCanceledException)
         {
@@ -38,11 +42,20 @@ public sealed class WorkerService : BackgroundService
         }
         finally
         {
-            if (_schedulerService is not null)
+            if (_runtime is not null)
             {
-                _schedulerService.StatusChanged -= SchedulerStatusChanged;
-                await _schedulerService.DisposeAsync();
+                _runtime.Scheduler.StatusChanged -= SchedulerStatusChanged;
+                await _runtime.Scheduler.DisposeAsync();
             }
+        }
+    }
+
+    private static async Task RunHeartbeatAsync(WorkerRuntime runtime, CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            await runtime.HeartbeatRepository.TouchAsync(runtime.WorkerInstanceId, "Running", cancellationToken: stoppingToken);
+            await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
         }
     }
 

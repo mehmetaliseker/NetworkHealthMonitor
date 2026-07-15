@@ -1,6 +1,8 @@
 using System.IO;
+using System.Globalization;
 using Microsoft.Data.Sqlite;
 using NetworkHealthMonitor.Data;
+using NetworkHealthMonitor.Models;
 
 namespace NetworkHealthMonitor.Services;
 
@@ -31,9 +33,9 @@ public sealed class DataMaintenanceService
         await _connectionFactory.CheckpointAsync();
         SqliteConnection.ClearAllPools();
 
-        Directory.CreateDirectory(DatabasePaths.AppDataDirectory);
+        Directory.CreateDirectory(DatabasePaths.DataDirectory);
         var automaticBackupPath = Path.Combine(
-            DatabasePaths.AppDataDirectory,
+            DatabasePaths.BackupDirectory,
             $"network_health_monitor-before-restore-{DateTime.Now:yyyyMMdd-HHmmss}.db");
 
         if (File.Exists(DatabasePaths.DatabaseFilePath))
@@ -71,5 +73,78 @@ public sealed class DataMaintenanceService
         await using var command = connection.CreateCommand();
         command.CommandText = "PRAGMA optimize;";
         await command.ExecuteNonQueryAsync();
+    }
+
+    public async Task<int> ApplyRetentionAsync(AppSettings settings)
+    {
+        var deleted = 0;
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
+        using var transaction = connection.BeginTransaction();
+
+        if (settings.AvailabilityPeriodRetentionDays > 0)
+        {
+            deleted += await DeleteOlderThanAsync(
+                connection,
+                transaction,
+                "DeviceAvailabilityPeriods",
+                "COALESCE(EndedAtUtc, StartedAtUtc)",
+                DateTime.UtcNow.AddDays(-settings.AvailabilityPeriodRetentionDays));
+        }
+
+        if (settings.IncidentRetentionDays > 0)
+        {
+            deleted += await DeleteOlderThanAsync(
+                connection,
+                transaction,
+                "DeviceIncidents",
+                "COALESCE(RecoveredAtUtc, StartedAtUtc)",
+                DateTime.UtcNow.AddDays(-settings.IncidentRetentionDays));
+        }
+
+        if (settings.DailyAggregateRetentionDays > 0)
+        {
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = """
+                DELETE FROM DeviceAvailabilityDaily
+                WHERE Date < @ThresholdDate;
+                """;
+            command.Parameters.AddWithValue("@ThresholdDate", DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-settings.DailyAggregateRetentionDays)).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+            deleted += await command.ExecuteNonQueryAsync();
+        }
+
+        transaction.Commit();
+        return deleted;
+    }
+
+    private static async Task<int> DeleteOlderThanAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string tableName,
+        string dateExpression,
+        DateTime thresholdUtc)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = $"""
+            DELETE FROM {tableName}
+            WHERE {dateExpression} < @ThresholdUtc
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM DeviceAvailabilityPeriods p
+                  WHERE p.Id = {tableName}.Id
+                    AND p.EndedAtUtc IS NULL
+              );
+            """;
+        if (!string.Equals(tableName, "DeviceAvailabilityPeriods", StringComparison.OrdinalIgnoreCase))
+        {
+            command.CommandText = $"""
+                DELETE FROM {tableName}
+                WHERE {dateExpression} < @ThresholdUtc;
+                """;
+        }
+
+        command.Parameters.AddWithValue("@ThresholdUtc", thresholdUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
+        return await command.ExecuteNonQueryAsync();
     }
 }

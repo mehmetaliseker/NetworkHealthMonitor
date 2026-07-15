@@ -14,6 +14,10 @@ public sealed class Device : ObservableObject
     private string _groupName = string.Empty;
     private bool _isCritical;
     private bool _isActive = true;
+    private bool _isEnabled = true;
+    private bool _isDeleted;
+    private bool _isSelected;
+    private DateTime? _deletedAtUtc;
     private bool _autoCheckEnabled = true;
     private int? _defaultSchedulePlanId;
     private int? _pingTimeoutMs;
@@ -39,6 +43,7 @@ public sealed class Device : ObservableObject
     private long? _averageLatencyMs;
     private DateTime? _lastFailureAt;
     private string _effectivePolicyText = "Global";
+    private double? _slaTargetAvailabilityPercent;
 
     public int Id
     {
@@ -123,6 +128,57 @@ public sealed class Device : ObservableObject
     }
 
     public string IsActiveText => IsActive ? "Aktif" : "Pasif";
+
+    public bool IsEnabled
+    {
+        get => _isEnabled;
+        set
+        {
+            if (SetProperty(ref _isEnabled, value))
+            {
+                OnPropertyChanged(nameof(IsEnabledText));
+            }
+        }
+    }
+
+    public string IsEnabledText => IsEnabled ? "Etkin" : "Devre dışı";
+
+    public bool IsDeleted
+    {
+        get => _isDeleted;
+        set
+        {
+            if (SetProperty(ref _isDeleted, value))
+            {
+                OnPropertyChanged(nameof(IsDeletedText));
+                OnPropertyChanged(nameof(IsDeletedOrDisabledText));
+            }
+        }
+    }
+
+    public string IsDeletedText => IsDeleted ? "Silinmiş" : "Aktif kayıt";
+
+    public DateTime? DeletedAtUtc
+    {
+        get => _deletedAtUtc;
+        set
+        {
+            if (SetProperty(ref _deletedAtUtc, value))
+            {
+                OnPropertyChanged(nameof(DeletedAtText));
+            }
+        }
+    }
+
+    public string DeletedAtText => DeletedAtUtc.HasValue ? DeletedAtUtc.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss", CultureInfo.CurrentCulture) : "-";
+
+    public string IsDeletedOrDisabledText => IsDeleted ? "Silinmiş" : IsEnabled && IsActive ? "Aktif" : "Pasif";
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set => SetProperty(ref _isSelected, value);
+    }
 
     public bool AutoCheckEnabled
     {
@@ -425,6 +481,12 @@ public sealed class Device : ObservableObject
     {
         get => _effectivePolicyText;
         set => SetProperty(ref _effectivePolicyText, string.IsNullOrWhiteSpace(value) ? "Global" : value);
+    }
+
+    public double? SlaTargetAvailabilityPercent
+    {
+        get => _slaTargetAvailabilityPercent;
+        set => SetProperty(ref _slaTargetAvailabilityPercent, value.HasValue ? Math.Clamp(value.Value, 0d, 100d) : null);
     }
 
     public string DeviceTypeText => DeviceType.ToDisplayName();

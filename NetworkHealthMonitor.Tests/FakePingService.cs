@@ -5,6 +5,16 @@ namespace NetworkHealthMonitor.Tests;
 
 internal sealed class FakePingService : IPingService
 {
+    private readonly Queue<bool> _results = new();
+
+    public FakePingService(params bool[] results)
+    {
+        foreach (var result in results)
+        {
+            _results.Enqueue(result);
+        }
+    }
+
     public int PingCount { get; private set; }
 
     public List<int> PingedDeviceIds { get; } = new();
@@ -14,7 +24,10 @@ internal sealed class FakePingService : IPingService
         cancellationToken.ThrowIfCancellationRequested();
         PingCount++;
         PingedDeviceIds.Add(device.Id);
-        return Task.FromResult(new PingDeviceResult(device, true, 1, DateTime.Now, "Fake ping success", string.Empty));
+        var success = _results.Count == 0 || _results.Dequeue();
+        return Task.FromResult(success
+            ? new PingDeviceResult(device, true, 1, DateTime.Now, "Fake ping success", string.Empty)
+            : new PingDeviceResult(device, false, null, DateTime.Now, "Fake ping failure", "timeout"));
     }
 
     public async Task<IReadOnlyList<PingDeviceResult>> PingManyAsync(
@@ -31,7 +44,15 @@ internal sealed class FakePingService : IPingService
             var result = await PingAsync(device, options, cancellationToken);
             results.Add(result);
             completed++;
-            progress?.Report(new PingProgress(targets.Count, completed, completed, 0, device.Id, DeviceStatus.Online, 1, result.CheckedAt));
+            progress?.Report(new PingProgress(
+                targets.Count,
+                completed,
+                results.Count(item => item.IsSuccess),
+                results.Count(item => !item.IsSuccess),
+                device.Id,
+                result.IsSuccess ? DeviceStatus.Online : DeviceStatus.Offline,
+                result.LatencyMs,
+                result.CheckedAt));
         }
 
         return results;

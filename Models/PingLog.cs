@@ -16,19 +16,29 @@ public sealed class PingLog
 
     public DeviceStatus Status { get; set; }
 
+    public bool IsReachable { get; set; }
+
     public long? LatencyMs { get; set; }
 
     public string ResponseMessage { get; set; } = string.Empty;
+
+    public string ErrorCode { get; set; } = string.Empty;
 
     public string ErrorMessage { get; set; } = string.Empty;
 
     public DateTime CheckedAt { get; set; }
 
+    public string Source { get; set; } = "Manual";
+
     public PingTriggerType TriggerType { get; set; } = PingTriggerType.Manual;
+
+    public int? PlanId { get; set; }
 
     public int? SchedulePlanId { get; set; }
 
     public string SchedulePlanName { get; set; } = string.Empty;
+
+    public string WorkerInstanceId { get; set; } = string.Empty;
 
     public string DeviceTypeText => DeviceType.ToDisplayName();
 

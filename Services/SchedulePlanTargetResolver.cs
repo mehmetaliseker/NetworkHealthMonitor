@@ -11,7 +11,10 @@ public sealed class SchedulePlanTargetResolver
         bool respectAutoCheck)
     {
         var eligibleDevices = devices
-            .Where(device => device.IsActive && (!respectAutoCheck || device.AutoCheckEnabled))
+            .Where(device => device.IsActive
+                && device.IsEnabled
+                && !device.IsDeleted
+                && (!respectAutoCheck || device.AutoCheckEnabled))
             .ToList();
 
         var groupIdsAssignedToPlan = groups

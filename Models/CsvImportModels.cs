@@ -7,10 +7,26 @@ public enum CsvImportDuplicateAction
     Cancel
 }
 
+public enum CsvImportMode
+{
+    AddOnly,
+    Upsert,
+    Sync
+}
+
+public enum CsvImportScope
+{
+    AllActiveDevices,
+    SelectedGroup
+}
+
 public enum CsvImportRowStatus
 {
     Add,
     Update,
+    Restore,
+    Unchanged,
+    Delete,
     Skip,
     Invalid,
     Duplicate
@@ -24,10 +40,22 @@ public sealed record DeviceCsvRecord(
     string GroupName,
     string Location,
     string Description,
+    bool IsCritical,
+    bool IsEnabled,
     bool AutoCheckEnabled,
+    int? PingTimeoutMs,
     int CheckIntervalSeconds,
     int RetryIntervalSeconds,
-    int RetryLimit);
+    int RetryLimit,
+    int FailureThreshold);
+
+public sealed record CsvImportOptions(
+    CsvImportMode Mode,
+    CsvImportScope Scope,
+    int? GroupId,
+    string GroupName,
+    string FileName,
+    string InitiatedBy);
 
 public sealed record CsvImportError(
     int RowNumber,
@@ -71,20 +99,34 @@ public sealed class CsvImportPreviewRow
 
     public string ErrorMessage { get; init; } = string.Empty;
 
+    public string ChangeSummary { get; init; } = string.Empty;
+
     public DeviceCsvRecord? Record { get; init; }
 
     public bool ExistsInDatabase { get; init; }
 
-    public bool IsImportable => Record is not null && Status is CsvImportRowStatus.Add or CsvImportRowStatus.Update or CsvImportRowStatus.Skip or CsvImportRowStatus.Duplicate;
+    public int? ExistingDeviceId { get; init; }
+
+    public bool ExistingIsDeleted { get; init; }
+
+    public bool IsImportable => Status is CsvImportRowStatus.Add
+        or CsvImportRowStatus.Update
+        or CsvImportRowStatus.Restore
+        or CsvImportRowStatus.Delete
+        or CsvImportRowStatus.Unchanged
+        or CsvImportRowStatus.Skip;
 
     public string StatusText => Status switch
     {
         CsvImportRowStatus.Add => "Eklenecek",
-        CsvImportRowStatus.Update => "Güncellenecek",
+        CsvImportRowStatus.Update => "Guncellenecek",
+        CsvImportRowStatus.Restore => "Geri yuklenecek",
+        CsvImportRowStatus.Unchanged => "Degismeyecek",
+        CsvImportRowStatus.Delete => "Silinecek",
         CsvImportRowStatus.Skip => "Atlanacak",
-        CsvImportRowStatus.Invalid => "Hatalı",
+        CsvImportRowStatus.Invalid => "Hatali",
         CsvImportRowStatus.Duplicate => "Duplicate",
-        _ => "Hatalı"
+        _ => "Hatali"
     };
 }
 
@@ -100,10 +142,17 @@ public sealed class CsvImportPreview
 
     public IReadOnlyList<CsvImportPreviewRow> Rows { get; }
 
-    public IReadOnlyList<DeviceCsvRecord> ValidRows => Rows
-        .Where(row => row.Record is not null && row.Status != CsvImportRowStatus.Invalid)
+    public IReadOnlyList<DeviceCsvRecord> ApplyRows => Rows
+        .Where(row => row.Record is not null
+            && row.Status is CsvImportRowStatus.Add
+                or CsvImportRowStatus.Update
+                or CsvImportRowStatus.Restore
+                or CsvImportRowStatus.Unchanged
+                or CsvImportRowStatus.Skip)
         .Select(row => row.Record!)
         .ToList();
+
+    public IReadOnlyList<DeviceCsvRecord> ValidRows => ApplyRows;
 
     public IReadOnlyList<CsvImportError> Errors => Rows
         .Where(row => row.Status == CsvImportRowStatus.Invalid)
@@ -128,17 +177,46 @@ public sealed class CsvImportPreview
 
     public int UpdateCount => Rows.Count(row => row.Status == CsvImportRowStatus.Update);
 
+    public int RestoreCount => Rows.Count(row => row.Status == CsvImportRowStatus.Restore);
+
+    public int DeleteCount => Rows.Count(row => row.Status == CsvImportRowStatus.Delete);
+
+    public int UnchangedCount => Rows.Count(row => row.Status == CsvImportRowStatus.Unchanged);
+
     public int SkipCount => Rows.Count(row => row.Status == CsvImportRowStatus.Skip);
 
     public int DuplicateCount => Rows.Count(row => row.Status == CsvImportRowStatus.Duplicate);
 
     public int InvalidRowCount => Rows.Count(row => row.Status == CsvImportRowStatus.Invalid);
 
-    public bool HasImportableRows => Rows.Any(row => row.Record is not null && row.Status != CsvImportRowStatus.Invalid);
+    public int ValidCsvRowCount => Rows.Count(row => row.Record is not null && row.Status != CsvImportRowStatus.Duplicate);
+
+    public bool HasBlockingErrors => InvalidRowCount > 0 || DuplicateCount > 0 || ValidCsvRowCount == 0;
+
+    public bool HasImportableRows => Rows.Any(row => row.IsImportable) && !HasBlockingErrors;
+
+    public string SummaryText => $"""
+        CSV satir sayisi: {TotalRows}
+        Gecerli satir: {ValidCsvRowCount}
+        Hatali satir: {InvalidRowCount}
+
+        Yeni eklenecek: {AddCount}
+        Guncellenecek: {UpdateCount}
+        Degismeden kalacak: {UnchangedCount}
+        CSV'de bulunmadigi icin silinecek: {DeleteCount}
+        Geri yuklenecek: {RestoreCount}
+        Atlanacak: {SkipCount}
+        Duplicate kayit: {DuplicateCount}
+        """;
 }
 
 public sealed record CsvImportApplyResult(
     int Added,
     int Updated,
+    int Deleted,
+    int Restored,
+    int Unchanged,
     int Skipped,
-    int Invalid);
+    int Invalid,
+    string BackupPath,
+    long AuditId);

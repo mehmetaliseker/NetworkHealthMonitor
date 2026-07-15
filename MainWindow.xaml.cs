@@ -36,8 +36,16 @@ public partial class MainWindow : Window
         var deviceCheckPolicyService = new DeviceCheckPolicyService();
         var deviceHealthEvaluator = new DeviceHealthEvaluator();
         var appSettingsService = new AppSettingsService();
+        var alertPolicyService = new AlertPolicyService();
+        var notificationOutboxRepository = new NotificationOutboxRepository(_connectionFactory);
+        var heartbeatRepository = new WorkerHeartbeatRepository(_connectionFactory);
+        var notificationClient = new NtfyNotificationClient(new DefaultHttpClientFactory(), new DpapiSecretProtector());
+        var notificationPublisher = new NotificationPublisher(notificationOutboxRepository);
+        var incidentService = new IncidentService(_connectionFactory, appSettingsService, alertPolicyService);
+        var availabilityRepository = new AvailabilityRepository(_connectionFactory);
         var csvExportService = new CsvExportService();
-        var deviceImportExportService = new DeviceImportExportService(csvExportService);
+        var maintenanceService = new DataMaintenanceService(_connectionFactory);
+        var deviceImportExportService = new DeviceImportExportService(csvExportService, deviceRepository, maintenanceService);
         var pingExecutionService = new PingExecutionService(
             deviceRepository,
             deviceGroupRepository,
@@ -46,7 +54,11 @@ public partial class MainWindow : Window
             pingService,
             deviceCheckPolicyService,
             deviceHealthEvaluator,
-            appSettingsService);
+            appSettingsService,
+            incidentService,
+            null,
+            availabilityRepository,
+            $"UI-{Environment.ProcessId}");
         var schedulerService = new SchedulerService(
             deviceRepository,
             deviceGroupRepository,
@@ -55,7 +67,8 @@ public partial class MainWindow : Window
             pingExecutionService,
             schedulePlanTargetResolver,
             deviceCheckPolicyService,
-            appSettingsService);
+            appSettingsService,
+            availabilityRepository: availabilityRepository);
 
         _viewModel = new MainViewModel(
             deviceRepository,
@@ -67,7 +80,7 @@ public partial class MainWindow : Window
             new DeviceGroupService(deviceGroupRepository),
             new SchedulePlanService(schedulePlanRepository),
             pingExecutionService,
-            new AvailabilityService(deviceRepository, pingLogRepository, outageRepository),
+            new AvailabilityService(availabilityRepository),
             schedulerService,
             schedulePlanTargetResolver,
             csvExportService,
@@ -75,7 +88,13 @@ public partial class MainWindow : Window
             deviceCheckPolicyService,
             appSettingsService,
             new WpfDialogService(),
-            new DataMaintenanceService(_connectionFactory));
+            maintenanceService,
+            null,
+            notificationPublisher,
+            notificationClient,
+            notificationOutboxRepository,
+            heartbeatRepository,
+            new WindowsStartupShortcutService());
 
         DataContext = _viewModel;
         Loaded += MainWindowLoaded;

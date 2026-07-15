@@ -122,25 +122,102 @@ public sealed partial class MainViewModel
         }
     }
 
+    private async Task BulkDeleteAsync(object? parameter)
+    {
+        var devices = GetSelectedDevices(parameter).Where(device => !device.IsDeleted).ToList();
+        if (devices.Count == 0)
+        {
+            _dialogService.ShowWarning("Cihaz secilmedi", "Silinecek aktif cihaz secin.");
+            return;
+        }
+
+        var names = string.Join(", ", devices.Take(5).Select(device => $"{device.Name} ({device.IpAddress})"));
+        if (devices.Count > 5)
+        {
+            names += $" ve {devices.Count - 5} cihaz daha";
+        }
+
+        if (!_dialogService.Confirm(
+                "Secilen cihazlar silinsin mi?",
+                $"{devices.Count} cihaz otomatik kontrollerden cikarilacak.\n{names}\n\nGecmis ping ve kesinti kayitlari korunacaktir."))
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var result = await _deviceService.BulkDeleteAsync(devices);
+            await ReloadAllAsync();
+            StatusMessage = result.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task BulkRestoreAsync(object? parameter)
+    {
+        var devices = GetSelectedDevices(parameter).Where(device => device.IsDeleted).ToList();
+        if (devices.Count == 0)
+        {
+            _dialogService.ShowWarning("Cihaz secilmedi", "Geri yuklenecek silinmis cihaz secin.");
+            return;
+        }
+
+        if (!_dialogService.Confirm("Secilen cihazlar geri yuklensin mi?", $"{devices.Count} cihaz tekrar aktif hale getirilecek. Duplicate aktif IP olusturulmaz."))
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var result = await _deviceService.BulkRestoreAsync(devices);
+            await ReloadAllAsync();
+            StatusMessage = result.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     private bool CanUseSelectedDevices(object? parameter)
     {
         return !IsBusy && GetSelectedDevices(parameter).Count > 0;
     }
 
-    private List<Device> GetSelectedDevices(object? parameter)
+    private void ToggleAllVisibleDevicesSelection()
     {
-        if (parameter is IEnumerable selectedItems and not string)
+        foreach (var device in DevicesView.Cast<Device>())
         {
-            return selectedItems
-                .OfType<Device>()
-                .Where(device => device.Id > 0)
-                .DistinctBy(device => device.Id)
-                .ToList();
+            device.IsSelected = _selectAllVisibleDevices;
         }
 
-        return SelectedDevice is { Id: > 0 }
-            ? new List<Device> { SelectedDevice }
-            : new List<Device>();
+        OnPropertyChanged(nameof(SelectedDeviceCountText));
+        RaiseCommandStates();
+    }
+
+    private List<Device> GetSelectedDevices(object? parameter)
+    {
+        var selected = new List<Device>();
+        if (parameter is IEnumerable selectedItems and not string)
+        {
+            selected.AddRange(selectedItems
+                .OfType<Device>()
+                .Where(device => device.Id > 0)
+                .DistinctBy(device => device.Id));
+        }
+
+        selected.AddRange(Devices.Where(device => device is { Id: > 0, IsSelected: true }));
+        if (SelectedDevice is { Id: > 0 })
+        {
+            selected.Add(SelectedDevice);
+        }
+
+        return selected.DistinctBy(device => device.Id).ToList();
     }
 }
 

@@ -119,6 +119,7 @@ public sealed partial class MainViewModel
             }
         }
 
+        await _uiAutostartService.SetEnabledAsync(OpenUiOnWindowsLogin, ResolveCurrentExecutablePath());
         await _settingsService.SaveAsync(CreateSettingsFromCurrentValues());
 
         StatusMessage = "Ayarlar kaydedildi.";
@@ -232,8 +233,15 @@ public sealed partial class MainViewModel
             DefaultFailureRetryIntervalSeconds = DefaultFailureRetryIntervalSeconds,
             DefaultFailureRetryLimit = DefaultFailureRetryLimit,
             StartSchedulePlansOnStartup = StartSchedulePlansOnStartup,
+            OpenUiOnWindowsLogin = OpenUiOnWindowsLogin,
             CsvDelimiter = CsvDelimiter,
             LogRetentionDays = LogRetentionDays,
+            AvailabilityPeriodRetentionDays = AvailabilityPeriodRetentionDays,
+            IncidentRetentionDays = IncidentRetentionDays,
+            DailyAggregateRetentionDays = DailyAggregateRetentionDays,
+            HeartbeatGraceSeconds = HeartbeatGraceSeconds,
+            ExpectedCheckGraceMultiplier = ExpectedCheckGraceMultiplier,
+            DowntimeStartPolicy = DowntimeStartPolicy,
             ExportDirectory = ExportDirectory,
             DeviceTypePolicies = DeviceTypePolicies.Select(policy => new DeviceTypePolicy
             {
@@ -245,18 +253,109 @@ public sealed partial class MainViewModel
                 DefaultFailureRetryLimit = policy.DefaultFailureRetryLimit,
                 DefaultFailureThreshold = policy.DefaultFailureThreshold
             }).ToList(),
+            Notifications = new NotificationSettings
+            {
+                Enabled = NotificationEnabled,
+                BaseUrl = NotificationBaseUrl,
+                Topic = NotificationTopic,
+                AccessToken = NotificationAccessToken,
+                IncludeIpAddress = NotificationIncludeIpAddress,
+                NotifyOnDeviceDown = NotificationNotifyOnDown,
+                NotifyOnDeviceRecovered = NotificationNotifyOnRecovered,
+                DownFailureThreshold = NotificationDownFailureThreshold,
+                RecoverySuccessThreshold = NotificationRecoverySuccessThreshold,
+                NotificationCooldownMinutes = NotificationCooldownMinutes,
+                RequestTimeoutSeconds = NotificationRequestTimeoutSeconds,
+                MaxRetryCount = NotificationMaxRetryCount,
+                InitialRetryDelaySeconds = NotificationInitialRetryDelaySeconds
+            },
             Theme = Theme
         };
     }
 
+    private static string ResolveCurrentExecutablePath()
+    {
+        var processPath = Environment.ProcessPath;
+        if (!string.IsNullOrWhiteSpace(processPath) && File.Exists(processPath))
+        {
+            return processPath;
+        }
+
+        var assemblyPath = System.Reflection.Assembly.GetEntryAssembly()?.Location;
+        if (!string.IsNullOrWhiteSpace(assemblyPath) && File.Exists(assemblyPath))
+        {
+            var exePath = Path.ChangeExtension(assemblyPath, ".exe");
+            return File.Exists(exePath) ? exePath : assemblyPath;
+        }
+
+        throw new InvalidOperationException("UI executable path could not be resolved.");
+    }
+
+    private async Task SendTestNotificationAsync()
+    {
+        var settings = CreateSettingsFromCurrentValues();
+        settings.Notifications.Enabled = true;
+        var payload = new NtfyNotificationPayload
+        {
+            EventType = "Test",
+            Title = "Network Health Monitor test bildirimi",
+            Message = $"Test zamani: {DateTime.Now:dd.MM.yyyy HH:mm:ss}",
+            Priority = "default",
+            Tags = "bell"
+        };
+
+        IsBusy = true;
+        try
+        {
+            var result = await _ntfyNotificationClient.PublishAsync(settings.Notifications, payload);
+            NotificationLastTestResult = result.Success ? "Test bildirimi gonderildi." : result.SafeErrorMessage;
+            settings.Notifications.LastTestAtUtc = DateTime.UtcNow;
+            settings.Notifications.LastTestResult = NotificationLastTestResult;
+            if (result.Success)
+            {
+                settings.Notifications.LastSuccessfulNotificationAtUtc = DateTime.UtcNow;
+                settings.Notifications.LastNotificationError = string.Empty;
+            }
+            else
+            {
+                settings.Notifications.LastNotificationError = result.SafeErrorMessage;
+            }
+
+            await _settingsService.SaveAsync(settings);
+            ApplySettings(settings);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private static void OpenLogFolder()
+    {
+        Directory.CreateDirectory(NetworkHealthMonitor.Data.DatabasePaths.LogDirectory);
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = NetworkHealthMonitor.Data.DatabasePaths.LogDirectory,
+            UseShellExecute = true
+        });
+    }
+
     private async Task RunStartupRetentionCleanupAsync(AppSettings settings)
     {
+        var deleted = 0;
         if (settings.LogRetentionDays <= 0)
         {
+            deleted += await _maintenanceService.ApplyRetentionAsync(settings);
+            if (deleted > 0)
+            {
+                await _maintenanceService.OptimizeDatabaseAsync();
+            }
+
             return;
         }
 
-        var deleted = await _pingLogRepository.ClearOlderThanAsync(DateTime.Now.AddDays(-settings.LogRetentionDays));
+        deleted += await _pingLogRepository.ClearOlderThanAsync(DateTime.Now.AddDays(-settings.LogRetentionDays));
+        deleted += await _maintenanceService.ApplyRetentionAsync(settings);
         if (deleted > 0)
         {
             await _maintenanceService.OptimizeDatabaseAsync();
@@ -274,10 +373,35 @@ public sealed partial class MainViewModel
         DefaultFailureRetryIntervalSeconds = settings.DefaultFailureRetryIntervalSeconds;
         DefaultFailureRetryLimit = settings.DefaultFailureRetryLimit;
         StartSchedulePlansOnStartup = settings.StartSchedulePlansOnStartup;
+        OpenUiOnWindowsLogin = settings.OpenUiOnWindowsLogin;
         CsvDelimiter = settings.CsvDelimiter;
         LogRetentionDays = settings.LogRetentionDays;
+        AvailabilityPeriodRetentionDays = settings.AvailabilityPeriodRetentionDays;
+        IncidentRetentionDays = settings.IncidentRetentionDays;
+        DailyAggregateRetentionDays = settings.DailyAggregateRetentionDays;
+        HeartbeatGraceSeconds = settings.HeartbeatGraceSeconds;
+        ExpectedCheckGraceMultiplier = settings.ExpectedCheckGraceMultiplier;
+        DowntimeStartPolicy = settings.DowntimeStartPolicy;
         ExportDirectory = settings.ExportDirectory;
         ReplaceCollection(DeviceTypePolicies, DeviceTypePolicy.NormalizeCollection(settings.DeviceTypePolicies));
+        NotificationEnabled = settings.Notifications.Enabled;
+        NotificationBaseUrl = settings.Notifications.BaseUrl;
+        NotificationTopic = settings.Notifications.Topic;
+        NotificationAccessToken = settings.Notifications.AccessToken;
+        NotificationIncludeIpAddress = settings.Notifications.IncludeIpAddress;
+        NotificationNotifyOnDown = settings.Notifications.NotifyOnDeviceDown;
+        NotificationNotifyOnRecovered = settings.Notifications.NotifyOnDeviceRecovered;
+        NotificationDownFailureThreshold = settings.Notifications.DownFailureThreshold;
+        NotificationRecoverySuccessThreshold = settings.Notifications.RecoverySuccessThreshold;
+        NotificationCooldownMinutes = settings.Notifications.NotificationCooldownMinutes;
+        NotificationRequestTimeoutSeconds = settings.Notifications.RequestTimeoutSeconds;
+        NotificationMaxRetryCount = settings.Notifications.MaxRetryCount;
+        NotificationInitialRetryDelaySeconds = settings.Notifications.InitialRetryDelaySeconds;
+        NotificationLastTestResult = settings.Notifications.LastTestResult;
+        NotificationLastSuccessfulAtText = settings.Notifications.LastSuccessfulNotificationAtUtc.HasValue
+            ? settings.Notifications.LastSuccessfulNotificationAtUtc.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")
+            : "-";
+        NotificationLastError = settings.Notifications.LastNotificationError;
         Theme = settings.Theme;
         PlanFormTimeoutMs = settings.PingTimeoutMs;
         PlanFormMaxParallelism = Math.Min(settings.MaxParallelPings, AppSettings.DefaultSchedulePlanMaxParallelism);

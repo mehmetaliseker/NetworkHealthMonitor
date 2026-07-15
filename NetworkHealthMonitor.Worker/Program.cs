@@ -4,6 +4,12 @@ using NetworkHealthMonitor.Worker;
 
 var options = WorkerOptions.Parse(args);
 
+if (options.HealthCheck)
+{
+    Environment.ExitCode = await WorkerMaintenance.RunHealthCheckAsync(options);
+    return;
+}
+
 if (options.RunOnce)
 {
     await using var scheduler = await WorkerComposition.CreateSchedulerAsync(options);

@@ -15,8 +15,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private const string SectionDeviceEdit = "Cihaz Ekle / Düzenle";
     private const string SectionGroups = "Cihaz Grupları";
     private const string SectionSchedules = "Otomatik Kontrol Planları";
-    private const string SectionAvailability = "Uptime / Erişilebilirlik";
+    private const string SectionAvailability = "Ag Erisilebilirligi";
     private const string SectionLogs = "Ping Logları";
+    private const string SectionNotifications = "Bildirim Kuyrugu";
     private const string SectionSettings = "Ayarlar";
     private const string AllDeviceTypesText = "Tüm Tipler";
     private const string AllStatusesText = "Tüm Durumlar";
@@ -25,6 +26,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private const string AllCriticalText = "Tüm Cihazlar";
     private const string CriticalOnlyText = "Sadece kritik";
     private const string NonCriticalOnlyText = "Kritik olmayan";
+    private const string ActiveDevicesText = "Aktif kayitlar";
+    private const string DeletedDevicesText = "Silinen cihazlar";
+    private const string AllDeletionStatesText = "Tum kayitlar";
+    private const string AllOutboxStatusesText = "Tum durumlar";
+    private const string AllOutboxEventTypesText = "Tum bildirimler";
 
     private readonly DeviceRepository _deviceRepository;
     private readonly DeviceGroupRepository _deviceGroupRepository;
@@ -45,6 +51,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly IDialogService _dialogService;
     private readonly DataMaintenanceService _maintenanceService;
     private readonly IWindowsServiceStatusService _windowsServiceStatusService;
+    private readonly INotificationPublisher _notificationPublisher;
+    private readonly INtfyNotificationClient _ntfyNotificationClient;
+    private readonly INotificationOutboxRepository _notificationOutboxRepository;
+    private readonly WorkerHeartbeatRepository _workerHeartbeatRepository;
+    private readonly IUiAutostartService _uiAutostartService;
 
     private CancellationTokenSource? _pingCancellationTokenSource;
     private bool _isInitialized;
@@ -62,6 +73,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private string _deviceStatusFilter = AllStatusesText;
     private string _deviceGroupFilter = AllGroupsText;
     private string _criticalFilter = AllCriticalText;
+    private string _deletedDeviceFilter = ActiveDevicesText;
     private string _logDeviceNameFilter = string.Empty;
     private string _logIpAddressFilter = string.Empty;
     private string _logDeviceTypeFilter = AllDeviceTypesText;
@@ -118,10 +130,56 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private bool _startSchedulePlansOnStartup = true;
     private string _csvDelimiter = ";";
     private int _logRetentionDays = AppSettings.DefaultLogRetentionDays;
+    private int _availabilityPeriodRetentionDays = AppSettings.DefaultAvailabilityPeriodRetentionDays;
+    private int _incidentRetentionDays = AppSettings.DefaultIncidentRetentionDays;
+    private int _dailyAggregateRetentionDays = AppSettings.DefaultDailyAggregateRetentionDays;
+    private int _heartbeatGraceSeconds = AppSettings.DefaultHeartbeatGraceSeconds;
+    private int _expectedCheckGraceMultiplier = AppSettings.DefaultExpectedCheckGraceMultiplier;
+    private DowntimeStartPolicy _downtimeStartPolicy = DowntimeStartPolicy.FirstFailedCheck;
     private string _exportDirectory = string.Empty;
     private string _theme = "Açık";
+    private bool _notificationEnabled;
+    private string _notificationBaseUrl = "https://ntfy.sh";
+    private string _notificationTopic = string.Empty;
+    private string _notificationAccessToken = string.Empty;
+    private bool _notificationIncludeIpAddress = true;
+    private bool _notificationNotifyOnDown = true;
+    private bool _notificationNotifyOnRecovered = true;
+    private int _notificationDownFailureThreshold = 3;
+    private int _notificationRecoverySuccessThreshold = 2;
+    private int _notificationCooldownMinutes = 15;
+    private int _notificationRequestTimeoutSeconds = 10;
+    private int _notificationMaxRetryCount = 5;
+    private int _notificationInitialRetryDelaySeconds = 30;
+    private string _notificationLastTestResult = string.Empty;
+    private string _notificationLastSuccessfulAtText = "-";
+    private string _notificationLastError = string.Empty;
+    private string _workerHealthText = "Bilinmiyor";
+    private string _workerVersionText = "-";
+    private string _workerStartedAtText = "-";
+    private string _workerLastSeenAtText = "-";
+    private string _workerLastSchedulerCycleText = "-";
+    private string _workerLastScheduledPingText = "-";
+    private string _workerLastNotificationText = "-";
+    private int _pendingNotificationCount;
+    private int _failedNotificationCount;
+    private NotificationOutboxItem? _selectedNotificationOutboxItem;
+    private string _outboxStatusFilter = AllOutboxStatusesText;
+    private string _outboxEventTypeFilter = AllOutboxEventTypesText;
+    private int? _outboxDeviceFilterId;
+    private DateTime? _outboxStartDate;
+    private DateTime? _outboxEndDate;
     private int? _bulkTargetGroupId;
     private int _bulkCheckIntervalSeconds;
+    private bool _selectAllVisibleDevices;
+    private CsvImportMode _csvImportMode = CsvImportMode.AddOnly;
+    private CsvImportScope _csvImportScope = CsvImportScope.AllActiveDevices;
+    private int? _csvImportGroupId;
+    private string _csvImportFilePath = string.Empty;
+    private string _csvImportPreviewSummary = "CSV onizlemesi henuz alinmadi.";
+    private CsvImportPreview? _csvImportPreview;
+    private bool _openUiOnWindowsLogin;
+    private bool _deleteEmptyGroupAfterDeviceDelete;
     private int _pingTotalCount;
     private int _pingCompletedCount;
     private int _pingSuccessCount;
@@ -148,7 +206,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         AppSettingsService settingsService,
         IDialogService dialogService,
         DataMaintenanceService maintenanceService,
-        IWindowsServiceStatusService? windowsServiceStatusService = null)
+        IWindowsServiceStatusService? windowsServiceStatusService = null,
+        INotificationPublisher? notificationPublisher = null,
+        INtfyNotificationClient? ntfyNotificationClient = null,
+        INotificationOutboxRepository? notificationOutboxRepository = null,
+        WorkerHeartbeatRepository? workerHeartbeatRepository = null,
+        IUiAutostartService? uiAutostartService = null)
     {
         _deviceRepository = deviceRepository;
         _deviceGroupRepository = deviceGroupRepository;
@@ -169,6 +232,18 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _dialogService = dialogService;
         _maintenanceService = maintenanceService;
         _windowsServiceStatusService = windowsServiceStatusService ?? new WindowsServiceStatusService();
+        _notificationOutboxRepository = notificationOutboxRepository ?? new NotificationOutboxRepository(deviceRepository.ConnectionFactory);
+        _notificationPublisher = notificationPublisher ?? new NotificationPublisher(_notificationOutboxRepository);
+        _ntfyNotificationClient = ntfyNotificationClient ?? new NtfyNotificationClient(new DefaultHttpClientFactory(), new DpapiSecretProtector());
+        _workerHeartbeatRepository = workerHeartbeatRepository ?? new WorkerHeartbeatRepository(deviceRepository.ConnectionFactory);
+        _uiAutostartService = uiAutostartService ?? new WindowsStartupShortcutService();
+        _maintenanceWindowRepository = new MaintenanceWindowRepository(deviceRepository.ConnectionFactory);
+        _monitoringCalendarRepository = new MonitoringCalendarRepository(deviceRepository.ConnectionFactory);
+        _systemReadinessService = new SystemReadinessService(
+            deviceRepository.ConnectionFactory,
+            _workerHeartbeatRepository,
+            _notificationOutboxRepository,
+            _windowsServiceStatusService);
 
         DeviceTypeOptions = new ObservableCollection<DeviceTypeOption>(DeviceTypeOption.CreateAll());
         DeviceTypeFilterOptions = new ObservableCollection<string>(new[] { AllDeviceTypesText }.Concat(DeviceTypeOptions.Select(option => option.Label)));
@@ -183,6 +258,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             DeviceStatus.Unknown.ToDisplayName()
         });
         CriticalFilterOptions = new ObservableCollection<string>(new[] { AllCriticalText, CriticalOnlyText, NonCriticalOnlyText });
+        DeviceDeletedFilterOptions = new ObservableCollection<string>(new[] { ActiveDevicesText, DeletedDevicesText, AllDeletionStatesText });
         TriggerFilterOptions = new ObservableCollection<string>(new[]
         {
             AllTriggersText,
@@ -197,6 +273,24 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         FrequencyUnitOptions = new ObservableCollection<string>(new[] { "Dakika", "Saat", "Gün" });
         ThemeOptions = new ObservableCollection<string>(new[] { "Açık", "Koyu" });
         DeviceTypePolicies = new ObservableCollection<DeviceTypePolicy>(DeviceTypePolicy.CreateDefaults());
+        CsvImportModeOptions = new ObservableCollection<SelectionOption<CsvImportMode>>(new[]
+        {
+            new SelectionOption<CsvImportMode>(CsvImportMode.AddOnly, "Sadece yeni cihazlari ekle"),
+            new SelectionOption<CsvImportMode>(CsvImportMode.Upsert, "Ekle veya guncelle"),
+            new SelectionOption<CsvImportMode>(CsvImportMode.Sync, "CSV ile tamamen esitle")
+        });
+        CsvImportScopeOptions = new ObservableCollection<SelectionOption<CsvImportScope>>(new[]
+        {
+            new SelectionOption<CsvImportScope>(CsvImportScope.AllActiveDevices, "Tum aktif cihazlari CSV ile esitle"),
+            new SelectionOption<CsvImportScope>(CsvImportScope.SelectedGroup, "Yalnizca secili grubu CSV ile esitle")
+        });
+        OutboxStatusOptions = new ObservableCollection<string>(new[] { AllOutboxStatusesText, "Pending", "Processing", "Sent", "Failed", "Cancelled" });
+        OutboxEventTypeOptions = new ObservableCollection<string>(new[] { AllOutboxEventTypesText, "DeviceDown", "DeviceRecovered", "Test" });
+        DowntimeStartPolicyOptions = new ObservableCollection<SelectionOption<DowntimeStartPolicy>>(new[]
+        {
+            new SelectionOption<DowntimeStartPolicy>(DowntimeStartPolicy.FirstFailedCheck, "Ilk basarisiz kontrol"),
+            new SelectionOption<DowntimeStartPolicy>(DowntimeStartPolicy.ConfirmedDownTime, "Down dogrulama zamani")
+        });
 
         DevicesView = CollectionViewSource.GetDefaultView(Devices);
         DevicesView.Filter = FilterDevice;
@@ -212,15 +306,21 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         NavigateGroupsCommand = new RelayCommand(() => CurrentSection = SectionGroups);
         NavigateSchedulesCommand = new RelayCommand(() => CurrentSection = SectionSchedules);
         NavigateAvailabilityCommand = new RelayCommand(() => CurrentSection = SectionAvailability);
+        NavigateMaintenanceCommand = new RelayCommand(() => CurrentSection = SectionMaintenance);
+        NavigateCalendarsCommand = new RelayCommand(() => CurrentSection = SectionCalendars);
+        NavigateReadinessCommand = new RelayCommand(() => CurrentSection = SectionReadiness);
         NavigateLogsCommand = new RelayCommand(() => CurrentSection = SectionLogs);
+        NavigateNotificationsCommand = new RelayCommand(() => CurrentSection = SectionNotifications);
         NavigateSettingsCommand = new RelayCommand(() => CurrentSection = SectionSettings);
 
         SaveDeviceCommand = new AsyncRelayCommand(SaveDeviceAsync, () => !IsBusy);
         ClearDeviceFormCommand = new RelayCommand(ClearDeviceForm, () => !IsBusy);
         EditSelectedDeviceCommand = new RelayCommand(() => StartEditDevice(SelectedDevice), () => SelectedDevice is not null && !IsBusy);
         EditDeviceCommand = new RelayCommand<Device>(StartEditDevice, device => device is not null && !IsBusy);
-        DeleteSelectedDeviceCommand = new AsyncRelayCommand(() => DeleteDeviceAsync(SelectedDevice), () => SelectedDevice is not null && !IsBusy);
-        DeleteDeviceCommand = new AsyncRelayCommand<Device>(DeleteDeviceAsync, device => device is not null && !IsBusy);
+        DeleteSelectedDeviceCommand = new AsyncRelayCommand(() => DeleteDeviceAsync(SelectedDevice), () => SelectedDevice is { IsDeleted: false } && !IsBusy);
+        DeleteDeviceCommand = new AsyncRelayCommand<Device>(DeleteDeviceAsync, device => device is { IsDeleted: false } && !IsBusy);
+        RestoreSelectedDeviceCommand = new AsyncRelayCommand(() => RestoreDeviceAsync(SelectedDevice), () => SelectedDevice is { IsDeleted: true } && !IsBusy);
+        RestoreDeviceCommand = new AsyncRelayCommand<Device>(RestoreDeviceAsync, device => device is { IsDeleted: true } && !IsBusy);
 
         PingAllCommand = new AsyncRelayCommand(() => RunManualPingAsync(Devices.ToList(), PingTriggerType.Manual), () => Devices.Count > 0 && !IsBusy);
         PingFilteredDevicesCommand = new AsyncRelayCommand(() => RunManualPingAsync(DevicesView.Cast<Device>().ToList(), PingTriggerType.Manual), () => DevicesView.Cast<Device>().Any() && !IsBusy);
@@ -233,12 +333,16 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         AssignSelectedDevicesToGroupCommand = new AsyncRelayCommand<object>(BulkAssignGroupAsync, CanUseSelectedDevices);
         ApplySelectedCheckIntervalCommand = new AsyncRelayCommand<object>(BulkApplyCheckIntervalAsync, CanUseSelectedDevices);
         DeactivateSelectedDevicesCommand = new AsyncRelayCommand<object>(BulkDeactivateAsync, CanUseSelectedDevices);
+        DeleteSelectedDevicesBulkCommand = new AsyncRelayCommand<object>(BulkDeleteAsync, CanUseSelectedDevices);
+        RestoreSelectedDevicesBulkCommand = new AsyncRelayCommand<object>(BulkRestoreAsync, parameter => !IsBusy && GetSelectedDevices(parameter).Any(device => device.IsDeleted));
+        ToggleAllVisibleDevicesSelectionCommand = new RelayCommand(ToggleAllVisibleDevicesSelection, () => !IsBusy);
         CancelPingCommand = new RelayCommand(CancelPing, () => IsPinging);
 
         SaveGroupCommand = new AsyncRelayCommand(SaveGroupAsync, () => !IsBusy);
         ClearGroupFormCommand = new RelayCommand(ClearGroupForm, () => !IsBusy);
         EditSelectedGroupCommand = new RelayCommand(() => StartEditGroup(SelectedGroup), () => SelectedGroup is not null && !IsBusy);
         DeleteSelectedGroupCommand = new AsyncRelayCommand(() => DeleteGroupAsync(SelectedGroup), () => SelectedGroup is not null && !IsBusy);
+        DeleteSelectedGroupDevicesCommand = new AsyncRelayCommand(() => DeleteGroupDevicesAsync(SelectedGroup), () => SelectedGroup is not null && !IsBusy);
         PingSelectedGroupCommand = new AsyncRelayCommand(() => SelectedGroup is null ? Task.CompletedTask : PingGroupAsync(SelectedGroup), () => SelectedGroup is not null && !IsBusy);
 
         SaveSchedulePlanCommand = new AsyncRelayCommand(SaveSchedulePlanAsync, () => !IsBusy);
@@ -255,9 +359,28 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         ExportLogsCommand = new AsyncRelayCommand(ExportLogsAsync, () => Logs.Count > 0 && !IsBusy);
         RefreshAvailabilityCommand = new AsyncRelayCommand(LoadAvailabilityAsync, () => !IsBusy);
         ExportAvailabilityCommand = new AsyncRelayCommand(ExportAvailabilityAsync, () => AvailabilityItems.Count > 0 && !IsBusy);
+        ExportAvailabilityIncidentsCommand = new AsyncRelayCommand(ExportAvailabilityIncidentsAsync, () => !IsBusy);
+        RecalculateAvailabilityCommand = new AsyncRelayCommand(RecalculateAvailabilityAsync, () => !IsBusy);
+        RefreshSelectedDeviceTimelineCommand = new AsyncRelayCommand(RefreshSelectedDeviceAvailabilityAsync, () => SelectedDevice is not null && !IsBusy);
+        SaveMaintenanceWindowCommand = new AsyncRelayCommand(SaveMaintenanceWindowAsync, () => !IsBusy);
+        ClearMaintenanceWindowFormCommand = new RelayCommand(ClearMaintenanceWindowForm, () => !IsBusy);
+        EditSelectedMaintenanceWindowCommand = new RelayCommand(StartEditMaintenanceWindow, () => SelectedMaintenanceWindow is not null && !IsBusy);
+        CancelSelectedMaintenanceWindowCommand = new AsyncRelayCommand(CancelSelectedMaintenanceWindowAsync, () => SelectedMaintenanceWindow is not null && !IsBusy);
+        CompleteSelectedMaintenanceWindowCommand = new AsyncRelayCommand(CompleteSelectedMaintenanceWindowAsync, () => SelectedMaintenanceWindow is not null && !IsBusy);
+        SaveMonitoringCalendarCommand = new AsyncRelayCommand(SaveMonitoringCalendarAsync, () => !IsBusy);
+        ClearMonitoringCalendarFormCommand = new RelayCommand(ClearMonitoringCalendarForm, () => !IsBusy);
+        EditSelectedMonitoringCalendarCommand = new RelayCommand(StartEditMonitoringCalendar, () => SelectedMonitoringCalendar is not null && !IsBusy);
+        DeleteSelectedMonitoringCalendarCommand = new AsyncRelayCommand(DeleteSelectedMonitoringCalendarAsync, () => SelectedMonitoringCalendar is not null && !IsBusy);
+        RefreshReadinessCommand = new AsyncRelayCommand(RefreshReadinessAsync, () => !IsBusy);
         ExportDevicesCommand = new AsyncRelayCommand(ExportDevicesAsync, () => Devices.Count > 0 && !IsBusy);
-        ImportDevicesCommand = new AsyncRelayCommand(ImportDevicesAsync, () => !IsBusy);
+        ImportDevicesCommand = new AsyncRelayCommand(PreviewImportDevicesAsync, () => !IsBusy);
+        ApplyCsvImportCommand = new AsyncRelayCommand(ApplyCsvImportAsync, () => !IsBusy && CsvImportCanApply);
         CreateCsvTemplateCommand = new AsyncRelayCommand(CreateCsvTemplateAsync, () => !IsBusy);
+        RefreshOutboxCommand = new AsyncRelayCommand(LoadOutboxAsync, () => !IsBusy);
+        RetrySelectedOutboxCommand = new AsyncRelayCommand<object>(RetrySelectedOutboxAsync, parameter => !IsBusy && GetSelectedOutboxItems(parameter).Any(item => item.Status == "Failed"));
+        RetryOutboxCommand = new AsyncRelayCommand<NotificationOutboxItem>(item => RetryOutboxAsync(item), item => item?.Status == "Failed" && !IsBusy);
+        CancelPendingOutboxCommand = new AsyncRelayCommand<NotificationOutboxItem>(item => CancelPendingOutboxAsync(item), item => item?.Status == "Pending" && !IsBusy);
+        ShowOutboxDetailCommand = new RelayCommand<NotificationOutboxItem>(ShowOutboxDetail, item => item is not null);
         SaveSettingsCommand = new AsyncRelayCommand(SaveSettingsAsync, () => !IsBusy);
         ResetSettingsCommand = new AsyncRelayCommand(ResetSettingsAsync, () => !IsBusy);
         BackupDatabaseCommand = new AsyncRelayCommand(BackupDatabaseAsync, () => !IsBusy);
@@ -265,6 +388,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         OptimizeDatabaseCommand = new AsyncRelayCommand(OptimizeDatabaseAsync, () => !IsBusy);
         ExportSettingsCommand = new AsyncRelayCommand(ExportSettingsAsync, () => !IsBusy);
         ImportSettingsCommand = new AsyncRelayCommand(ImportSettingsAsync, () => !IsBusy);
+        SendTestNotificationCommand = new AsyncRelayCommand(SendTestNotificationAsync, () => !IsBusy);
+        OpenLogFolderCommand = new RelayCommand(OpenLogFolder);
 
         _schedulerService.StatusChanged += SchedulerStatusChanged;
         EnsureSummaryCards();
@@ -278,6 +403,20 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public ObservableCollection<SchedulePlan> SchedulePlans { get; } = new();
 
     public ObservableCollection<PingLog> Logs { get; } = new();
+
+    public ObservableCollection<NotificationOutboxItem> NotificationOutboxItems { get; } = new();
+
+    public ObservableCollection<CsvImportPreviewRow> CsvNewRows { get; } = new();
+
+    public ObservableCollection<CsvImportPreviewRow> CsvUpdateRows { get; } = new();
+
+    public ObservableCollection<CsvImportPreviewRow> CsvDeleteRows { get; } = new();
+
+    public ObservableCollection<CsvImportPreviewRow> CsvInvalidRows { get; } = new();
+
+    public ObservableCollection<CsvImportPreviewRow> CsvDuplicateRows { get; } = new();
+
+    public ObservableCollection<CsvImportPreviewRow> CsvUnchangedRows { get; } = new();
 
     public ObservableCollection<AvailabilityReportItem> AvailabilityItems { get; } = new();
 
@@ -307,9 +446,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public ObservableCollection<string> CriticalFilterOptions { get; }
 
+    public ObservableCollection<string> DeviceDeletedFilterOptions { get; }
+
     public ObservableCollection<string> TriggerFilterOptions { get; }
 
     public ObservableCollection<SelectionOption<int?>> DeviceGroupOptions { get; } = new();
+
+    public ObservableCollection<SelectionOption<int?>> DeviceOptions { get; } = new();
 
     public ObservableCollection<SelectionOption<int?>> SchedulePlanOptions { get; } = new();
 
@@ -323,6 +466,16 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public ObservableCollection<DeviceTypePolicy> DeviceTypePolicies { get; }
 
+    public ObservableCollection<SelectionOption<CsvImportMode>> CsvImportModeOptions { get; }
+
+    public ObservableCollection<SelectionOption<CsvImportScope>> CsvImportScopeOptions { get; }
+
+    public ObservableCollection<SelectionOption<DowntimeStartPolicy>> DowntimeStartPolicyOptions { get; }
+
+    public ObservableCollection<string> OutboxStatusOptions { get; }
+
+    public ObservableCollection<string> OutboxEventTypeOptions { get; }
+
     public ICollectionView DevicesView { get; }
 
     public ICollectionView LogsView { get; }
@@ -334,6 +487,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public RelayCommand NavigateSchedulesCommand { get; }
     public RelayCommand NavigateAvailabilityCommand { get; }
     public RelayCommand NavigateLogsCommand { get; }
+    public RelayCommand NavigateNotificationsCommand { get; }
     public RelayCommand NavigateSettingsCommand { get; }
     public AsyncRelayCommand SaveDeviceCommand { get; }
     public RelayCommand ClearDeviceFormCommand { get; }
@@ -341,6 +495,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public RelayCommand<Device> EditDeviceCommand { get; }
     public AsyncRelayCommand DeleteSelectedDeviceCommand { get; }
     public AsyncRelayCommand<Device> DeleteDeviceCommand { get; }
+    public AsyncRelayCommand RestoreSelectedDeviceCommand { get; }
+    public AsyncRelayCommand<Device> RestoreDeviceCommand { get; }
     public AsyncRelayCommand PingAllCommand { get; }
     public AsyncRelayCommand PingFilteredDevicesCommand { get; }
     public AsyncRelayCommand PingSelectedDeviceCommand { get; }
@@ -352,11 +508,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public AsyncRelayCommand<object> AssignSelectedDevicesToGroupCommand { get; }
     public AsyncRelayCommand<object> ApplySelectedCheckIntervalCommand { get; }
     public AsyncRelayCommand<object> DeactivateSelectedDevicesCommand { get; }
+    public AsyncRelayCommand<object> DeleteSelectedDevicesBulkCommand { get; }
+    public AsyncRelayCommand<object> RestoreSelectedDevicesBulkCommand { get; }
+    public RelayCommand ToggleAllVisibleDevicesSelectionCommand { get; }
     public RelayCommand CancelPingCommand { get; }
     public AsyncRelayCommand SaveGroupCommand { get; }
     public RelayCommand ClearGroupFormCommand { get; }
     public RelayCommand EditSelectedGroupCommand { get; }
     public AsyncRelayCommand DeleteSelectedGroupCommand { get; }
+    public AsyncRelayCommand DeleteSelectedGroupDevicesCommand { get; }
     public AsyncRelayCommand PingSelectedGroupCommand { get; }
     public AsyncRelayCommand SaveSchedulePlanCommand { get; }
     public RelayCommand ClearSchedulePlanFormCommand { get; }
@@ -371,9 +531,17 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public AsyncRelayCommand ExportLogsCommand { get; }
     public AsyncRelayCommand RefreshAvailabilityCommand { get; }
     public AsyncRelayCommand ExportAvailabilityCommand { get; }
+    public AsyncRelayCommand ExportAvailabilityIncidentsCommand { get; }
+    public AsyncRelayCommand RecalculateAvailabilityCommand { get; }
     public AsyncRelayCommand ExportDevicesCommand { get; }
     public AsyncRelayCommand ImportDevicesCommand { get; }
+    public AsyncRelayCommand ApplyCsvImportCommand { get; }
     public AsyncRelayCommand CreateCsvTemplateCommand { get; }
+    public AsyncRelayCommand RefreshOutboxCommand { get; }
+    public AsyncRelayCommand<object> RetrySelectedOutboxCommand { get; }
+    public AsyncRelayCommand<NotificationOutboxItem> RetryOutboxCommand { get; }
+    public AsyncRelayCommand<NotificationOutboxItem> CancelPendingOutboxCommand { get; }
+    public RelayCommand<NotificationOutboxItem> ShowOutboxDetailCommand { get; }
     public AsyncRelayCommand SaveSettingsCommand { get; }
     public AsyncRelayCommand ResetSettingsCommand { get; }
     public AsyncRelayCommand BackupDatabaseCommand { get; }
@@ -381,6 +549,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public AsyncRelayCommand OptimizeDatabaseCommand { get; }
     public AsyncRelayCommand ExportSettingsCommand { get; }
     public AsyncRelayCommand ImportSettingsCommand { get; }
+    public AsyncRelayCommand SendTestNotificationCommand { get; }
+    public RelayCommand OpenLogFolderCommand { get; }
 
     public string CurrentSection
     {
@@ -397,7 +567,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 OnPropertyChanged(nameof(IsGroupsSection));
                 OnPropertyChanged(nameof(IsSchedulesSection));
                 OnPropertyChanged(nameof(IsAvailabilitySection));
+                OnPropertyChanged(nameof(IsMaintenanceSection));
+                OnPropertyChanged(nameof(IsCalendarsSection));
+                OnPropertyChanged(nameof(IsReadinessSection));
                 OnPropertyChanged(nameof(IsLogsSection));
+                OnPropertyChanged(nameof(IsNotificationsSection));
                 OnPropertyChanged(nameof(IsSettingsSection));
             }
         }
@@ -412,9 +586,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         SectionDeviceEdit => "Cihaz ekleme ve düzenleme işlemleri bu ayrı formdan yapılır.",
         SectionGroups => "Kullanıcı tanımlı grupları yönetin ve grup bazlı ping çalıştırın.",
         SectionSchedules => "Cihaz, tip, grup veya kritik cihaz bazlı otomatik kontrol planları oluşturun.",
-        SectionAvailability => "Ping tabanlı ölçülen erişilebilirlik oranlarını ve kesintileri takip edin.",
+        SectionAvailability => "Ping tabanli ag erisilebilirligi, kesinti, Unknown ve coverage metriklerini takip edin.",
+        SectionMaintenance => "Planli bakim pencerelerini ve hedeflerini yonetin.",
+        SectionCalendars => "Izleme takvimleri, gun/saat kurallari ve cihaz/grup atamalarini yonetin.",
+        SectionReadiness => "Windows Service, heartbeat, outbox, disk ve diagnostics durumunu dogrulayin.",
         SectionLogs => "Ping geçmişini filtreleyin, temizleyin ve CSV olarak dışa aktarın.",
         SectionSettings => "Genel uygulama davranışlarını ve veri bakımını yönetin.",
+        SectionNotifications => "Failed ve pending bildirim outbox kayitlarini yonetin.",
         _ => string.Empty
     };
 
@@ -425,6 +603,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public bool IsSchedulesSection => CurrentSection == SectionSchedules;
     public bool IsAvailabilitySection => CurrentSection == SectionAvailability;
     public bool IsLogsSection => CurrentSection == SectionLogs;
+    public bool IsNotificationsSection => CurrentSection == SectionNotifications;
     public bool IsSettingsSection => CurrentSection == SectionSettings;
 
     public bool IsBusy
@@ -466,6 +645,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (SetProperty(ref _selectedDevice, value))
             {
                 RaiseCommandStates();
+                _ = RefreshSelectedDeviceAvailabilityAsync();
             }
         }
     }
@@ -554,6 +734,117 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             }
         }
     }
+
+    public string DeletedDeviceFilter
+    {
+        get => _deletedDeviceFilter;
+        set
+        {
+            if (SetProperty(ref _deletedDeviceFilter, value ?? ActiveDevicesText))
+            {
+                DevicesView.Refresh();
+                RaiseCommandStates();
+            }
+        }
+    }
+
+    public NotificationOutboxItem? SelectedNotificationOutboxItem
+    {
+        get => _selectedNotificationOutboxItem;
+        set
+        {
+            if (SetProperty(ref _selectedNotificationOutboxItem, value))
+            {
+                RaiseCommandStates();
+            }
+        }
+    }
+
+    public string OutboxStatusFilter
+    {
+        get => _outboxStatusFilter;
+        set => SetProperty(ref _outboxStatusFilter, value ?? AllOutboxStatusesText);
+    }
+
+    public string OutboxEventTypeFilter
+    {
+        get => _outboxEventTypeFilter;
+        set => SetProperty(ref _outboxEventTypeFilter, value ?? AllOutboxEventTypesText);
+    }
+
+    public int? OutboxDeviceFilterId
+    {
+        get => _outboxDeviceFilterId;
+        set => SetProperty(ref _outboxDeviceFilterId, value);
+    }
+
+    public DateTime? OutboxStartDate
+    {
+        get => _outboxStartDate;
+        set => SetProperty(ref _outboxStartDate, value);
+    }
+
+    public DateTime? OutboxEndDate
+    {
+        get => _outboxEndDate;
+        set => SetProperty(ref _outboxEndDate, value);
+    }
+
+    public CsvImportMode CsvImportMode
+    {
+        get => _csvImportMode;
+        set
+        {
+            if (SetProperty(ref _csvImportMode, value))
+            {
+                ClearCsvPreview();
+                OnPropertyChanged(nameof(IsCsvSyncMode));
+            }
+        }
+    }
+
+    public CsvImportScope CsvImportScope
+    {
+        get => _csvImportScope;
+        set
+        {
+            if (SetProperty(ref _csvImportScope, value))
+            {
+                ClearCsvPreview();
+                OnPropertyChanged(nameof(IsCsvGroupScope));
+            }
+        }
+    }
+
+    public int? CsvImportGroupId
+    {
+        get => _csvImportGroupId;
+        set
+        {
+            if (SetProperty(ref _csvImportGroupId, value))
+            {
+                ClearCsvPreview();
+            }
+        }
+    }
+
+    public string CsvImportFilePath
+    {
+        get => _csvImportFilePath;
+        private set => SetProperty(ref _csvImportFilePath, value ?? string.Empty);
+    }
+
+    public string CsvImportPreviewSummary
+    {
+        get => _csvImportPreviewSummary;
+        private set => SetProperty(ref _csvImportPreviewSummary, value ?? string.Empty);
+    }
+
+    public bool CsvImportCanApply => _csvImportPreview is not null && _csvImportPreview.HasImportableRows;
+
+    public bool IsCsvSyncMode => CsvImportMode == NetworkHealthMonitor.Models.CsvImportMode.Sync;
+
+    public bool IsCsvGroupScope => CsvImportScope == NetworkHealthMonitor.Models.CsvImportScope.SelectedGroup;
 
     public DateTime? LogStartDate
     {
@@ -799,6 +1090,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public string GroupFormActionText => _editingGroupId.HasValue ? "Güncelle" : "Kaydet";
 
+    public bool DeleteEmptyGroupAfterDeviceDelete
+    {
+        get => _deleteEmptyGroupAfterDeviceDelete;
+        set => SetProperty(ref _deleteEmptyGroupAfterDeviceDelete, value);
+    }
+
     public string PlanFormName
     {
         get => _planFormName;
@@ -923,6 +1220,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         set => SetProperty(ref _startSchedulePlansOnStartup, value);
     }
 
+    public bool OpenUiOnWindowsLogin
+    {
+        get => _openUiOnWindowsLogin;
+        set => SetProperty(ref _openUiOnWindowsLogin, value);
+    }
+
     public string CsvDelimiter
     {
         get => _csvDelimiter;
@@ -953,11 +1256,211 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         set => SetProperty(ref _theme, value ?? "Açık");
     }
 
+    public bool NotificationEnabled
+    {
+        get => _notificationEnabled;
+        set => SetProperty(ref _notificationEnabled, value);
+    }
+
+    public string NotificationBaseUrl
+    {
+        get => _notificationBaseUrl;
+        set => SetProperty(ref _notificationBaseUrl, value ?? string.Empty);
+    }
+
+    public string NotificationTopic
+    {
+        get => _notificationTopic;
+        set => SetProperty(ref _notificationTopic, value ?? string.Empty);
+    }
+
+    public string NotificationAccessToken
+    {
+        get => _notificationAccessToken;
+        set => SetProperty(ref _notificationAccessToken, value ?? string.Empty);
+    }
+
+    public bool NotificationIncludeIpAddress
+    {
+        get => _notificationIncludeIpAddress;
+        set => SetProperty(ref _notificationIncludeIpAddress, value);
+    }
+
+    public bool NotificationNotifyOnDown
+    {
+        get => _notificationNotifyOnDown;
+        set => SetProperty(ref _notificationNotifyOnDown, value);
+    }
+
+    public bool NotificationNotifyOnRecovered
+    {
+        get => _notificationNotifyOnRecovered;
+        set => SetProperty(ref _notificationNotifyOnRecovered, value);
+    }
+
+    public int NotificationDownFailureThreshold
+    {
+        get => _notificationDownFailureThreshold;
+        set => SetProperty(ref _notificationDownFailureThreshold, Math.Clamp(value, 1, 20));
+    }
+
+    public int NotificationRecoverySuccessThreshold
+    {
+        get => _notificationRecoverySuccessThreshold;
+        set => SetProperty(ref _notificationRecoverySuccessThreshold, Math.Clamp(value, 1, 20));
+    }
+
+    public int NotificationCooldownMinutes
+    {
+        get => _notificationCooldownMinutes;
+        set => SetProperty(ref _notificationCooldownMinutes, Math.Clamp(value, 0, 1440));
+    }
+
+    public int NotificationRequestTimeoutSeconds
+    {
+        get => _notificationRequestTimeoutSeconds;
+        set => SetProperty(ref _notificationRequestTimeoutSeconds, Math.Clamp(value, 1, 120));
+    }
+
+    public int NotificationMaxRetryCount
+    {
+        get => _notificationMaxRetryCount;
+        set => SetProperty(ref _notificationMaxRetryCount, Math.Clamp(value, 0, 20));
+    }
+
+    public int NotificationInitialRetryDelaySeconds
+    {
+        get => _notificationInitialRetryDelaySeconds;
+        set => SetProperty(ref _notificationInitialRetryDelaySeconds, Math.Clamp(value, 1, 3600));
+    }
+
+    public string NotificationLastTestResult
+    {
+        get => _notificationLastTestResult;
+        private set => SetProperty(ref _notificationLastTestResult, value ?? string.Empty);
+    }
+
+    public string NotificationLastSuccessfulAtText
+    {
+        get => _notificationLastSuccessfulAtText;
+        private set => SetProperty(ref _notificationLastSuccessfulAtText, value ?? "-");
+    }
+
+    public string NotificationLastError
+    {
+        get => _notificationLastError;
+        private set => SetProperty(ref _notificationLastError, value ?? string.Empty);
+    }
+
+    public string WorkerHealthText
+    {
+        get => _workerHealthText;
+        private set => SetProperty(ref _workerHealthText, value ?? "Bilinmiyor");
+    }
+
+    public string WorkerVersionText
+    {
+        get => _workerVersionText;
+        private set => SetProperty(ref _workerVersionText, value ?? "-");
+    }
+
+    public string WorkerStartedAtText
+    {
+        get => _workerStartedAtText;
+        private set => SetProperty(ref _workerStartedAtText, value ?? "-");
+    }
+
+    public string WorkerLastSeenAtText
+    {
+        get => _workerLastSeenAtText;
+        private set => SetProperty(ref _workerLastSeenAtText, value ?? "-");
+    }
+
+    public string WorkerLastSchedulerCycleText
+    {
+        get => _workerLastSchedulerCycleText;
+        private set => SetProperty(ref _workerLastSchedulerCycleText, value ?? "-");
+    }
+
+    public string WorkerLastScheduledPingText
+    {
+        get => _workerLastScheduledPingText;
+        private set => SetProperty(ref _workerLastScheduledPingText, value ?? "-");
+    }
+
+    public string WorkerLastNotificationText
+    {
+        get => _workerLastNotificationText;
+        private set => SetProperty(ref _workerLastNotificationText, value ?? "-");
+    }
+
+    public int PendingNotificationCount
+    {
+        get => _pendingNotificationCount;
+        private set => SetProperty(ref _pendingNotificationCount, value);
+    }
+
+    public int FailedNotificationCount
+    {
+        get => _failedNotificationCount;
+        private set => SetProperty(ref _failedNotificationCount, value);
+    }
+
     public int? BulkTargetGroupId
     {
         get => _bulkTargetGroupId;
         set => SetProperty(ref _bulkTargetGroupId, value);
     }
+
+    public bool SelectAllVisibleDevices
+    {
+        get => _selectAllVisibleDevices;
+        set
+        {
+            if (SetProperty(ref _selectAllVisibleDevices, value))
+            {
+                ToggleAllVisibleDevicesSelection();
+            }
+        }
+    }
+
+    public int AvailabilityPeriodRetentionDays
+    {
+        get => _availabilityPeriodRetentionDays;
+        set => SetProperty(ref _availabilityPeriodRetentionDays, Math.Max(0, value));
+    }
+
+    public int IncidentRetentionDays
+    {
+        get => _incidentRetentionDays;
+        set => SetProperty(ref _incidentRetentionDays, Math.Max(0, value));
+    }
+
+    public int DailyAggregateRetentionDays
+    {
+        get => _dailyAggregateRetentionDays;
+        set => SetProperty(ref _dailyAggregateRetentionDays, Math.Max(0, value));
+    }
+
+    public int HeartbeatGraceSeconds
+    {
+        get => _heartbeatGraceSeconds;
+        set => SetProperty(ref _heartbeatGraceSeconds, Math.Clamp(value, 30, 3600));
+    }
+
+    public int ExpectedCheckGraceMultiplier
+    {
+        get => _expectedCheckGraceMultiplier;
+        set => SetProperty(ref _expectedCheckGraceMultiplier, Math.Clamp(value, 1, 10));
+    }
+
+    public DowntimeStartPolicy DowntimeStartPolicy
+    {
+        get => _downtimeStartPolicy;
+        set => SetProperty(ref _downtimeStartPolicy, value);
+    }
+
+    public string SelectedDeviceCountText => $"{Devices.Count(device => device.IsSelected)} secili";
 
     public int BulkCheckIntervalSeconds
     {
@@ -1029,6 +1532,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public string DatabaseLocation => DatabasePaths.DatabaseFilePath;
 
-    public string AvailabilityNotice => "Bu ekran ping loglarından türetilen ölçülen erişilebilirliği gösterir. Ping yanıtı alınamaması cihazın kesin kapalı olduğu anlamına gelmez; firewall, ICMP kapatma veya ağ politikası etkili olabilir.";
+    public string AvailabilityNotice => "Bu ekran gercek cihaz uptime degeri degil, ping tabanli ag erisilebilirligi raporudur. Worker veya beklenen kontrol bosluklari Unknown olarak, planli bakim Maintenance olarak hesaplanir.";
 
 }

@@ -15,6 +15,10 @@ public sealed class PingExecutionService : IPingExecutionService
     private readonly IDeviceCheckPolicyService _deviceCheckPolicyService;
     private readonly IDeviceHealthEvaluator _deviceHealthEvaluator;
     private readonly AppSettingsService _settingsService;
+    private readonly IIncidentService? _incidentService;
+    private readonly WorkerHeartbeatRepository? _heartbeatRepository;
+    private readonly AvailabilityRepository? _availabilityRepository;
+    private readonly string _workerInstanceId;
     private readonly ConcurrentDictionary<int, byte> _runningDeviceIds = new();
 
     public PingExecutionService(
@@ -25,7 +29,11 @@ public sealed class PingExecutionService : IPingExecutionService
         IPingService pingService,
         IDeviceCheckPolicyService deviceCheckPolicyService,
         IDeviceHealthEvaluator deviceHealthEvaluator,
-        AppSettingsService settingsService)
+        AppSettingsService settingsService,
+        IIncidentService? incidentService = null,
+        WorkerHeartbeatRepository? heartbeatRepository = null,
+        AvailabilityRepository? availabilityRepository = null,
+        string? workerInstanceId = null)
     {
         _deviceRepository = deviceRepository;
         _deviceGroupRepository = deviceGroupRepository;
@@ -35,6 +43,12 @@ public sealed class PingExecutionService : IPingExecutionService
         _deviceCheckPolicyService = deviceCheckPolicyService;
         _deviceHealthEvaluator = deviceHealthEvaluator;
         _settingsService = settingsService;
+        _incidentService = incidentService;
+        _heartbeatRepository = heartbeatRepository;
+        _availabilityRepository = availabilityRepository;
+        _workerInstanceId = string.IsNullOrWhiteSpace(workerInstanceId)
+            ? $"{Environment.MachineName}-{Environment.ProcessId}"
+            : workerInstanceId;
     }
 
     public async Task<PingExecutionResult> PingDevicesAsync(
@@ -46,7 +60,7 @@ public sealed class PingExecutionService : IPingExecutionService
         CancellationToken cancellationToken = default)
     {
         var candidates = devices
-            .Where(device => device.Id > 0 && device.IsActive)
+            .Where(device => device.Id > 0 && device.IsActive && device.IsEnabled && !device.IsDeleted)
             .DistinctBy(device => device.Id)
             .ToList();
 
@@ -71,7 +85,20 @@ public sealed class PingExecutionService : IPingExecutionService
             skipped++;
         }
 
-        if (acquired.Count == 0)
+        var activeLeases = new List<(DevicePingLease Lease, Device Device)>();
+        foreach (var lease in acquired)
+        {
+            var activeDevice = await _deviceRepository.GetActiveByIdAsync(lease.Device.Id);
+            if (activeDevice is null || !activeDevice.AutoCheckEnabled && triggerType == PingTriggerType.Scheduled)
+            {
+                skipped++;
+                continue;
+            }
+
+            activeLeases.Add((lease, activeDevice));
+        }
+
+        if (activeLeases.Count == 0)
         {
             return new PingExecutionResult(Array.Empty<PingDeviceResult>(), Array.Empty<PingLog>(), skipped);
         }
@@ -82,7 +109,7 @@ public sealed class PingExecutionService : IPingExecutionService
             var groups = await _deviceGroupRepository.GetAllAsync();
             var groupsById = groups.ToDictionary(group => group.Id);
             var groupsByName = groups.ToDictionary(group => group.Name, StringComparer.OrdinalIgnoreCase);
-            var acquiredDevices = acquired.Select(item => item.Device).ToList();
+            var acquiredDevices = activeLeases.Select(item => item.Device).ToList();
             var policies = acquiredDevices.ToDictionary(
                 device => device.Id,
                 device => _deviceCheckPolicyService.ResolvePolicy(
@@ -106,6 +133,24 @@ public sealed class PingExecutionService : IPingExecutionService
             await _pingLogRepository.AddRangeAsync(logs);
             await _deviceRepository.BulkUpdatePingResultsAsync(results);
             await _outageRepository.SyncFromPingResultsAsync(results, CreateRecoveryLogMap(logs));
+            if (_incidentService is not null)
+            {
+                await _incidentService.ApplyPingResultsAsync(results, logs.Where(log => log.DeviceId.HasValue).ToDictionary(log => log.DeviceId!.Value), cancellationToken);
+            }
+
+            if (_availabilityRepository is not null)
+            {
+                await _availabilityRepository.ApplyPingResultsAsync(
+                    results,
+                    logs.Where(log => log.DeviceId.HasValue).ToDictionary(log => log.DeviceId!.Value),
+                    settings.DowntimeStartPolicy,
+                    cancellationToken);
+            }
+
+            if (triggerType == PingTriggerType.Scheduled && _heartbeatRepository is not null && results.Any(result => result.IsSuccess))
+            {
+                await _heartbeatRepository.MarkSuccessfulPingAsync(_workerInstanceId, DateTime.UtcNow, cancellationToken);
+            }
 
             return new PingExecutionResult(results, logs, skipped);
         }
@@ -168,7 +213,7 @@ public sealed class PingExecutionService : IPingExecutionService
             .ToDictionary(log => log.DeviceId!.Value, log => (int?)log.Id);
     }
 
-    private static PingLog CreateLog(
+    private PingLog CreateLog(
         PingDeviceResult result,
         PingTriggerType triggerType,
         SchedulePlan? schedulePlan)
@@ -181,13 +226,18 @@ public sealed class PingExecutionService : IPingExecutionService
             DeviceType = result.Device.DeviceType,
             GroupName = result.Device.GroupName,
             Status = result.Status,
+            IsReachable = result.IsSuccess,
             LatencyMs = result.LatencyMs,
             ResponseMessage = result.ResponseMessage,
+            ErrorCode = result.IsSuccess ? string.Empty : result.Status.ToStorageValue(),
             ErrorMessage = result.ErrorMessage,
             CheckedAt = result.CheckedAt,
+            Source = triggerType.ToStorageValue(),
             TriggerType = triggerType,
+            PlanId = schedulePlan?.Id,
             SchedulePlanId = schedulePlan?.Id,
-            SchedulePlanName = schedulePlan?.Name ?? string.Empty
+            SchedulePlanName = schedulePlan?.Name ?? string.Empty,
+            WorkerInstanceId = _workerInstanceId
         };
     }
 

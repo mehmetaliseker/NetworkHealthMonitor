@@ -20,7 +20,11 @@ public static class DatabasePaths
 
     public static string DataDirectory => Current.DataDirectory;
 
-    public static string AppDataDirectory => Current.DataDirectory;
+    public static string ConfigDirectory => Current.ConfigDirectory;
+
+    public static string AppDataDirectory => Current.ConfigDirectory;
+
+    public static string RootDirectory => Current.RootDirectory;
 
     public static string DatabaseFilePath => Current.DatabasePath;
 
@@ -49,9 +53,15 @@ public static class DatabasePaths
 
     public static string LegacySettingsFilePath => Path.Combine(LegacyLocalAppDataDirectory, "settings.json");
 
+    public static string LegacyProgramDataDatabaseFilePath => Path.Combine(Current.RootDirectory, "network_health_monitor.db");
+
+    public static string LegacyProgramDataSettingsFilePath => Path.Combine(Current.RootDirectory, "settings.json");
+
     public static void EnsureDirectories()
     {
+        Directory.CreateDirectory(Current.RootDirectory);
         Directory.CreateDirectory(Current.DataDirectory);
+        Directory.CreateDirectory(Current.ConfigDirectory);
         Directory.CreateDirectory(Current.LogDirectory);
         Directory.CreateDirectory(Current.BackupDirectory);
     }

@@ -30,6 +30,11 @@ public sealed class AppSettings
     public const int DefaultSchedulerPollIntervalSeconds = 15;
     public const int SqliteBusyTimeoutMs = 5000;
     public const int DefaultLogRetentionDays = 90;
+    public const int DefaultHeartbeatGraceSeconds = 120;
+    public const int DefaultExpectedCheckGraceMultiplier = 2;
+    public const int DefaultAvailabilityPeriodRetentionDays = 730;
+    public const int DefaultIncidentRetentionDays = 1825;
+    public const int DefaultDailyAggregateRetentionDays = 0;
     public const string DefaultCsvDelimiter = ";";
 
     public int PingTimeoutMs { get; set; } = DefaultPingTimeoutMs;
@@ -50,13 +55,29 @@ public sealed class AppSettings
 
     public bool StartSchedulePlansOnStartup { get; set; } = true;
 
+    public bool OpenUiOnWindowsLogin { get; set; }
+
     public string CsvDelimiter { get; set; } = DefaultCsvDelimiter;
 
     public int LogRetentionDays { get; set; } = DefaultLogRetentionDays;
 
+    public int AvailabilityPeriodRetentionDays { get; set; } = DefaultAvailabilityPeriodRetentionDays;
+
+    public int IncidentRetentionDays { get; set; } = DefaultIncidentRetentionDays;
+
+    public int DailyAggregateRetentionDays { get; set; } = DefaultDailyAggregateRetentionDays;
+
+    public int HeartbeatGraceSeconds { get; set; } = DefaultHeartbeatGraceSeconds;
+
+    public int ExpectedCheckGraceMultiplier { get; set; } = DefaultExpectedCheckGraceMultiplier;
+
+    public DowntimeStartPolicy DowntimeStartPolicy { get; set; } = DowntimeStartPolicy.FirstFailedCheck;
+
     public string ExportDirectory { get; set; } = string.Empty;
 
     public List<DeviceTypePolicy> DeviceTypePolicies { get; set; } = DeviceTypePolicy.CreateDefaults().ToList();
+
+    public NotificationSettings Notifications { get; set; } = new();
 
     public string Theme { get; set; } = "Açık";
 

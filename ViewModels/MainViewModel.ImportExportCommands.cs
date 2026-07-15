@@ -57,7 +57,7 @@ public sealed partial class MainViewModel
         }
     }
 
-    private async Task ImportDevicesAsync()
+    private async Task PreviewImportDevicesAsync()
     {
         var path = _dialogService.GetOpenCsvFilePath();
         if (path is null)
@@ -65,29 +65,23 @@ public sealed partial class MainViewModel
             return;
         }
 
+        if (CsvImportMode == NetworkHealthMonitor.Models.CsvImportMode.Sync
+            && CsvImportScope == NetworkHealthMonitor.Models.CsvImportScope.SelectedGroup
+            && !CsvImportGroupId.HasValue)
+        {
+            _dialogService.ShowWarning("Grup secilmedi", "Grup kapsamli CSV esitleme icin once bir grup secin.");
+            return;
+        }
+
         IsBusy = true;
         try
         {
-            var preview = await _deviceImportExportService.ReadImportPreviewAsync(path, Devices, CsvDelimiter);
-            if (!preview.HasImportableRows)
-            {
-                _dialogService.ShowWarning("Import yapılamadı", "CSV içinde eklenebilir geçerli cihaz satırı bulunamadı.");
-                return;
-            }
-
-            var duplicateAction = preview.ExistingIpCount > 0
-                ? _dialogService.ChooseDuplicateImportAction("Duplicate IP bulundu", $"{preview.ExistingIpCount} IP adresi veritabanında zaten var.")
-                : CsvImportDuplicateAction.UpdateExisting;
-
-            if (duplicateAction == CsvImportDuplicateAction.Cancel)
-            {
-                StatusMessage = "CSV import iptal edildi.";
-                return;
-            }
-
-            var result = await _deviceRepository.ImportDevicesAsync(preview.ValidRows, duplicateAction, preview.InvalidRowCount);
-            await ReloadAllAsync();
-            StatusMessage = $"CSV import tamamlandı. Eklenen: {result.Added}, güncellenen: {result.Updated}, atlanan: {result.Skipped}, hatalı: {result.Invalid}.";
+            var options = CreateCsvImportOptions(path);
+            var preview = await _deviceImportExportService.ReadImportPreviewAsync(path, Devices, options, CsvDelimiter);
+            ApplyCsvPreview(path, preview);
+            StatusMessage = preview.HasBlockingErrors
+                ? "CSV onizleme tamamlandi; hatalar duzeltilmeden import uygulanamaz."
+                : "CSV onizleme tamamlandi. Ozet ve ayrinti sekmelerini kontrol edin.";
         }
         catch (Exception ex)
         {
@@ -98,6 +92,90 @@ public sealed partial class MainViewModel
         {
             IsBusy = false;
         }
+    }
+
+    private async Task ApplyCsvImportAsync()
+    {
+        if (_csvImportPreview is null)
+        {
+            _dialogService.ShowWarning("Onizleme gerekli", "Import uygulamadan once CSV onizlemesi alin.");
+            return;
+        }
+
+        if (!_csvImportPreview.HasImportableRows)
+        {
+            _dialogService.ShowWarning("Import uygulanamaz", "CSV onizlemesinde bloklayici hata var veya gecerli satir yok.");
+            return;
+        }
+
+        if (!_dialogService.Confirm(
+                "CSV import uygulansin mi?",
+                _csvImportPreview.SummaryText + "\n\nCSV ile tamamen esitle modunda CSV'de olmayan cihazlar soft-delete yapilir; ping ve kesinti gecmisi korunur."))
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var result = await _deviceImportExportService.ApplyImportAsync(_csvImportPreview, CreateCsvImportOptions(CsvImportFilePath));
+            ClearCsvPreview();
+            await ReloadAllAsync();
+            StatusMessage = $"CSV import tamamlandi. Eklenen: {result.Added}, guncellenen: {result.Updated}, silinen: {result.Deleted}, geri yuklenen: {result.Restored}, atlanan: {result.Skipped}. Backup: {result.BackupPath}";
+        }
+        catch (Exception ex)
+        {
+            _dialogService.ShowError("CSV import uygulanamadi", ex.Message);
+            StatusMessage = "CSV import transaction rollback ile iptal edildi.";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private CsvImportOptions CreateCsvImportOptions(string filePath)
+    {
+        var groupName = CsvImportGroupId.HasValue
+            ? DeviceGroups.FirstOrDefault(group => group.Id == CsvImportGroupId.Value)?.Name ?? string.Empty
+            : string.Empty;
+        return new CsvImportOptions(
+            CsvImportMode,
+            CsvImportScope,
+            CsvImportGroupId,
+            groupName,
+            Path.GetFileName(filePath),
+            $"{Environment.UserDomainName}\\{Environment.UserName}");
+    }
+
+    private void ApplyCsvPreview(string path, CsvImportPreview preview)
+    {
+        _csvImportPreview = preview;
+        CsvImportFilePath = path;
+        CsvImportPreviewSummary = preview.SummaryText;
+        ReplaceCollection(CsvNewRows, preview.Rows.Where(row => row.Status == CsvImportRowStatus.Add || row.Status == CsvImportRowStatus.Restore));
+        ReplaceCollection(CsvUpdateRows, preview.Rows.Where(row => row.Status == CsvImportRowStatus.Update));
+        ReplaceCollection(CsvDeleteRows, preview.Rows.Where(row => row.Status == CsvImportRowStatus.Delete));
+        ReplaceCollection(CsvInvalidRows, preview.Rows.Where(row => row.Status == CsvImportRowStatus.Invalid));
+        ReplaceCollection(CsvDuplicateRows, preview.Rows.Where(row => row.Status == CsvImportRowStatus.Duplicate));
+        ReplaceCollection(CsvUnchangedRows, preview.Rows.Where(row => row.Status == CsvImportRowStatus.Unchanged || row.Status == CsvImportRowStatus.Skip));
+        OnPropertyChanged(nameof(CsvImportCanApply));
+        ApplyCsvImportCommand.NotifyCanExecuteChanged();
+    }
+
+    private void ClearCsvPreview()
+    {
+        _csvImportPreview = null;
+        CsvImportFilePath = string.Empty;
+        CsvImportPreviewSummary = "CSV onizlemesi henuz alinmadi.";
+        CsvNewRows.Clear();
+        CsvUpdateRows.Clear();
+        CsvDeleteRows.Clear();
+        CsvInvalidRows.Clear();
+        CsvDuplicateRows.Clear();
+        CsvUnchangedRows.Clear();
+        OnPropertyChanged(nameof(CsvImportCanApply));
+        ApplyCsvImportCommand?.NotifyCanExecuteChanged();
     }
 
     private async Task ExportLogsAsync()
@@ -115,7 +193,7 @@ public sealed partial class MainViewModel
 
     private async Task ExportAvailabilityAsync()
     {
-        var path = _dialogService.GetSaveCsvFilePath($"NetworkHealthMonitor_UptimeReport_{DateTime.Now:yyyyMMdd_HHmmss}.csv", ExportDirectory);
+        var path = _dialogService.GetSaveCsvFilePath($"NetworkHealthMonitor_AvailabilitySummary_{DateTime.Now:yyyyMMdd_HHmmss}.csv", ExportDirectory);
         if (path is null)
         {
             return;
@@ -124,15 +202,46 @@ public sealed partial class MainViewModel
         IsBusy = true;
         try
         {
-            var items = await _pingLogRepository.GetUptimeReportAsync();
-            await _csvExportService.ExportUptimeReportAsync(items, path, CsvDelimiter);
+            var endUtc = DateTime.UtcNow;
+            var startUtc = endUtc.AddDays(-30);
+            var items = await _availabilityService.GetAvailabilitySummaryAsync(startUtc, endUtc, TimeZoneInfo.Local.Id);
+            await _csvExportService.ExportAvailabilitySummaryAsync(items, path, CsvDelimiter);
             await RememberExportDirectoryAsync(path);
-            StatusMessage = $"Uptime CSV dışa aktarıldı: {path}";
+            StatusMessage = $"Availability summary CSV dışa aktarıldı: {path}";
         }
         catch (Exception ex)
         {
-            _dialogService.ShowError("Uptime CSV oluşturulamadı", ex.Message);
-            StatusMessage = "Uptime CSV dışa aktarılamadı.";
+            _dialogService.ShowError("Availability CSV oluşturulamadı", ex.Message);
+            StatusMessage = "Availability CSV dışa aktarılamadı.";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task ExportAvailabilityIncidentsAsync()
+    {
+        var path = _dialogService.GetSaveCsvFilePath($"NetworkHealthMonitor_AvailabilityIncidents_{DateTime.Now:yyyyMMdd_HHmmss}.csv", ExportDirectory);
+        if (path is null)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var endUtc = DateTime.UtcNow;
+            var startUtc = endUtc.AddDays(-30);
+            var items = await _availabilityService.GetIncidentReportAsync(startUtc, endUtc);
+            await _csvExportService.ExportAvailabilityIncidentsAsync(items, path, CsvDelimiter);
+            await RememberExportDirectoryAsync(path);
+            StatusMessage = $"Availability incident CSV dışa aktarıldı: {path}";
+        }
+        catch (Exception ex)
+        {
+            _dialogService.ShowError("Incident CSV oluşturulamadı", ex.Message);
+            StatusMessage = "Incident CSV dışa aktarılamadı.";
         }
         finally
         {

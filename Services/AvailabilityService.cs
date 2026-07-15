@@ -5,71 +5,145 @@ namespace NetworkHealthMonitor.Services;
 
 public sealed class AvailabilityService : IAvailabilityService
 {
-    private readonly DeviceRepository _deviceRepository;
-    private readonly PingLogRepository _pingLogRepository;
-    private readonly OutageRepository _outageRepository;
+    private readonly AvailabilityRepository _availabilityRepository;
+
+    public AvailabilityService(AvailabilityRepository availabilityRepository)
+    {
+        _availabilityRepository = availabilityRepository;
+    }
 
     public AvailabilityService(
         DeviceRepository deviceRepository,
         PingLogRepository pingLogRepository,
         OutageRepository outageRepository)
+        : this(new AvailabilityRepository(deviceRepository.ConnectionFactory))
     {
-        _deviceRepository = deviceRepository;
-        _pingLogRepository = pingLogRepository;
-        _outageRepository = outageRepository;
+        _ = pingLogRepository;
+        _ = outageRepository;
     }
 
     public async Task<IReadOnlyList<AvailabilityReportItem>> GetDeviceAvailabilityAsync(DateTime since)
     {
-        var devices = await _deviceRepository.GetAllAsync();
-        var metrics = await _pingLogRepository.GetAvailabilityMetricsAsync(since);
-        var outages = await _outageRepository.GetByDeviceSinceAsync(since);
-        var now = DateTime.Now;
+        var endUtc = DateTime.UtcNow;
+        var startUtc = since.Kind == DateTimeKind.Utc ? since : since.ToUniversalTime();
+        var summary = await _availabilityRepository.GetSummaryAsync(startUtc, endUtc, TimeZoneInfo.Local.Id);
 
-        return devices
-            .OrderBy(device => device.Name)
-            .Select(device =>
+        return summary
+            .Select(item => new AvailabilityReportItem
             {
-                metrics.TryGetValue(device.Id, out var metric);
-                outages.TryGetValue(device.Id, out var deviceOutages);
-                deviceOutages ??= Array.Empty<Outage>();
-
-                var lastOutage = deviceOutages.OrderByDescending(outage => outage.StartedAt).FirstOrDefault();
-
-                return new AvailabilityReportItem
-                {
-                    DeviceId = device.Id,
-                    DeviceName = device.Name,
-                    IpAddress = device.IpAddress,
-                    DeviceType = device.DeviceType,
-                    GroupName = device.GroupName,
-                    LastStatus = device.LastStatus,
-                    LastSuccessfulCheckAt = metric?.LastSuccessfulCheckAt ?? device.LastSuccessfulCheckAt,
-                    LastFailedCheckAt = metric?.LastFailedCheckAt ?? device.LastFailedCheckAt,
-                    TotalSuccessCount = metric?.TotalSuccessCount ?? 0,
-                    TotalFailureCount = metric?.TotalFailureCount ?? 0,
-                    MeasuredAvailabilityPercent = metric?.MeasuredAvailabilityPercent,
-                    Availability24HoursPercent = metric?.Availability24HoursPercent,
-                    Availability7DaysPercent = metric?.Availability7DaysPercent,
-                    Availability30DaysPercent = metric?.Availability30DaysPercent,
-                    AvailabilityOverallPercent = metric?.AvailabilityOverallPercent,
-                    OutageCount = deviceOutages.Count,
-                    LastOutageStartedAt = lastOutage?.StartedAt,
-                    LastRecoveryAt = deviceOutages
-                        .Where(outage => outage.EndedAt.HasValue)
-                        .OrderByDescending(outage => outage.EndedAt)
-                        .Select(outage => outage.EndedAt)
-                        .FirstOrDefault(),
-                    EstimatedOutageDuration = CalculateOutageDuration(deviceOutages, now)
-                };
+                DeviceId = item.DeviceId,
+                DeviceName = item.DeviceName,
+                IpAddress = item.IpAddress,
+                DeviceType = item.DeviceType,
+                GroupName = item.GroupName,
+                LastStatus = ToDeviceStatus(item.CurrentStatus),
+                LastSuccessfulCheckAt = item.LastSuccessfulCheckAtUtc?.ToLocalTime(),
+                LastFailedCheckAt = null,
+                TotalSuccessCount = 0,
+                TotalFailureCount = 0,
+                MeasuredAvailabilityPercent = item.AvailabilityPercent,
+                Availability24HoursPercent = item.AvailabilityPercent,
+                Availability7DaysPercent = item.AvailabilityPercent,
+                Availability30DaysPercent = item.AvailabilityPercent,
+                AvailabilityOverallPercent = item.AvailabilityPercent,
+                OutageCount = item.IncidentCount,
+                LastOutageStartedAt = item.CurrentStatus == AvailabilityStatus.Down ? item.CurrentStatusSinceUtc?.ToLocalTime() : null,
+                LastRecoveryAt = null,
+                EstimatedOutageDuration = TimeSpan.FromSeconds(item.DownSeconds),
+                CurrentAvailabilityStatus = item.CurrentStatus,
+                CurrentStatusSinceUtc = item.CurrentStatusSinceUtc,
+                CurrentContinuousAvailabilitySeconds = item.CurrentContinuousAvailabilitySeconds,
+                UpSeconds = item.UpSeconds,
+                DownSeconds = item.DownSeconds,
+                UnknownSeconds = item.UnknownSeconds,
+                MaintenanceSeconds = item.MaintenanceSeconds,
+                StrictAvailabilityPercent = item.StrictAvailabilityPercent,
+                CoveragePercent = item.CoveragePercent
             })
             .ToList();
     }
 
-    private static TimeSpan CalculateOutageDuration(IEnumerable<Outage> outages, DateTime now)
+    public Task<IReadOnlyList<AvailabilitySummaryReportItem>> GetAvailabilitySummaryAsync(
+        DateTime startUtc,
+        DateTime endUtc,
+        string timezoneId,
+        int? groupId = null,
+        bool includeDeleted = false,
+        CancellationToken cancellationToken = default)
     {
-        return outages.Aggregate(
-            TimeSpan.Zero,
-            (total, outage) => total + ((outage.EndedAt ?? now) - outage.StartedAt));
+        return _availabilityRepository.GetSummaryAsync(startUtc, endUtc, timezoneId, groupId, includeDeleted, cancellationToken);
+    }
+
+    public Task<AvailabilityDashboardSummary> GetDashboardSummaryAsync(DateTime nowUtc, CancellationToken cancellationToken = default)
+    {
+        return _availabilityRepository.GetDashboardSummaryAsync(nowUtc, cancellationToken);
+    }
+
+    public Task RecalculateDailyAsync(
+        DateOnly startDate,
+        DateOnly endDate,
+        string timezoneId,
+        int? deviceId = null,
+        int? groupId = null,
+        CancellationToken cancellationToken = default)
+    {
+        return _availabilityRepository.RecalculateDailyAsync(startDate, endDate, timezoneId, deviceId, groupId, cancellationToken);
+    }
+
+    public Task<IReadOnlyList<DeviceAvailabilityPeriod>> GetTimelineAsync(
+        int deviceId,
+        DateTime startUtc,
+        DateTime endUtc,
+        CancellationToken cancellationToken = default)
+    {
+        return _availabilityRepository.GetPeriodsAsync(deviceId, startUtc, endUtc, cancellationToken);
+    }
+
+    public Task<IReadOnlyList<AvailabilityIncidentReportItem>> GetIncidentReportAsync(
+        DateTime startUtc,
+        DateTime endUtc,
+        int? deviceId = null,
+        CancellationToken cancellationToken = default)
+    {
+        return _availabilityRepository.GetIncidentReportAsync(startUtc, endUtc, deviceId, cancellationToken);
+    }
+
+    public Task<IReadOnlyList<AvailabilityTrendPoint>> GetDailyTrendAsync(
+        DateTime startUtc,
+        DateTime endUtc,
+        string timezoneId,
+        CancellationToken cancellationToken = default)
+    {
+        return _availabilityRepository.GetDailyTrendAsync(startUtc, endUtc, timezoneId, cancellationToken);
+    }
+
+    public Task<IReadOnlyList<AvailabilityRankingRow>> GetLongestOutagesAsync(
+        DateTime startUtc,
+        DateTime endUtc,
+        int limit,
+        CancellationToken cancellationToken = default)
+    {
+        return _availabilityRepository.GetLongestOutagesAsync(startUtc, endUtc, limit, cancellationToken);
+    }
+
+    public Task<IReadOnlyList<AvailabilityRankingRow>> GetIncidentRankingAsync(
+        DateTime startUtc,
+        DateTime endUtc,
+        int limit,
+        CancellationToken cancellationToken = default)
+    {
+        return _availabilityRepository.GetIncidentRankingAsync(startUtc, endUtc, limit, cancellationToken);
+    }
+
+    private static DeviceStatus ToDeviceStatus(AvailabilityStatus status)
+    {
+        return status switch
+        {
+            AvailabilityStatus.Up => DeviceStatus.Online,
+            AvailabilityStatus.Down => DeviceStatus.Offline,
+            AvailabilityStatus.Maintenance => DeviceStatus.UnderWatch,
+            AvailabilityStatus.Paused => DeviceStatus.Unknown,
+            _ => DeviceStatus.Unknown
+        };
     }
 }

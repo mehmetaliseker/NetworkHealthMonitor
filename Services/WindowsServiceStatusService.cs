@@ -10,59 +10,85 @@ public sealed class WindowsServiceStatusService : IWindowsServiceStatusService
     {
         try
         {
-            using var process = new Process();
-            process.StartInfo = new ProcessStartInfo
+            var query = await RunScAsync($"query \"{ServiceName}\"", cancellationToken);
+            if (query.ExitCode != 0)
             {
-                FileName = "sc.exe",
-                Arguments = $"query \"{ServiceName}\"",
-                CreateNoWindow = true,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
-
-            process.Start();
-            var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var error = await process.StandardError.ReadToEndAsync(cancellationToken);
-            await process.WaitForExitAsync(cancellationToken);
-
-            if (process.ExitCode != 0)
-            {
-                return output.Contains("1060", StringComparison.OrdinalIgnoreCase) || error.Contains("1060", StringComparison.OrdinalIgnoreCase)
-                    ? new WindowsServiceStatus("NotFound", "Bulunamadı")
-                    : new WindowsServiceStatus("Inaccessible", "Erişilemiyor");
+                return query.Output.Contains("1060", StringComparison.OrdinalIgnoreCase)
+                       || query.Error.Contains("1060", StringComparison.OrdinalIgnoreCase)
+                    ? new WindowsServiceStatus("NotFound", "Bulunamadi") { IsInstalled = false }
+                    : new WindowsServiceStatus("Inaccessible", "Erisilemiyor") { IsInstalled = false };
             }
 
-            return ParseStatus(output);
+            var qc = await RunScAsync($"qc \"{ServiceName}\"", cancellationToken);
+            var failure = await RunScAsync($"qfailure \"{ServiceName}\"", cancellationToken);
+            return ParseStatus(query.Output, qc.Output, failure.Output);
         }
         catch
         {
-            return new WindowsServiceStatus("Inaccessible", "Erişilemiyor");
+            return new WindowsServiceStatus("Inaccessible", "Erisilemiyor") { IsInstalled = false };
         }
     }
 
-    private static WindowsServiceStatus ParseStatus(string output)
+    private static async Task<(int ExitCode, string Output, string Error)> RunScAsync(string arguments, CancellationToken cancellationToken)
     {
-        if (output.Contains("RUNNING", StringComparison.OrdinalIgnoreCase))
+        using var process = new Process();
+        process.StartInfo = new ProcessStartInfo
         {
-            return new WindowsServiceStatus("Running", "Çalışıyor");
+            FileName = "sc.exe",
+            Arguments = arguments,
+            CreateNoWindow = true,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+
+        process.Start();
+        var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var error = await process.StandardError.ReadToEndAsync(cancellationToken);
+        await process.WaitForExitAsync(cancellationToken);
+        return (process.ExitCode, output, error);
+    }
+
+    public static WindowsServiceStatus ParseStatus(string queryOutput, string qcOutput, string failureOutput)
+    {
+        var startupType = ParseStartupType(qcOutput);
+        var isAutomatic = startupType.Contains("AUTO", StringComparison.OrdinalIgnoreCase);
+        var recoveryConfigured = failureOutput.Contains("RESTART", StringComparison.OrdinalIgnoreCase);
+        var baseStatus = queryOutput.Contains("RUNNING", StringComparison.OrdinalIgnoreCase)
+            ? new WindowsServiceStatus("Running", "Calisiyor") { IsRunning = true }
+            : queryOutput.Contains("START_PENDING", StringComparison.OrdinalIgnoreCase)
+                ? new WindowsServiceStatus("StartPending", "Baslatiliyor")
+                : queryOutput.Contains("STOP_PENDING", StringComparison.OrdinalIgnoreCase)
+                    ? new WindowsServiceStatus("StopPending", "Durduruluyor")
+                    : queryOutput.Contains("STOPPED", StringComparison.OrdinalIgnoreCase)
+                        ? new WindowsServiceStatus("Stopped", "Durduruldu")
+                        : WindowsServiceStatus.Unknown("Erisilemiyor") with { IsInstalled = true };
+
+        return baseStatus with
+        {
+            StartupType = startupType,
+            IsAutomaticStartup = isAutomatic,
+            RecoveryActionsConfigured = recoveryConfigured,
+            RawStatus = queryOutput + qcOutput + failureOutput
+        };
+    }
+
+    private static string ParseStartupType(string qcOutput)
+    {
+        foreach (var line in qcOutput.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (!line.Contains("START_TYPE", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var parts = line.Split(':', 2);
+            if (parts.Length == 2)
+            {
+                return parts[1].Trim();
+            }
         }
 
-        if (output.Contains("START_PENDING", StringComparison.OrdinalIgnoreCase))
-        {
-            return new WindowsServiceStatus("StartPending", "Başlatılıyor");
-        }
-
-        if (output.Contains("STOP_PENDING", StringComparison.OrdinalIgnoreCase))
-        {
-            return new WindowsServiceStatus("StopPending", "Durduruluyor");
-        }
-
-        if (output.Contains("STOPPED", StringComparison.OrdinalIgnoreCase))
-        {
-            return new WindowsServiceStatus("Stopped", "Durduruldu");
-        }
-
-        return WindowsServiceStatus.Unknown("Erişilemiyor");
+        return string.Empty;
     }
 }

@@ -7,29 +7,26 @@ public sealed partial class MainViewModel
 {
     private void UpdateDashboard()
     {
-        if (SummaryCards.Count < 8)
+        if (SummaryCards.Count < 12)
         {
             EnsureSummaryCards();
         }
 
-        var total = Devices.Count;
-        var healthy = Devices.Count(device => device.LastStatus.IsSuccessful());
-        var underWatch = Devices.Count(device => device.LastStatus is DeviceStatus.Warning or DeviceStatus.UnderWatch or DeviceStatus.PingBlockedOrNoReply);
-        var probableOffline = Devices.Count(device => device.LastStatus == DeviceStatus.Offline);
-        var notChecked = Devices.Count(device => device.LastStatus == DeviceStatus.Unknown);
-        double? averageUptime = Devices.Any(device => device.Uptime30DaysPercent.HasValue)
-            ? Devices.Where(device => device.Uptime30DaysPercent.HasValue).Average(device => device.Uptime30DaysPercent!.Value)
-            : null;
-        var activePlans = SchedulePlans.Count(plan => plan.IsActive);
+        var activeDevices = Devices.Count(device => !device.IsDeleted && device.IsActive && device.IsEnabled);
+        var statusGroups = AvailabilityItems.GroupBy(item => item.CurrentAvailabilityStatus).ToDictionary(group => group.Key, group => group.Count());
 
-        SummaryCards[0].Value = total.ToString(CultureInfo.CurrentCulture);
-        SummaryCards[1].Value = healthy.ToString(CultureInfo.CurrentCulture);
-        SummaryCards[2].Value = underWatch.ToString(CultureInfo.CurrentCulture);
-        SummaryCards[3].Value = probableOffline.ToString(CultureInfo.CurrentCulture);
-        SummaryCards[4].Value = notChecked.ToString(CultureInfo.CurrentCulture);
-        SummaryCards[5].Value = averageUptime.HasValue ? $"{averageUptime.Value:0.0}%" : "-";
-        SummaryCards[6].Value = activePlans.ToString(CultureInfo.CurrentCulture);
-        SummaryCards[7].Value = OpenOutages.Count.ToString(CultureInfo.CurrentCulture);
+        SummaryCards[0].Value = activeDevices.ToString(CultureInfo.CurrentCulture);
+        SummaryCards[1].Value = statusGroups.GetValueOrDefault(AvailabilityStatus.Up).ToString(CultureInfo.CurrentCulture);
+        SummaryCards[2].Value = statusGroups.GetValueOrDefault(AvailabilityStatus.Down).ToString(CultureInfo.CurrentCulture);
+        SummaryCards[3].Value = statusGroups.GetValueOrDefault(AvailabilityStatus.Unknown).ToString(CultureInfo.CurrentCulture);
+        SummaryCards[4].Value = statusGroups.GetValueOrDefault(AvailabilityStatus.Maintenance).ToString(CultureInfo.CurrentCulture);
+        SummaryCards[5].Value = OpenOutages.Count.ToString(CultureInfo.CurrentCulture);
+        SummaryCards[6].Value = FormatPercent(_dashboardAvailability24Hours);
+        SummaryCards[7].Value = FormatPercent(_dashboardAvailability7Days);
+        SummaryCards[8].Value = FormatPercent(_dashboardAvailability30Days);
+        SummaryCards[9].Value = FormatPercent(_dashboardCoverage30Days);
+        SummaryCards[10].Value = _dashboardSlaViolationCount.ToString(CultureInfo.CurrentCulture);
+        SummaryCards[11].Value = FailedNotificationCount.ToString(CultureInfo.CurrentCulture);
 
         ReplaceCollection(CriticalProblemDevices, Devices.Where(device => device.IsCritical && device.LastStatus.IsProblematic()).Take(10));
         ReplaceCollection(RecentFailureLogs, Logs.Where(log => log.Status.IsFailureObservation()).Take(10));
@@ -43,19 +40,32 @@ public sealed partial class MainViewModel
 
     private void EnsureSummaryCards()
     {
-        if (SummaryCards.Count > 0)
+        var cards = new[]
         {
-            return;
-        }
+            new SummaryCardViewModel("Toplam aktif cihaz", "0", "#2563EB"),
+            new SummaryCardViewModel("Up cihaz", "0", "#16A34A"),
+            new SummaryCardViewModel("Down cihaz", "0", "#DC2626"),
+            new SummaryCardViewModel("Unknown cihaz", "0", "#64748B"),
+            new SummaryCardViewModel("Maintenance cihaz", "0", "#0F766E"),
+            new SummaryCardViewModel("Acik incident", "0", "#EA580C"),
+            new SummaryCardViewModel("24s availability", "-", "#0F766E"),
+            new SummaryCardViewModel("7g availability", "-", "#0F766E"),
+            new SummaryCardViewModel("30g availability", "-", "#0F766E"),
+            new SummaryCardViewModel("Genel coverage", "-", "#7C3AED"),
+            new SummaryCardViewModel("SLA ihlali", "0", "#DC2626"),
+            new SummaryCardViewModel("Failed bildirim", "0", "#DC2626")
+        };
 
-        SummaryCards.Add(new SummaryCardViewModel("Toplam cihaz", "0", "#2563EB"));
-        SummaryCards.Add(new SummaryCardViewModel("Sağlıklı", "0", "#16A34A"));
-        SummaryCards.Add(new SummaryCardViewModel("Takipte", "0", "#EA580C"));
-        SummaryCards.Add(new SummaryCardViewModel("Muhtemel erişilemiyor", "0", "#DC2626"));
-        SummaryCards.Add(new SummaryCardViewModel("Kontrol edilmedi", "0", "#64748B"));
-        SummaryCards.Add(new SummaryCardViewModel("Ortalama uptime", "-", "#0F766E"));
-        SummaryCards.Add(new SummaryCardViewModel("Aktif plan", "0", "#7C3AED"));
-        SummaryCards.Add(new SummaryCardViewModel("Açık kesinti", "0", "#EA580C"));
+        SummaryCards.Clear();
+        foreach (var card in cards)
+        {
+            SummaryCards.Add(card);
+        }
+    }
+
+    private static string FormatPercent(double? value)
+    {
+        return value.HasValue ? $"{value.Value:0.0}%" : "-";
     }
 
     private void UpdateTypeDistributionRows()
@@ -83,7 +93,10 @@ public sealed partial class MainViewModel
             .OrderBy(group => group.Key)
             .Select(group =>
             {
-                var average = group.Average(item => item.Availability30DaysPercent!.Value);
+                var knownSeconds = group.Sum(item => item.UpSeconds + item.DownSeconds);
+                var average = knownSeconds > 0
+                    ? group.Sum(item => item.UpSeconds) * 100d / knownSeconds
+                    : group.Average(item => item.Availability30DaysPercent!.Value);
                 return new MetricRowViewModel
                 {
                     Title = group.Key,
@@ -103,7 +116,13 @@ public sealed partial class MainViewModel
             .GroupBy(item => item.GroupName)
             .ToDictionary(
                 group => group.Key,
-                group => (double?)group.Average(item => item.Availability30DaysPercent!.Value),
+                group =>
+                {
+                    var knownSeconds = group.Sum(item => item.UpSeconds + item.DownSeconds);
+                    return knownSeconds > 0
+                        ? (double?)group.Sum(item => item.UpSeconds) * 100d / knownSeconds
+                        : group.Average(item => item.Availability30DaysPercent!.Value);
+                },
                 StringComparer.OrdinalIgnoreCase);
 
         foreach (var group in DeviceGroups)

@@ -14,6 +14,7 @@ public sealed class DeviceGroup : ObservableObject
     private int? _defaultFailureRetryIntervalSeconds;
     private int? _defaultFailureRetryLimit;
     private int? _defaultFailureThreshold;
+    private double? _targetAvailabilityPercent;
     private DateTime _createdAt = DateTime.Now;
     private DateTime _updatedAt = DateTime.Now;
     private int _deviceCount;
@@ -120,6 +121,21 @@ public sealed class DeviceGroup : ObservableObject
         }
     }
 
+    public double? TargetAvailabilityPercent
+    {
+        get => _targetAvailabilityPercent;
+        set
+        {
+            var normalized = value.HasValue
+                ? Math.Clamp(value.Value, 0d, 100d)
+                : (double?)null;
+            if (SetProperty(ref _targetAvailabilityPercent, normalized))
+            {
+                OnPropertyChanged(nameof(TargetAvailabilityText));
+            }
+        }
+    }
+
     public DateTime CreatedAt
     {
         get => _createdAt;
@@ -159,6 +175,8 @@ public sealed class DeviceGroup : ObservableObject
     public string DeviceCountText => DeviceCount.ToString();
 
     public string Availability30DaysText => Availability30DaysPercent.HasValue ? $"{Availability30DaysPercent.Value:0.0}%" : "-";
+
+    public string TargetAvailabilityText => TargetAvailabilityPercent.HasValue ? $"{TargetAvailabilityPercent.Value:0.###}%" : "-";
 
     public string DefaultAutoCheckText => DefaultAutoCheckEnabled.HasValue
         ? (DefaultAutoCheckEnabled.Value ? "Açık" : "Kapalı")

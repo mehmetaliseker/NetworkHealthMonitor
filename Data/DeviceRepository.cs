@@ -8,11 +8,11 @@ public sealed class DeviceRepository
 {
     private const string DeviceSelectColumns = """
         Id, Name, IpAddress, DeviceType, Location, GroupId, GroupName, IsCritical,
-        IsActive, AutoCheckEnabled, DefaultSchedulePlanId, PingTimeoutMs, CheckIntervalSeconds,
+        IsActive, IsEnabled, IsDeleted, DeletedAtUtc, AutoCheckEnabled, DefaultSchedulePlanId, PingTimeoutMs, CheckIntervalSeconds,
         FailureRetryIntervalSeconds, FailureRetryLimit, FailureThreshold, Description, LastStatus,
         LastLatencyMs, LastCheckedAt, LastSuccessfulCheckAt, LastFailedCheckAt,
         ConsecutiveFailures, ConsecutiveSuccesses,
-        LastStableStatus, CreatedAt, UpdatedAt
+        LastStableStatus, CreatedAt, UpdatedAt, TargetAvailabilityPercent
         """;
 
     private readonly SqliteConnectionFactory _connectionFactory;
@@ -22,13 +22,48 @@ public sealed class DeviceRepository
         _connectionFactory = connectionFactory;
     }
 
-    public async Task<IReadOnlyList<Device>> GetAllAsync()
+    public SqliteConnectionFactory ConnectionFactory => _connectionFactory;
+
+    public async Task<IReadOnlyList<Device>> GetAllAsync(bool includeDeleted = false, bool onlyDeleted = false)
     {
+        var deletedFilter = onlyDeleted
+            ? "WHERE IsDeleted = 1"
+            : includeDeleted
+                ? string.Empty
+                : "WHERE IsDeleted = 0";
+
         return await GetDevicesAsync($"""
             SELECT {DeviceSelectColumns}
             FROM Devices
+            {deletedFilter}
             ORDER BY Name COLLATE NOCASE, IpAddress;
             """);
+    }
+
+    public async Task<Device?> GetByIdAsync(int id, bool includeDeleted = false)
+    {
+        var devices = await GetDevicesAsync($"""
+            SELECT {DeviceSelectColumns}
+            FROM Devices
+            WHERE Id = {id}
+              {(includeDeleted ? string.Empty : "AND IsDeleted = 0")}
+            LIMIT 1;
+            """);
+        return devices.FirstOrDefault();
+    }
+
+    public async Task<Device?> GetActiveByIdAsync(int id)
+    {
+        var devices = await GetDevicesAsync($"""
+            SELECT {DeviceSelectColumns}
+            FROM Devices
+            WHERE Id = {id}
+              AND IsDeleted = 0
+              AND IsEnabled = 1
+              AND IsActive = 1
+            LIMIT 1;
+            """);
+        return devices.FirstOrDefault();
     }
 
     public async Task<IReadOnlyList<Device>> GetAutoCheckCandidatesAsync()
@@ -36,7 +71,9 @@ public sealed class DeviceRepository
         return await GetDevicesAsync($"""
             SELECT {DeviceSelectColumns}
             FROM Devices
-            WHERE IsActive = 1
+            WHERE IsDeleted = 0
+              AND IsEnabled = 1
+              AND IsActive = 1
               AND AutoCheckEnabled = 1
             ORDER BY Name COLLATE NOCASE, IpAddress;
             """);
@@ -69,18 +106,18 @@ public sealed class DeviceRepository
         command.CommandText = """
             INSERT INTO Devices
                 (Name, IpAddress, DeviceType, Location, GroupId, GroupName, IsCritical, IsActive,
-                 AutoCheckEnabled, DefaultSchedulePlanId, PingTimeoutMs, CheckIntervalSeconds, FailureRetryIntervalSeconds,
+                 IsEnabled, IsDeleted, DeletedAtUtc, AutoCheckEnabled, DefaultSchedulePlanId, PingTimeoutMs, CheckIntervalSeconds, FailureRetryIntervalSeconds,
                  FailureRetryLimit, FailureThreshold, Description, LastStatus, LastLatencyMs,
                  LastCheckedAt, LastSuccessfulCheckAt, LastFailedCheckAt,
                  ConsecutiveFailures, ConsecutiveSuccesses, LastStableStatus,
-                 CreatedAt, UpdatedAt)
+                 CreatedAt, UpdatedAt, TargetAvailabilityPercent)
             VALUES
                 (@Name, @IpAddress, @DeviceType, @Location, @GroupId, @GroupName, @IsCritical, @IsActive,
-                 @AutoCheckEnabled, @DefaultSchedulePlanId, @PingTimeoutMs, @CheckIntervalSeconds, @FailureRetryIntervalSeconds,
+                 @IsEnabled, @IsDeleted, @DeletedAtUtc, @AutoCheckEnabled, @DefaultSchedulePlanId, @PingTimeoutMs, @CheckIntervalSeconds, @FailureRetryIntervalSeconds,
                  @FailureRetryLimit, @FailureThreshold, @Description, @LastStatus, @LastLatencyMs,
                  @LastCheckedAt, @LastSuccessfulCheckAt, @LastFailedCheckAt,
                  @ConsecutiveFailures, @ConsecutiveSuccesses, @LastStableStatus,
-                 @CreatedAt, @UpdatedAt);
+                 @CreatedAt, @UpdatedAt, @TargetAvailabilityPercent);
             SELECT last_insert_rowid();
             """;
 
@@ -112,6 +149,9 @@ public sealed class DeviceRepository
                 GroupName = @GroupName,
                 IsCritical = @IsCritical,
                 IsActive = @IsActive,
+                IsEnabled = @IsEnabled,
+                IsDeleted = @IsDeleted,
+                DeletedAtUtc = @DeletedAtUtc,
                 AutoCheckEnabled = @AutoCheckEnabled,
                 DefaultSchedulePlanId = @DefaultSchedulePlanId,
                 PingTimeoutMs = @PingTimeoutMs,
@@ -129,7 +169,8 @@ public sealed class DeviceRepository
                 ConsecutiveSuccesses = @ConsecutiveSuccesses,
                 LastStableStatus = @LastStableStatus,
                 CreatedAt = @CreatedAt,
-                UpdatedAt = @UpdatedAt
+                UpdatedAt = @UpdatedAt,
+                TargetAvailabilityPercent = @TargetAvailabilityPercent
             WHERE Id = @Id;
             """;
 
@@ -169,7 +210,9 @@ public sealed class DeviceRepository
                         ELSE LastStableStatus
                     END,
                     UpdatedAt = @UpdatedAt
-                WHERE Id = @Id;
+                WHERE Id = @Id
+                  AND IsDeleted = 0
+                  AND IsEnabled = 1;
                 """;
 
             AddParameter(command, "@LastStatus", result.Status.ToStorageValue());
@@ -193,13 +236,13 @@ public sealed class DeviceRepository
     {
         if (duplicateAction == CsvImportDuplicateAction.Cancel)
         {
-            return new CsvImportApplyResult(0, 0, 0, invalidRowCount);
+            return new CsvImportApplyResult(0, 0, 0, 0, 0, 0, invalidRowCount, string.Empty, 0);
         }
 
         var rows = records.ToList();
         if (rows.Count == 0)
         {
-            return new CsvImportApplyResult(0, 0, 0, invalidRowCount);
+            return new CsvImportApplyResult(0, 0, 0, 0, 0, 0, invalidRowCount, string.Empty, 0);
         }
 
         var added = 0;
@@ -231,6 +274,10 @@ public sealed class DeviceRepository
                         Location = @Location,
                         GroupId = @GroupId,
                         GroupName = @GroupName,
+                        IsActive = 1,
+                        IsEnabled = 1,
+                        IsDeleted = 0,
+                        DeletedAtUtc = NULL,
                         AutoCheckEnabled = @AutoCheckEnabled,
                         CheckIntervalSeconds = @CheckIntervalSeconds,
                         FailureRetryIntervalSeconds = @FailureRetryIntervalSeconds,
@@ -261,14 +308,14 @@ public sealed class DeviceRepository
             insert.CommandText = """
                 INSERT INTO Devices
                     (Name, IpAddress, DeviceType, Location, GroupId, GroupName, IsCritical, IsActive,
-                     AutoCheckEnabled, DefaultSchedulePlanId, PingTimeoutMs, CheckIntervalSeconds, FailureRetryIntervalSeconds,
+                     IsEnabled, IsDeleted, DeletedAtUtc, AutoCheckEnabled, DefaultSchedulePlanId, PingTimeoutMs, CheckIntervalSeconds, FailureRetryIntervalSeconds,
                      FailureRetryLimit, FailureThreshold, Description, LastStatus, LastLatencyMs,
                      LastCheckedAt, LastSuccessfulCheckAt, LastFailedCheckAt,
                      ConsecutiveFailures, ConsecutiveSuccesses, LastStableStatus,
                      CreatedAt, UpdatedAt)
                 VALUES
                     (@Name, @IpAddress, @DeviceType, @Location, @GroupId, @GroupName, @IsCritical, 1,
-                     @AutoCheckEnabled, NULL, NULL, @CheckIntervalSeconds, @FailureRetryIntervalSeconds,
+                     1, 0, NULL, @AutoCheckEnabled, NULL, NULL, @CheckIntervalSeconds, @FailureRetryIntervalSeconds,
                      @FailureRetryLimit, 0, @Description, @LastStatus, NULL, NULL, NULL, NULL, 0, 0, @LastStableStatus,
                      @CreatedAt, @UpdatedAt);
                 """;
@@ -293,23 +340,240 @@ public sealed class DeviceRepository
         }
 
         transaction.Commit();
-        return new CsvImportApplyResult(added, updated, skipped, invalidRowCount);
+        return new CsvImportApplyResult(added, updated, 0, 0, 0, skipped, invalidRowCount, string.Empty, 0);
+    }
+
+    public async Task<CsvImportApplyResult> ApplyCsvImportAsync(
+        CsvImportPreview preview,
+        CsvImportOptions options,
+        string backupPath)
+    {
+        if (preview.HasBlockingErrors)
+        {
+            var rejectedAuditId = await InsertCsvAuditAsync(options, preview, 0, 0, 0, 0, 0, preview.SkipCount, "Rejected", "Preview contains invalid, duplicate, or zero valid rows.");
+            return new CsvImportApplyResult(0, 0, 0, 0, 0, preview.SkipCount, preview.InvalidRowCount, backupPath, rejectedAuditId);
+        }
+
+        var added = 0;
+        var updated = 0;
+        var deleted = 0;
+        var restored = 0;
+        var unchanged = 0;
+        var skipped = 0;
+        long auditId;
+        var nowUtc = DateTime.UtcNow;
+
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
+        using var transaction = connection.BeginTransaction();
+        try
+        {
+            foreach (var row in preview.Rows)
+            {
+                switch (row.Status)
+                {
+                    case CsvImportRowStatus.Add:
+                        await InsertDeviceFromCsvAsync(connection, transaction, row.Record ?? throw new InvalidOperationException("CSV add row has no record."), nowUtc);
+                        added++;
+                        break;
+                    case CsvImportRowStatus.Update:
+                        await UpdateDeviceFromCsvByIpAsync(connection, transaction, row.Record ?? throw new InvalidOperationException("CSV update row has no record."), restore: false, nowUtc);
+                        updated++;
+                        break;
+                    case CsvImportRowStatus.Restore:
+                        await UpdateDeviceFromCsvByIpAsync(connection, transaction, row.Record ?? throw new InvalidOperationException("CSV restore row has no record."), restore: true, nowUtc);
+                        restored++;
+                        break;
+                    case CsvImportRowStatus.Delete:
+                        if (!row.ExistingDeviceId.HasValue)
+                        {
+                            throw new InvalidOperationException("CSV delete row has no device id.");
+                        }
+
+                        deleted += await SoftDeleteCoreAsync(connection, transaction, row.ExistingDeviceId.Value, nowUtc);
+                        break;
+                    case CsvImportRowStatus.Unchanged:
+                        unchanged++;
+                        break;
+                    case CsvImportRowStatus.Skip:
+                        skipped++;
+                        break;
+                }
+            }
+
+            auditId = await InsertCsvAuditAsync(connection, transaction, options, preview, added, updated, deleted, restored, unchanged, skipped, "Succeeded", string.Empty);
+            transaction.Commit();
+        }
+        catch (Exception ex)
+        {
+            transaction.Rollback();
+            await InsertCsvAuditAsync(options, preview, added, updated, deleted, restored, unchanged, skipped, "Failed", ex.Message);
+            throw;
+        }
+
+        return new CsvImportApplyResult(added, updated, deleted, restored, unchanged, skipped, preview.InvalidRowCount, backupPath, auditId);
     }
 
     public async Task DeleteAsync(int id)
     {
+        await SoftDeleteAsync(id, DateTime.UtcNow);
+    }
+
+    public async Task SoftDeleteAsync(int id, DateTime deletedAtUtc)
+    {
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
+        using var transaction = connection.BeginTransaction();
+        await SoftDeleteCoreAsync(connection, transaction, id, deletedAtUtc);
+        transaction.Commit();
+    }
+
+    public async Task RestoreAsync(int id)
+    {
+        var now = DateTime.UtcNow;
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
+        using var transaction = connection.BeginTransaction();
         await using var command = connection.CreateCommand();
-        command.CommandText = "DELETE FROM Devices WHERE Id = @Id;";
+        command.Transaction = transaction;
+        command.CommandText = """
+            UPDATE Devices
+            SET IsDeleted = 0,
+                IsEnabled = 1,
+                IsActive = 1,
+                AutoCheckEnabled = 1,
+                DeletedAtUtc = NULL,
+                UpdatedAt = @UpdatedAt
+            WHERE Id = @Id;
+            """;
+        AddParameter(command, "@UpdatedAt", ToStorageDate(now));
         AddParameter(command, "@Id", id);
-        await command.ExecuteNonQueryAsync();
+        var affected = await command.ExecuteNonQueryAsync();
+        if (affected > 0)
+        {
+            await TransitionAvailabilityAsync(connection, transaction, id, AvailabilityStatus.Unknown, now, "Restore", "Cihaz geri yuklendi; ilk dogrulamaya kadar Unknown.");
+        }
+
+        transaction.Commit();
+    }
+
+    public async Task<int> BulkSoftDeleteAsync(IEnumerable<int> deviceIds)
+    {
+        var ids = deviceIds.Where(id => id > 0).Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            return 0;
+        }
+
+        var affected = 0;
+        var now = DateTime.UtcNow;
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
+        using var transaction = connection.BeginTransaction();
+        foreach (var id in ids)
+        {
+            affected += await SoftDeleteCoreAsync(connection, transaction, id, now);
+        }
+
+        transaction.Commit();
+        return affected;
+    }
+
+    public async Task<int> BulkSoftDeleteByGroupAsync(int groupId, bool deleteEmptyGroup)
+    {
+        if (groupId <= 0)
+        {
+            return 0;
+        }
+
+        var now = DateTime.UtcNow;
+        var affected = 0;
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
+        using var transaction = connection.BeginTransaction();
+
+        var ids = new List<int>();
+        await using (var select = connection.CreateCommand())
+        {
+            select.Transaction = transaction;
+            select.CommandText = "SELECT Id FROM Devices WHERE GroupId = @GroupId AND IsDeleted = 0;";
+            AddParameter(select, "@GroupId", groupId);
+            await using var reader = await select.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                ids.Add(reader.GetInt32(0));
+            }
+        }
+
+        foreach (var id in ids)
+        {
+            affected += await SoftDeleteCoreAsync(connection, transaction, id, now);
+        }
+
+        if (deleteEmptyGroup)
+        {
+            await using var deleteGroup = connection.CreateCommand();
+            deleteGroup.Transaction = transaction;
+            deleteGroup.CommandText = """
+                DELETE FROM DeviceGroups
+                WHERE Id = @GroupId
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM Devices
+                      WHERE GroupId = @GroupId
+                        AND IsDeleted = 0
+                  );
+                """;
+            AddParameter(deleteGroup, "@GroupId", groupId);
+            await deleteGroup.ExecuteNonQueryAsync();
+        }
+
+        transaction.Commit();
+        return affected;
+    }
+
+    public async Task<int> BulkRestoreAsync(IEnumerable<int> deviceIds)
+    {
+        var ids = deviceIds.Where(id => id > 0).Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            return 0;
+        }
+
+        var affected = 0;
+        var now = DateTime.UtcNow;
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
+        using var transaction = connection.BeginTransaction();
+        foreach (var id in ids)
+        {
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = """
+                UPDATE Devices
+                SET IsDeleted = 0,
+                    IsEnabled = 1,
+                    IsActive = 1,
+                    AutoCheckEnabled = 1,
+                    DeletedAtUtc = NULL,
+                    UpdatedAt = @UpdatedAt
+                WHERE Id = @Id
+                  AND IsDeleted = 1;
+                """;
+            AddParameter(command, "@UpdatedAt", ToStorageDate(now));
+            AddParameter(command, "@Id", id);
+            var restored = await command.ExecuteNonQueryAsync();
+            if (restored > 0)
+            {
+                await TransitionAvailabilityAsync(connection, transaction, id, AvailabilityStatus.Unknown, now, "Restore", "Cihaz geri yuklendi; ilk dogrulamaya kadar Unknown.");
+            }
+
+            affected += restored;
+        }
+
+        transaction.Commit();
+        return affected;
     }
 
     public async Task<int> BulkSetAutoCheckAsync(IEnumerable<int> deviceIds, bool enabled)
     {
         return await BulkUpdateAsync(
             deviceIds,
-            "UPDATE Devices SET AutoCheckEnabled = @Value, UpdatedAt = @UpdatedAt WHERE Id = @Id;",
+            "UPDATE Devices SET AutoCheckEnabled = @Value, UpdatedAt = @UpdatedAt WHERE Id = @Id AND IsDeleted = 0;",
             command => AddParameter(command, "@Value", enabled ? 1 : 0));
     }
 
@@ -317,7 +581,7 @@ public sealed class DeviceRepository
     {
         return await BulkUpdateAsync(
             deviceIds,
-            "UPDATE Devices SET IsActive = @Value, UpdatedAt = @UpdatedAt WHERE Id = @Id;",
+            "UPDATE Devices SET IsActive = @Value, IsEnabled = @Value, UpdatedAt = @UpdatedAt WHERE Id = @Id AND IsDeleted = 0;",
             command => AddParameter(command, "@Value", isActive ? 1 : 0));
     }
 
@@ -330,7 +594,7 @@ public sealed class DeviceRepository
             SET GroupId = @GroupId,
                 GroupName = @GroupName,
                 UpdatedAt = @UpdatedAt
-            WHERE Id = @Id;
+            WHERE Id = @Id AND IsDeleted = 0;
             """,
             command =>
             {
@@ -346,7 +610,7 @@ public sealed class DeviceRepository
             : Math.Clamp(checkIntervalSeconds, AppSettings.MinDeviceCheckIntervalSeconds, AppSettings.MaxDeviceCheckIntervalSeconds);
         return await BulkUpdateAsync(
             deviceIds,
-            "UPDATE Devices SET CheckIntervalSeconds = @Value, UpdatedAt = @UpdatedAt WHERE Id = @Id;",
+            "UPDATE Devices SET CheckIntervalSeconds = @Value, UpdatedAt = @UpdatedAt WHERE Id = @Id AND IsDeleted = 0;",
             command => AddParameter(command, "@Value", normalized));
     }
 
@@ -365,6 +629,346 @@ public sealed class DeviceRepository
         AddParameter(command, "@ExcludeId", excludeDeviceId);
         var result = await command.ExecuteScalarAsync();
         return Convert.ToInt32(result, CultureInfo.InvariantCulture) > 0;
+    }
+
+    private static async Task<int> SoftDeleteCoreAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        int id,
+        DateTime deletedAtUtc)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            UPDATE Devices
+            SET IsDeleted = 1,
+                IsEnabled = 0,
+                IsActive = 0,
+                AutoCheckEnabled = 0,
+                DeletedAtUtc = @DeletedAtUtc,
+                UpdatedAt = @UpdatedAt
+            WHERE Id = @Id
+              AND IsDeleted = 0;
+            """;
+        AddParameter(command, "@DeletedAtUtc", ToStorageDate(deletedAtUtc));
+        AddParameter(command, "@UpdatedAt", ToStorageDate(deletedAtUtc));
+        AddParameter(command, "@Id", id);
+        var affected = await command.ExecuteNonQueryAsync();
+
+        if (affected == 0)
+        {
+            return 0;
+        }
+
+        await using var closeIncidents = connection.CreateCommand();
+        closeIncidents.Transaction = transaction;
+        closeIncidents.CommandText = """
+            UPDATE DeviceIncidents
+            SET Status = 'Cancelled',
+                RecoveredAtUtc = @ClosedAtUtc,
+                UpdatedAtUtc = @ClosedAtUtc
+            WHERE DeviceId = @Id
+              AND Status = 'Open';
+            """;
+        AddParameter(closeIncidents, "@ClosedAtUtc", ToStorageDate(deletedAtUtc));
+        AddParameter(closeIncidents, "@Id", id);
+        await closeIncidents.ExecuteNonQueryAsync();
+
+        await using var closeOutages = connection.CreateCommand();
+        closeOutages.Transaction = transaction;
+        closeOutages.CommandText = """
+            UPDATE Outages
+            SET EndedAt = @ClosedAtUtc,
+                IsResolved = 1
+            WHERE DeviceId = @Id
+              AND IsResolved = 0;
+            """;
+        AddParameter(closeOutages, "@ClosedAtUtc", ToStorageDate(deletedAtUtc));
+        AddParameter(closeOutages, "@Id", id);
+        await closeOutages.ExecuteNonQueryAsync();
+
+        await using var cancelOutbox = connection.CreateCommand();
+        cancelOutbox.Transaction = transaction;
+        cancelOutbox.CommandText = """
+            UPDATE NotificationOutbox
+            SET Status = 'Cancelled',
+                CancelledAtUtc = @CancelledAtUtc,
+                LockedAtUtc = NULL,
+                LockedBy = '',
+                LastError = 'Device was soft-deleted before notification was sent.'
+            WHERE DeviceId = @Id
+              AND Status IN ('Pending','Processing')
+              AND EventType IN ('DeviceDown','DeviceRecovered','Test');
+            """;
+        AddParameter(cancelOutbox, "@CancelledAtUtc", ToStorageDate(deletedAtUtc));
+        AddParameter(cancelOutbox, "@Id", id);
+        await cancelOutbox.ExecuteNonQueryAsync();
+
+        await TransitionAvailabilityAsync(
+            connection,
+            transaction,
+            id,
+            AvailabilityStatus.Paused,
+            deletedAtUtc,
+            "SoftDelete",
+            "Cihaz soft-delete edildi; izleme duraklatildi.");
+
+        return affected;
+    }
+
+    private static async Task TransitionAvailabilityAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        int deviceId,
+        AvailabilityStatus status,
+        DateTime startedAtUtc,
+        string reasonCode,
+        string reasonText)
+    {
+        var started = startedAtUtc.ToUniversalTime();
+        var now = DateTime.UtcNow;
+        long? openId = null;
+        DateTime? openStartedAtUtc = null;
+        string? openStatus = null;
+
+        await using (var select = connection.CreateCommand())
+        {
+            select.Transaction = transaction;
+            select.CommandText = """
+                SELECT Id, Status, StartedAtUtc
+                FROM DeviceAvailabilityPeriods
+                WHERE DeviceId = @DeviceId
+                  AND EndedAtUtc IS NULL
+                ORDER BY StartedAtUtc DESC
+                LIMIT 1;
+                """;
+            AddParameter(select, "@DeviceId", deviceId);
+            await using var reader = await select.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
+            {
+                openId = reader.GetInt64(0);
+                openStatus = reader.GetString(1);
+                openStartedAtUtc = FromStorageDate(reader.GetString(2)).ToUniversalTime();
+            }
+        }
+
+        if (openId.HasValue && string.Equals(openStatus, status.ToStorageValue(), StringComparison.OrdinalIgnoreCase))
+        {
+            await using var update = connection.CreateCommand();
+            update.Transaction = transaction;
+            update.CommandText = """
+                UPDATE DeviceAvailabilityPeriods
+                SET ReasonCode = @ReasonCode,
+                    ReasonText = @ReasonText,
+                    DetectionSource = 'Management',
+                    UpdatedAtUtc = @UpdatedAtUtc
+                WHERE Id = @Id;
+                """;
+            AddParameter(update, "@ReasonCode", reasonCode);
+            AddParameter(update, "@ReasonText", reasonText);
+            AddParameter(update, "@UpdatedAtUtc", ToStorageDate(now));
+            AddParameter(update, "@Id", openId.Value);
+            await update.ExecuteNonQueryAsync();
+            return;
+        }
+
+        if (openId.HasValue && openStartedAtUtc.HasValue)
+        {
+            var ended = started < openStartedAtUtc.Value ? openStartedAtUtc.Value : started;
+            await using var close = connection.CreateCommand();
+            close.Transaction = transaction;
+            close.CommandText = """
+                UPDATE DeviceAvailabilityPeriods
+                SET EndedAtUtc = @EndedAtUtc,
+                    DurationSeconds = @DurationSeconds,
+                    UpdatedAtUtc = @UpdatedAtUtc
+                WHERE Id = @Id
+                  AND EndedAtUtc IS NULL;
+                """;
+            AddParameter(close, "@EndedAtUtc", ToStorageDate(ended));
+            AddParameter(close, "@DurationSeconds", Math.Max(0, (long)(ended - openStartedAtUtc.Value).TotalSeconds));
+            AddParameter(close, "@UpdatedAtUtc", ToStorageDate(now));
+            AddParameter(close, "@Id", openId.Value);
+            await close.ExecuteNonQueryAsync();
+        }
+
+        await using var insert = connection.CreateCommand();
+        insert.Transaction = transaction;
+        insert.CommandText = """
+            INSERT INTO DeviceAvailabilityPeriods
+                (DeviceId, Status, StartedAtUtc, EndedAtUtc, DurationSeconds, IncidentId,
+                 ReasonCode, ReasonText, DetectionSource, FirstFailureAtUtc, ConfirmedAtUtc,
+                 CreatedAtUtc, UpdatedAtUtc)
+            VALUES
+                (@DeviceId, @Status, @StartedAtUtc, NULL, NULL, NULL,
+                 @ReasonCode, @ReasonText, 'Management', NULL, NULL,
+                 @CreatedAtUtc, @UpdatedAtUtc);
+            """;
+        AddParameter(insert, "@DeviceId", deviceId);
+        AddParameter(insert, "@Status", status.ToStorageValue());
+        AddParameter(insert, "@StartedAtUtc", ToStorageDate(started));
+        AddParameter(insert, "@ReasonCode", reasonCode);
+        AddParameter(insert, "@ReasonText", reasonText);
+        AddParameter(insert, "@CreatedAtUtc", ToStorageDate(now));
+        AddParameter(insert, "@UpdatedAtUtc", ToStorageDate(now));
+        await insert.ExecuteNonQueryAsync();
+    }
+
+    private static async Task InsertDeviceFromCsvAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        DeviceCsvRecord row,
+        DateTime nowUtc)
+    {
+        var groupId = await EnsureGroupIdAsync(connection, transaction, row.GroupName, null);
+        await using var insert = connection.CreateCommand();
+        insert.Transaction = transaction;
+        insert.CommandText = """
+            INSERT INTO Devices
+                (Name, IpAddress, DeviceType, Location, GroupId, GroupName, IsCritical, IsActive,
+                 IsEnabled, IsDeleted, DeletedAtUtc, AutoCheckEnabled, DefaultSchedulePlanId, PingTimeoutMs,
+                 CheckIntervalSeconds, FailureRetryIntervalSeconds, FailureRetryLimit, FailureThreshold,
+                 Description, LastStatus, LastLatencyMs, LastCheckedAt, LastSuccessfulCheckAt, LastFailedCheckAt,
+                 ConsecutiveFailures, ConsecutiveSuccesses, LastStableStatus, CreatedAt, UpdatedAt)
+            VALUES
+                (@Name, @IpAddress, @DeviceType, @Location, @GroupId, @GroupName, @IsCritical, @IsActive,
+                 @IsEnabled, 0, NULL, @AutoCheckEnabled, NULL, @PingTimeoutMs,
+                 @CheckIntervalSeconds, @FailureRetryIntervalSeconds, @FailureRetryLimit, @FailureThreshold,
+                 @Description, @LastStatus, NULL, NULL, NULL, NULL, 0, 0, @LastStableStatus, @CreatedAt, @UpdatedAt);
+            """;
+        AddCsvDeviceParameters(insert, row, groupId, nowUtc);
+        await insert.ExecuteNonQueryAsync();
+    }
+
+    private static async Task UpdateDeviceFromCsvByIpAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        DeviceCsvRecord row,
+        bool restore,
+        DateTime nowUtc)
+    {
+        var groupId = await EnsureGroupIdAsync(connection, transaction, row.GroupName, null);
+        await using var update = connection.CreateCommand();
+        update.Transaction = transaction;
+        update.CommandText = """
+            UPDATE Devices
+            SET Name = @Name,
+                DeviceType = @DeviceType,
+                Location = @Location,
+                GroupId = @GroupId,
+                GroupName = @GroupName,
+                IsCritical = @IsCritical,
+                IsActive = @IsActive,
+                IsEnabled = @IsEnabled,
+                IsDeleted = 0,
+                DeletedAtUtc = NULL,
+                AutoCheckEnabled = @AutoCheckEnabled,
+                PingTimeoutMs = @PingTimeoutMs,
+                CheckIntervalSeconds = @CheckIntervalSeconds,
+                FailureRetryIntervalSeconds = @FailureRetryIntervalSeconds,
+                FailureRetryLimit = @FailureRetryLimit,
+                FailureThreshold = @FailureThreshold,
+                Description = @Description,
+                UpdatedAt = @UpdatedAt
+            WHERE IpAddress = @IpAddress
+              AND (@Restore = 0 OR IsDeleted = 1);
+            """;
+        AddCsvDeviceParameters(update, row, groupId, nowUtc);
+        AddParameter(update, "@Restore", restore ? 1 : 0);
+        var affected = await update.ExecuteNonQueryAsync();
+        if (affected == 0)
+        {
+            throw new InvalidOperationException($"CSV import target not found for IP {row.IpAddress}.");
+        }
+    }
+
+    private static void AddCsvDeviceParameters(SqliteCommand command, DeviceCsvRecord row, int? groupId, DateTime nowUtc)
+    {
+        AddParameter(command, "@Name", row.Name.Trim());
+        AddParameter(command, "@IpAddress", row.IpAddress.Trim());
+        AddParameter(command, "@DeviceType", row.DeviceType.ToStorageValue());
+        AddParameter(command, "@Location", row.Location.Trim());
+        AddParameter(command, "@GroupId", groupId);
+        AddParameter(command, "@GroupName", row.GroupName.Trim());
+        AddParameter(command, "@IsCritical", row.IsCritical ? 1 : 0);
+        AddParameter(command, "@IsActive", row.IsEnabled ? 1 : 0);
+        AddParameter(command, "@IsEnabled", row.IsEnabled ? 1 : 0);
+        AddParameter(command, "@AutoCheckEnabled", row.AutoCheckEnabled ? 1 : 0);
+        AddParameter(command, "@PingTimeoutMs", row.PingTimeoutMs);
+        AddParameter(command, "@CheckIntervalSeconds", row.CheckIntervalSeconds <= 0 ? 0 : Math.Clamp(row.CheckIntervalSeconds, AppSettings.MinDeviceCheckIntervalSeconds, AppSettings.MaxDeviceCheckIntervalSeconds));
+        AddParameter(command, "@FailureRetryIntervalSeconds", row.RetryIntervalSeconds <= 0 ? 0 : Math.Clamp(row.RetryIntervalSeconds, AppSettings.MinFailureRetryIntervalSeconds, AppSettings.MaxFailureRetryIntervalSeconds));
+        AddParameter(command, "@FailureRetryLimit", row.RetryLimit <= 0 ? 0 : Math.Clamp(row.RetryLimit, AppSettings.MinFailureRetryLimit, AppSettings.MaxFailureRetryLimit));
+        AddParameter(command, "@FailureThreshold", row.FailureThreshold <= 0 ? 0 : Math.Clamp(row.FailureThreshold, AppSettings.MinFailureThreshold, AppSettings.MaxFailureThreshold));
+        AddParameter(command, "@Description", row.Description.Trim());
+        AddParameter(command, "@LastStatus", DeviceStatus.Unknown.ToStorageValue());
+        AddParameter(command, "@LastStableStatus", DeviceStatus.Unknown.ToStorageValue());
+        AddParameter(command, "@CreatedAt", ToStorageDate(nowUtc));
+        AddParameter(command, "@UpdatedAt", ToStorageDate(nowUtc));
+    }
+
+    private async Task<long> InsertCsvAuditAsync(
+        CsvImportOptions options,
+        CsvImportPreview preview,
+        int added,
+        int updated,
+        int deleted,
+        int restored,
+        int unchanged,
+        int skipped,
+        string result,
+        string error)
+    {
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
+        using var transaction = connection.BeginTransaction();
+        var id = await InsertCsvAuditAsync(connection, transaction, options, preview, added, updated, deleted, restored, unchanged, skipped, result, error);
+        transaction.Commit();
+        return id;
+    }
+
+    private static async Task<long> InsertCsvAuditAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        CsvImportOptions options,
+        CsvImportPreview preview,
+        int added,
+        int updated,
+        int deleted,
+        int restored,
+        int unchanged,
+        int skipped,
+        string result,
+        string error)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            INSERT INTO CsvImportAudits
+                (ImportedAtUtc, FileName, ImportMode, ImportScope, AddedCount, UpdatedCount, DeletedCount,
+                 RestoredCount, UnchangedCount, SkippedCount, InvalidRowCount, DuplicateRowCount,
+                 InitiatedBy, Result, ErrorMessage)
+            VALUES
+                (@ImportedAtUtc, @FileName, @ImportMode, @ImportScope, @AddedCount, @UpdatedCount, @DeletedCount,
+                 @RestoredCount, @UnchangedCount, @SkippedCount, @InvalidRowCount, @DuplicateRowCount,
+                 @InitiatedBy, @Result, @ErrorMessage);
+            SELECT last_insert_rowid();
+            """;
+        AddParameter(command, "@ImportedAtUtc", ToStorageDate(DateTime.UtcNow));
+        AddParameter(command, "@FileName", options.FileName);
+        AddParameter(command, "@ImportMode", options.Mode.ToString());
+        AddParameter(command, "@ImportScope", options.Scope == CsvImportScope.SelectedGroup ? $"Group:{options.GroupName}" : "AllActiveDevices");
+        AddParameter(command, "@AddedCount", added);
+        AddParameter(command, "@UpdatedCount", updated);
+        AddParameter(command, "@DeletedCount", deleted);
+        AddParameter(command, "@RestoredCount", restored);
+        AddParameter(command, "@UnchangedCount", unchanged);
+        AddParameter(command, "@SkippedCount", skipped);
+        AddParameter(command, "@InvalidRowCount", preview.InvalidRowCount);
+        AddParameter(command, "@DuplicateRowCount", preview.DuplicateCount);
+        AddParameter(command, "@InitiatedBy", options.InitiatedBy);
+        AddParameter(command, "@Result", result);
+        AddParameter(command, "@ErrorMessage", error);
+        var value = await command.ExecuteScalarAsync();
+        return Convert.ToInt64(value, CultureInfo.InvariantCulture);
     }
 
     private async Task<int> BulkUpdateAsync(
@@ -400,7 +1004,7 @@ public sealed class DeviceRepository
     {
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT COUNT(1) FROM Devices WHERE GroupId = @GroupId;";
+        command.CommandText = "SELECT COUNT(1) FROM Devices WHERE GroupId = @GroupId AND IsDeleted = 0;";
         AddParameter(command, "@GroupId", groupId);
         var result = await command.ExecuteScalarAsync();
         return Convert.ToInt32(result, CultureInfo.InvariantCulture);
@@ -471,24 +1075,28 @@ public sealed class DeviceRepository
             GroupName = reader.GetString(6),
             IsCritical = reader.GetInt32(7) == 1,
             IsActive = reader.GetInt32(8) == 1,
-            AutoCheckEnabled = reader.GetInt32(9) == 1,
-            DefaultSchedulePlanId = reader.IsDBNull(10) ? null : reader.GetInt32(10),
-            PingTimeoutMs = reader.IsDBNull(11) ? null : reader.GetInt32(11),
-            CheckIntervalSeconds = reader.GetInt32(12),
-            FailureRetryIntervalSeconds = reader.GetInt32(13),
-            FailureRetryLimit = reader.GetInt32(14),
-            FailureThreshold = reader.GetInt32(15),
-            Description = reader.GetString(16),
-            LastStatus = DeviceStatusExtensions.FromStorageValue(reader.GetString(17)),
-            LastLatencyMs = reader.IsDBNull(18) ? null : reader.GetInt64(18),
-            LastCheckedAt = reader.IsDBNull(19) ? null : FromStorageDate(reader.GetString(19)),
-            LastSuccessfulCheckAt = reader.IsDBNull(20) ? null : FromStorageDate(reader.GetString(20)),
-            LastFailedCheckAt = reader.IsDBNull(21) ? null : FromStorageDate(reader.GetString(21)),
-            ConsecutiveFailures = reader.GetInt32(22),
-            ConsecutiveSuccesses = reader.GetInt32(23),
-            LastStableStatus = DeviceStatusExtensions.FromStorageValue(reader.GetString(24)),
-            CreatedAt = FromStorageDate(reader.GetString(25)),
-            UpdatedAt = FromStorageDate(reader.GetString(26))
+            IsEnabled = reader.GetInt32(9) == 1,
+            IsDeleted = reader.GetInt32(10) == 1,
+            DeletedAtUtc = reader.IsDBNull(11) ? null : FromStorageDate(reader.GetString(11)),
+            AutoCheckEnabled = reader.GetInt32(12) == 1,
+            DefaultSchedulePlanId = reader.IsDBNull(13) ? null : reader.GetInt32(13),
+            PingTimeoutMs = reader.IsDBNull(14) ? null : reader.GetInt32(14),
+            CheckIntervalSeconds = reader.GetInt32(15),
+            FailureRetryIntervalSeconds = reader.GetInt32(16),
+            FailureRetryLimit = reader.GetInt32(17),
+            FailureThreshold = reader.GetInt32(18),
+            Description = reader.GetString(19),
+            LastStatus = DeviceStatusExtensions.FromStorageValue(reader.GetString(20)),
+            LastLatencyMs = reader.IsDBNull(21) ? null : reader.GetInt64(21),
+            LastCheckedAt = reader.IsDBNull(22) ? null : FromStorageDate(reader.GetString(22)),
+            LastSuccessfulCheckAt = reader.IsDBNull(23) ? null : FromStorageDate(reader.GetString(23)),
+            LastFailedCheckAt = reader.IsDBNull(24) ? null : FromStorageDate(reader.GetString(24)),
+            ConsecutiveFailures = reader.GetInt32(25),
+            ConsecutiveSuccesses = reader.GetInt32(26),
+            LastStableStatus = DeviceStatusExtensions.FromStorageValue(reader.GetString(27)),
+            CreatedAt = FromStorageDate(reader.GetString(28)),
+            UpdatedAt = FromStorageDate(reader.GetString(29)),
+            SlaTargetAvailabilityPercent = reader.IsDBNull(30) ? null : reader.GetDouble(30)
         };
     }
 
@@ -502,6 +1110,9 @@ public sealed class DeviceRepository
         AddParameter(command, "@GroupName", device.GroupName.Trim());
         AddParameter(command, "@IsCritical", device.IsCritical ? 1 : 0);
         AddParameter(command, "@IsActive", device.IsActive ? 1 : 0);
+        AddParameter(command, "@IsEnabled", device.IsEnabled ? 1 : 0);
+        AddParameter(command, "@IsDeleted", device.IsDeleted ? 1 : 0);
+        AddParameter(command, "@DeletedAtUtc", device.DeletedAtUtc.HasValue ? ToStorageDate(device.DeletedAtUtc.Value) : null);
         AddParameter(command, "@AutoCheckEnabled", device.AutoCheckEnabled ? 1 : 0);
         AddParameter(command, "@DefaultSchedulePlanId", device.DefaultSchedulePlanId);
         AddParameter(command, "@PingTimeoutMs", device.PingTimeoutMs);
@@ -520,6 +1131,7 @@ public sealed class DeviceRepository
         AddParameter(command, "@LastStableStatus", device.LastStableStatus.ToStorageValue());
         AddParameter(command, "@CreatedAt", ToStorageDate(device.CreatedAt));
         AddParameter(command, "@UpdatedAt", ToStorageDate(device.UpdatedAt));
+        AddParameter(command, "@TargetAvailabilityPercent", device.SlaTargetAvailabilityPercent);
     }
 
     private static void AddParameter(SqliteCommand command, string name, object? value)

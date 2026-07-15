@@ -213,8 +213,8 @@ public sealed class PingLogRepository
             ? string.Empty
             : $"AND DeviceId IN ({string.Join(", ", idParameterNames)})";
         var deviceFilterSql = idParameterNames.Length == 0
-            ? string.Empty
-            : $"WHERE d.Id IN ({string.Join(", ", idParameterNames)})";
+            ? "WHERE d.IsDeleted = 0"
+            : $"WHERE d.IsDeleted = 0 AND d.Id IN ({string.Join(", ", idParameterNames)})";
 
         var items = new List<UptimeReportItem>();
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
@@ -427,8 +427,8 @@ public sealed class PingLogRepository
 
         AddParameter(command, "@Limit", Math.Clamp(limit, 1, 50000));
         command.CommandText = $"""
-            SELECT Id, DeviceId, DeviceName, IpAddress, DeviceType, GroupName, Status, LatencyMs,
-                   ResponseMessage, ErrorMessage, CheckedAt, TriggerType, SchedulePlanId, SchedulePlanName
+            SELECT Id, DeviceId, DeviceName, IpAddress, DeviceType, GroupName, Status, IsReachable, LatencyMs,
+                   ResponseMessage, ErrorCode, ErrorMessage, CheckedAt, Source, TriggerType, PlanId, SchedulePlanId, SchedulePlanName, WorkerInstanceId
             FROM PingLogs
             {(where.Count == 0 ? string.Empty : "WHERE " + string.Join(" AND ", where))}
             ORDER BY CheckedAt DESC
@@ -478,11 +478,11 @@ public sealed class PingLogRepository
 
     private const string InsertSql = """
         INSERT INTO PingLogs
-            (DeviceId, DeviceName, IpAddress, DeviceType, GroupName, Status, LatencyMs,
-             ResponseMessage, ErrorMessage, CheckedAt, TriggerType, SchedulePlanId, SchedulePlanName)
+            (DeviceId, DeviceName, IpAddress, DeviceType, GroupName, Status, IsReachable, LatencyMs,
+             ResponseMessage, ErrorCode, ErrorMessage, CheckedAt, Source, TriggerType, PlanId, SchedulePlanId, SchedulePlanName, WorkerInstanceId)
         VALUES
-            (@DeviceId, @DeviceName, @IpAddress, @DeviceType, @GroupName, @Status, @LatencyMs,
-             @ResponseMessage, @ErrorMessage, @CheckedAt, @TriggerType, @SchedulePlanId, @SchedulePlanName);
+            (@DeviceId, @DeviceName, @IpAddress, @DeviceType, @GroupName, @Status, @IsReachable, @LatencyMs,
+             @ResponseMessage, @ErrorCode, @ErrorMessage, @CheckedAt, @Source, @TriggerType, @PlanId, @SchedulePlanId, @SchedulePlanName, @WorkerInstanceId);
         """;
 
     private const string SuccessStatusSql = "'Online','Reachable'";
@@ -502,13 +502,18 @@ public sealed class PingLogRepository
             DeviceType = DeviceTypeExtensions.FromStorageValue(reader.GetString(4)),
             GroupName = reader.GetString(5),
             Status = DeviceStatusExtensions.FromStorageValue(reader.GetString(6)),
-            LatencyMs = reader.IsDBNull(7) ? null : reader.GetInt64(7),
-            ResponseMessage = reader.GetString(8),
-            ErrorMessage = reader.GetString(9),
-            CheckedAt = FromStorageDate(reader.GetString(10)),
-            TriggerType = PingTriggerTypeExtensions.FromStorageValue(reader.GetString(11)),
-            SchedulePlanId = reader.IsDBNull(12) ? null : reader.GetInt32(12),
-            SchedulePlanName = reader.GetString(13)
+            IsReachable = reader.GetInt32(7) == 1,
+            LatencyMs = reader.IsDBNull(8) ? null : reader.GetInt64(8),
+            ResponseMessage = reader.GetString(9),
+            ErrorCode = reader.GetString(10),
+            ErrorMessage = reader.GetString(11),
+            CheckedAt = FromStorageDate(reader.GetString(12)),
+            Source = reader.GetString(13),
+            TriggerType = PingTriggerTypeExtensions.FromStorageValue(reader.GetString(14)),
+            PlanId = reader.IsDBNull(15) ? null : reader.GetInt32(15),
+            SchedulePlanId = reader.IsDBNull(16) ? null : reader.GetInt32(16),
+            SchedulePlanName = reader.GetString(17),
+            WorkerInstanceId = reader.GetString(18)
         };
     }
 
@@ -525,13 +530,18 @@ public sealed class PingLogRepository
         AddParameter(command, "@DeviceType", log.DeviceType.ToStorageValue());
         AddParameter(command, "@GroupName", log.GroupName);
         AddParameter(command, "@Status", log.Status.ToStorageValue());
+        AddParameter(command, "@IsReachable", log.IsReachable ? 1 : 0);
         AddParameter(command, "@LatencyMs", log.LatencyMs);
         AddParameter(command, "@ResponseMessage", log.ResponseMessage);
+        AddParameter(command, "@ErrorCode", log.ErrorCode);
         AddParameter(command, "@ErrorMessage", log.ErrorMessage);
         AddParameter(command, "@CheckedAt", ToStorageDate(log.CheckedAt));
+        AddParameter(command, "@Source", string.IsNullOrWhiteSpace(log.Source) ? log.TriggerType.ToStorageValue() : log.Source);
         AddParameter(command, "@TriggerType", log.TriggerType.ToStorageValue());
+        AddParameter(command, "@PlanId", log.PlanId ?? log.SchedulePlanId);
         AddParameter(command, "@SchedulePlanId", log.SchedulePlanId);
         AddParameter(command, "@SchedulePlanName", log.SchedulePlanName);
+        AddParameter(command, "@WorkerInstanceId", log.WorkerInstanceId);
     }
 
     private static void AddParameter(SqliteCommand command, string name, object? value)

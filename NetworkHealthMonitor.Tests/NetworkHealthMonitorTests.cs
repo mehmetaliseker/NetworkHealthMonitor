@@ -104,12 +104,258 @@ public sealed class NetworkHealthMonitorTests
             var preview = await new CsvExportService().ReadDeviceImportPreviewAsync(path, Array.Empty<Device>());
 
             Assert.Equal(3, preview.TotalRows);
-            Assert.Single(preview.ValidRows);
-            Assert.Equal(2, preview.InvalidRowCount);
+            Assert.Empty(preview.ValidRows);
+            Assert.Equal(1, preview.InvalidRowCount);
+            Assert.Equal(2, preview.DuplicateCount);
+            Assert.True(preview.HasBlockingErrors);
         }
         finally
         {
             Directory.Delete(temp, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Bulk_delete_soft_deletes_devices_and_preserves_logs()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var repository = new DeviceRepository(store.ConnectionFactory);
+        var first = CreateDevice("Bulk 1", "192.0.2.60");
+        var second = CreateDevice("Bulk 2", "192.0.2.61");
+        first.Id = await repository.AddAsync(first);
+        second.Id = await repository.AddAsync(second);
+        await new PingLogRepository(store.ConnectionFactory).AddAsync(CreateLog(first, PingTriggerType.Manual));
+
+        var affected = await repository.BulkSoftDeleteAsync(new[] { first.Id, second.Id });
+
+        Assert.Equal(2, affected);
+        Assert.Empty(await repository.GetAutoCheckCandidatesAsync());
+        Assert.Equal(2, (await repository.GetAllAsync(onlyDeleted: true)).Count);
+        Assert.Single(await new PingLogRepository(store.ConnectionFactory).GetRecentAsync());
+    }
+
+    [Fact]
+    public async Task Bulk_delete_rolls_back_when_transaction_fails()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var repository = new DeviceRepository(store.ConnectionFactory);
+        var first = CreateDevice("Rollback 1", "192.0.2.62");
+        var second = CreateDevice("Rollback 2", "192.0.2.63");
+        first.Id = await repository.AddAsync(first);
+        second.Id = await repository.AddAsync(second);
+
+        await using (var connection = await store.ConnectionFactory.CreateOpenConnectionAsync())
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TRIGGER RollbackBulkDelete
+                BEFORE UPDATE OF IsDeleted ON Devices
+                WHEN NEW.IpAddress = '192.0.2.63'
+                BEGIN
+                    SELECT RAISE(ABORT, 'forced rollback');
+                END;
+                """;
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await Assert.ThrowsAsync<SqliteException>(() => repository.BulkSoftDeleteAsync(new[] { first.Id, second.Id }));
+
+        Assert.Equal(2, (await repository.GetAutoCheckCandidatesAsync()).Count);
+        Assert.Empty(await repository.GetAllAsync(onlyDeleted: true));
+    }
+
+    [Fact]
+    public async Task Group_delete_soft_deletes_only_group_devices()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var groups = new DeviceGroupRepository(store.ConnectionFactory);
+        var g1 = new DeviceGroup { Name = "Group A" };
+        var g2 = new DeviceGroup { Name = "Group B" };
+        await groups.AddAsync(g1);
+        await groups.AddAsync(g2);
+        var repository = new DeviceRepository(store.ConnectionFactory);
+        await repository.AddAsync(withGroup(CreateDevice("A1", "192.0.2.70"), g1));
+        await repository.AddAsync(withGroup(CreateDevice("A2", "192.0.2.71"), g1));
+        await repository.AddAsync(withGroup(CreateDevice("B1", "192.0.2.72"), g2));
+
+        var affected = await repository.BulkSoftDeleteByGroupAsync(g1.Id, deleteEmptyGroup: false);
+
+        Assert.Equal(2, affected);
+        var active = await repository.GetAllAsync();
+        Assert.Single(active);
+        Assert.Equal("192.0.2.72", active[0].IpAddress);
+
+        static Device withGroup(Device device, DeviceGroup group)
+        {
+            device.GroupId = group.Id;
+            device.GroupName = group.Name;
+            return device;
+        }
+    }
+
+    [Fact]
+    public async Task Csv_add_only_adds_new_and_keeps_existing()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var repository = new DeviceRepository(store.ConnectionFactory);
+        await repository.AddAsync(CreateDevice("Existing", "192.0.2.80"));
+        var path = await WriteCsvAsync("Name;IpAddress;DeviceType\nExisting Changed;192.0.2.80;Kamera\nNew;192.0.2.81;Switch");
+
+        var service = CreateImportService(store);
+        var preview = await service.ReadImportPreviewAsync(path, await repository.GetAllAsync(includeDeleted: true), new CsvImportOptions(CsvImportMode.AddOnly, CsvImportScope.AllActiveDevices, null, "", Path.GetFileName(path), "test"));
+        var result = await service.ApplyImportAsync(preview, new CsvImportOptions(CsvImportMode.AddOnly, CsvImportScope.AllActiveDevices, null, "", Path.GetFileName(path), "test"));
+
+        Assert.Equal(1, result.Added);
+        Assert.Equal(1, result.Skipped);
+        var devices = await repository.GetAllAsync();
+        Assert.Equal(2, devices.Count);
+        Assert.Contains(devices, device => device.Name == "Existing");
+    }
+
+    [Fact]
+    public async Task Csv_upsert_updates_existing_and_adds_new()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var repository = new DeviceRepository(store.ConnectionFactory);
+        await repository.AddAsync(CreateDevice("Existing", "192.0.2.82"));
+        var path = await WriteCsvAsync("Name;IpAddress;DeviceType;Location\nUpdated;192.0.2.82;Switch;Rack\nNew;192.0.2.83;Kamera;Depo");
+        var options = new CsvImportOptions(CsvImportMode.Upsert, CsvImportScope.AllActiveDevices, null, "", Path.GetFileName(path), "test");
+
+        var service = CreateImportService(store);
+        var preview = await service.ReadImportPreviewAsync(path, await repository.GetAllAsync(includeDeleted: true), options);
+        var result = await service.ApplyImportAsync(preview, options);
+
+        Assert.Equal(1, result.Added);
+        Assert.Equal(1, result.Updated);
+        var devices = await repository.GetAllAsync();
+        Assert.Contains(devices, device => device.IpAddress == "192.0.2.82" && device.Name == "Updated" && device.DeviceType == DeviceType.Switch);
+    }
+
+    [Fact]
+    public async Task Csv_sync_adds_updates_restores_and_soft_deletes_missing()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var repository = new DeviceRepository(store.ConnectionFactory);
+        var keep = CreateDevice("Keep", "192.0.2.84");
+        var remove = CreateDevice("Remove", "192.0.2.85");
+        var restore = CreateDevice("Restore", "192.0.2.86");
+        keep.Id = await repository.AddAsync(keep);
+        remove.Id = await repository.AddAsync(remove);
+        restore.Id = await repository.AddAsync(restore);
+        await repository.SoftDeleteAsync(restore.Id, DateTime.UtcNow);
+        await new PingLogRepository(store.ConnectionFactory).AddAsync(CreateLog(remove, PingTriggerType.Manual));
+        var path = await WriteCsvAsync("Name;IpAddress;DeviceType\nKeep Updated;192.0.2.84;Switch\nRestore Updated;192.0.2.86;Kamera\nAdded;192.0.2.87;Server");
+        var options = new CsvImportOptions(CsvImportMode.Sync, CsvImportScope.AllActiveDevices, null, "", Path.GetFileName(path), "test");
+        var service = CreateImportService(store);
+
+        var preview = await service.ReadImportPreviewAsync(path, await repository.GetAllAsync(includeDeleted: true), options);
+        var result = await service.ApplyImportAsync(preview, options);
+
+        Assert.Equal(1, result.Added);
+        Assert.Equal(1, result.Updated);
+        Assert.Equal(1, result.Restored);
+        Assert.Equal(1, result.Deleted);
+        var activeIps = (await repository.GetAllAsync()).Select(device => device.IpAddress).OrderBy(ip => ip).ToList();
+        Assert.Equal(new[] { "192.0.2.84", "192.0.2.86", "192.0.2.87" }, activeIps);
+        Assert.Contains(await repository.GetAllAsync(onlyDeleted: true), device => device.IpAddress == "192.0.2.85");
+        Assert.Single(await new PingLogRepository(store.ConnectionFactory).GetRecentAsync());
+    }
+
+    [Fact]
+    public async Task Csv_sync_empty_or_duplicate_csv_is_not_applied()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var repository = new DeviceRepository(store.ConnectionFactory);
+        await repository.AddAsync(CreateDevice("Keep", "192.0.2.88"));
+        var service = CreateImportService(store);
+        var options = new CsvImportOptions(CsvImportMode.Sync, CsvImportScope.AllActiveDevices, null, "", "bad.csv", "test");
+        var emptyPath = await WriteCsvAsync("Name;IpAddress;DeviceType\n");
+        var duplicatePath = await WriteCsvAsync("Name;IpAddress;DeviceType\nA;192.0.2.88;Kamera\nB;192.0.2.88;Kamera");
+
+        var emptyPreview = await service.ReadImportPreviewAsync(emptyPath, await repository.GetAllAsync(includeDeleted: true), options);
+        var duplicatePreview = await service.ReadImportPreviewAsync(duplicatePath, await repository.GetAllAsync(includeDeleted: true), options);
+
+        Assert.True(emptyPreview.HasBlockingErrors);
+        Assert.True(duplicatePreview.HasBlockingErrors);
+        await service.ApplyImportAsync(emptyPreview, options);
+        await service.ApplyImportAsync(duplicatePreview, options);
+        Assert.Single(await repository.GetAllAsync());
+    }
+
+    [Fact]
+    public async Task Csv_group_scoped_sync_only_deletes_missing_devices_in_selected_group()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var groups = new DeviceGroupRepository(store.ConnectionFactory);
+        var g1 = new DeviceGroup { Name = "Sync Group" };
+        var g2 = new DeviceGroup { Name = "Other Group" };
+        await groups.AddAsync(g1);
+        await groups.AddAsync(g2);
+        var repository = new DeviceRepository(store.ConnectionFactory);
+        await repository.AddAsync(WithGroup(CreateDevice("Keep", "192.0.2.89"), g1));
+        await repository.AddAsync(WithGroup(CreateDevice("Delete", "192.0.2.90"), g1));
+        await repository.AddAsync(WithGroup(CreateDevice("Other", "192.0.2.91"), g2));
+        var path = await WriteCsvAsync("Name;IpAddress;DeviceType\nKeep;192.0.2.89;Kamera");
+        var options = new CsvImportOptions(CsvImportMode.Sync, CsvImportScope.SelectedGroup, g1.Id, g1.Name, Path.GetFileName(path), "test");
+        var service = CreateImportService(store);
+
+        var preview = await service.ReadImportPreviewAsync(path, await repository.GetAllAsync(includeDeleted: true), options);
+        await service.ApplyImportAsync(preview, options);
+
+        var activeIps = (await repository.GetAllAsync()).Select(device => device.IpAddress).OrderBy(ip => ip).ToList();
+        Assert.Equal(new[] { "192.0.2.89", "192.0.2.91" }, activeIps);
+
+        static Device WithGroup(Device device, DeviceGroup group)
+        {
+            device.GroupId = group.Id;
+            device.GroupName = group.Name;
+            return device;
+        }
+    }
+
+    [Fact]
+    public async Task Outbox_retry_failed_resets_to_pending_and_sent_is_not_retried()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var repository = new NotificationOutboxRepository(store.ConnectionFactory);
+        var failedId = await repository.AddPendingAsync("Test", null, null, "{}", "failed-" + Guid.NewGuid(), DateTime.UtcNow);
+        var sentId = await repository.AddPendingAsync("Test", null, null, "{}", "sent-" + Guid.NewGuid(), DateTime.UtcNow);
+        await repository.MarkFailedAsync(failedId, 3, "401 Unauthorized");
+        await repository.MarkSentAsync(sentId, DateTime.UtcNow);
+
+        var affected = await repository.RetryFailedAsync(new[] { failedId, sentId }, DateTime.UtcNow);
+
+        Assert.Equal(1, affected);
+        var items = await repository.GetFilteredAsync(null, null, null, null, null, 10);
+        Assert.Contains(items, item => item.Id == failedId && item.Status == "Pending" && item.AttemptCount == 0 && item.LockedAtUtc is null && item.LockedBy == "");
+        Assert.Contains(items, item => item.Id == sentId && item.Status == "Sent");
+    }
+
+    [Fact]
+    public async Task Ui_autostart_creates_single_shortcut_and_removes_it()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "nhm-autostart-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var exe = Path.Combine(root, "NetworkHealthMonitor.exe");
+            await File.WriteAllTextAsync(exe, "fake");
+            var service = new WindowsStartupShortcutService(root);
+
+            await service.SetEnabledAsync(true, exe);
+            await service.SetEnabledAsync(true, exe);
+
+            Assert.True(File.Exists(service.ShortcutPath));
+            Assert.Single(Directory.GetFiles(root, "NetworkHealthMonitor*.lnk"));
+            Assert.True(service.IsEnabled(exe));
+
+            await service.SetEnabledAsync(false, exe);
+
+            Assert.False(File.Exists(service.ShortcutPath));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
         }
     }
 
@@ -220,7 +466,7 @@ public sealed class NetworkHealthMonitorTests
         DatabasePaths.Configure(new FixedApplicationPathProvider(data), legacy);
         await new SqliteConnectionFactory().InitializeAsync();
 
-        Assert.True(File.Exists(Path.Combine(data, "network_health_monitor.db")));
+        Assert.True(File.Exists(Path.Combine(data, "data", "network_health_monitor.db")));
         Assert.True(File.Exists(legacyDb));
         Assert.NotEmpty(Directory.GetFiles(Path.Combine(data, "backups"), "*.db"));
         SqliteConnection.ClearAllPools();
@@ -235,8 +481,9 @@ public sealed class NetworkHealthMonitorTests
         var legacy = Path.Combine(root, "legacy");
         Directory.CreateDirectory(data);
         Directory.CreateDirectory(legacy);
-        var programDataDb = Path.Combine(data, "network_health_monitor.db");
+        var programDataDb = Path.Combine(data, "data", "network_health_monitor.db");
         var legacyDb = Path.Combine(legacy, "network_health_monitor.db");
+        Directory.CreateDirectory(Path.GetDirectoryName(programDataDb)!);
         await CreateMarkerSqliteAsync(programDataDb, "ProgramDataMarker");
         await CreateMarkerSqliteAsync(legacyDb, "LegacyMarker");
 
@@ -275,6 +522,124 @@ public sealed class NetworkHealthMonitorTests
         Assert.Contains(logs, log => log.TriggerType == PingTriggerType.Scheduled);
     }
 
+    [Fact]
+    public async Task Soft_deleted_device_is_excluded_and_can_be_restored()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var repository = new DeviceRepository(store.ConnectionFactory);
+        var device = CreateDevice("Delete Me", "192.0.2.50");
+        var id = await repository.AddAsync(device);
+
+        await repository.SoftDeleteAsync(id, DateTime.UtcNow);
+
+        Assert.Empty(await repository.GetAutoCheckCandidatesAsync());
+        Assert.Single(await repository.GetAllAsync(onlyDeleted: true));
+
+        await repository.RestoreAsync(id);
+
+        Assert.Single(await repository.GetAutoCheckCandidatesAsync());
+        Assert.Empty(await repository.GetAllAsync(onlyDeleted: true));
+    }
+
+    [Fact]
+    public async Task Scheduler_does_not_ping_soft_deleted_device()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var fakePing = new FakePingService();
+        var scheduler = await CreateSchedulerAsync(store, fakePing);
+        var id = await AddDeviceAsync(store, CreateDevice("Deleted", "127.0.0.2"));
+        await AddPlanAsync(store, "Deleted Plan", SchedulePlanTargetType.AllDevices, string.Empty, DateTime.Now.AddMinutes(-1));
+        await new DeviceRepository(store.ConnectionFactory).SoftDeleteAsync(id, DateTime.UtcNow);
+
+        await scheduler.RunDuePlansOnceAsync();
+
+        Assert.Equal(0, fakePing.PingCount);
+        Assert.Empty(await new PingLogRepository(store.ConnectionFactory).GetRecentAsync());
+    }
+
+    [Fact]
+    public async Task Three_failures_create_one_down_incident_and_one_outbox_item()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var fakePing = new FakePingService(false, false, false, false);
+        var execution = CreatePingExecution(store, fakePing);
+        var device = CreateDevice("Down", "127.0.0.3");
+        device.Id = await AddDeviceAsync(store, device);
+
+        for (var index = 0; index < 4; index++)
+        {
+            await execution.PingDevicesAsync(new[] { device }, new PingOptions(1000, 1, 3), PingTriggerType.Scheduled);
+        }
+
+        Assert.Equal(1, await CountOpenIncidentsAsync(store));
+        Assert.Equal(1, await CountOutboxAsync(store, "DeviceDown"));
+    }
+
+    [Fact]
+    public async Task Two_failures_do_not_create_down_incident()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var fakePing = new FakePingService(false, false);
+        var execution = CreatePingExecution(store, fakePing);
+        var device = CreateDevice("Warn", "127.0.0.4");
+        device.Id = await AddDeviceAsync(store, device);
+
+        await execution.PingDevicesAsync(new[] { device }, new PingOptions(1000, 1, 3), PingTriggerType.Scheduled);
+        await execution.PingDevicesAsync(new[] { device }, new PingOptions(1000, 1, 3), PingTriggerType.Scheduled);
+
+        Assert.Equal(0, await CountOpenIncidentsAsync(store));
+        Assert.Equal(0, await CountOutboxAsync(store, "DeviceDown"));
+    }
+
+    [Fact]
+    public async Task Recovery_after_two_successes_closes_incident_and_creates_one_recovery_notification()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var fakePing = new FakePingService(false, false, false, true, true, true);
+        var execution = CreatePingExecution(store, fakePing);
+        var device = CreateDevice("Recover", "127.0.0.5");
+        device.Id = await AddDeviceAsync(store, device);
+
+        for (var index = 0; index < 5; index++)
+        {
+            await execution.PingDevicesAsync(new[] { device }, new PingOptions(1000, 1, 3), PingTriggerType.Scheduled);
+        }
+
+        Assert.Equal(0, await CountOpenIncidentsAsync(store));
+        Assert.Equal(1, await CountOutboxAsync(store, "DeviceDown"));
+        Assert.Equal(1, await CountOutboxAsync(store, "DeviceRecovered"));
+    }
+
+    [Fact]
+    public void Retry_backoff_honors_retry_after()
+    {
+        var service = new AlertPolicyService();
+        var now = new DateTime(2026, 7, 15, 10, 0, 0, DateTimeKind.Utc);
+
+        var next = service.CalculateNextRetryUtc(3, 30, TimeSpan.FromSeconds(90), now);
+
+        Assert.Equal(now.AddSeconds(90), next);
+    }
+
+    [Fact]
+    public async Task Ntfy_client_classifies_unauthorized_as_permanent_failure()
+    {
+        var client = new NtfyNotificationClient(
+            new TestHttpClientFactory(_ => new HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized)),
+            new DpapiSecretProtector());
+
+        var result = await client.PublishAsync(new NotificationSettings
+        {
+            Enabled = true,
+            BaseUrl = "https://ntfy.example",
+            Topic = "topic"
+        }, new NtfyNotificationPayload { Title = "t", Message = "m" });
+
+        Assert.False(result.Success);
+        Assert.False(result.IsTransient);
+        Assert.Equal(401, result.StatusCode);
+    }
+
     private static async Task<ISchedulerService> CreateSchedulerAsync(TestStore store, FakePingService pingService)
     {
         await EnsureSettingsAsync();
@@ -295,6 +660,23 @@ public sealed class NetworkHealthMonitorTests
             new SchedulerRuntimeOptions { PollIntervalOverride = TimeSpan.FromMilliseconds(100) });
     }
 
+    private static async Task<int> CountOpenIncidentsAsync(TestStore store)
+    {
+        await using var connection = await store.ConnectionFactory.CreateOpenConnectionAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(1) FROM DeviceIncidents WHERE Status = 'Open';";
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<int> CountOutboxAsync(TestStore store, string eventType)
+    {
+        await using var connection = await store.ConnectionFactory.CreateOpenConnectionAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(1) FROM NotificationOutbox WHERE EventType = @EventType;";
+        command.Parameters.AddWithValue("@EventType", eventType);
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
     private static IPingExecutionService CreatePingExecution(TestStore store, IPingService pingService)
     {
         return new PingExecutionService(
@@ -305,7 +687,529 @@ public sealed class NetworkHealthMonitorTests
             pingService,
             new DeviceCheckPolicyService(),
             new DeviceHealthEvaluator(),
-            new AppSettingsService());
+            new AppSettingsService(),
+            new IncidentService(store.ConnectionFactory, new AppSettingsService(), new AlertPolicyService()));
+    }
+
+    private static DeviceImportExportService CreateImportService(TestStore store)
+    {
+        return new DeviceImportExportService(
+            new CsvExportService(),
+            new DeviceRepository(store.ConnectionFactory),
+            new DataMaintenanceService(store.ConnectionFactory));
+    }
+
+    private static async Task<string> WriteCsvAsync(string content)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "nhm-csv-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "devices.csv");
+        await File.WriteAllTextAsync(path, content);
+        return path;
+    }
+
+    [Fact]
+    public async Task Availability_periods_track_first_failure_confirmation_and_recovery()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var repository = new DeviceRepository(store.ConnectionFactory);
+        var device = CreateDevice("Availability", "192.0.2.130");
+        device.Id = await repository.AddAsync(device);
+        var availability = new AvailabilityRepository(store.ConnectionFactory);
+        var t0 = new DateTime(2026, 7, 15, 10, 0, 0, DateTimeKind.Utc);
+        var t1 = t0.AddMinutes(1);
+        var t2 = t0.AddMinutes(2);
+        var t3 = t0.AddMinutes(3);
+        var t4 = t0.AddMinutes(4);
+
+        await ApplyAvailabilityPingAsync(availability, device, true, DeviceStatus.Online, t0);
+        await ApplyAvailabilityPingAsync(availability, device, false, DeviceStatus.Warning, t1);
+        await ApplyAvailabilityPingAsync(availability, device, false, DeviceStatus.UnderWatch, t2);
+        await ApplyAvailabilityPingAsync(availability, device, false, DeviceStatus.Offline, t3);
+        await ApplyAvailabilityPingAsync(availability, device, true, DeviceStatus.Online, t4);
+
+        var periods = await availability.GetPeriodsAsync(device.Id, t0.AddMinutes(-1), t4.AddMinutes(1));
+        var down = Assert.Single(periods, period => period.Status == AvailabilityStatus.Down);
+        var open = Assert.Single(periods, period => period.EndedAtUtc is null);
+
+        Assert.Equal(t1, down.StartedAtUtc);
+        Assert.Equal(t3, down.ConfirmedAtUtc);
+        Assert.Equal(t1, down.FirstFailureAtUtc);
+        Assert.Equal(120, (long)(down.ConfirmedAtUtc!.Value - down.FirstFailureAtUtc!.Value).TotalSeconds);
+        Assert.Equal(t4, down.EndedAtUtc);
+        Assert.Equal(AvailabilityStatus.Up, open.Status);
+    }
+
+    [Fact]
+    public async Task Confirmed_down_policy_can_start_downtime_at_confirmation_time()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var repository = new DeviceRepository(store.ConnectionFactory);
+        var device = CreateDevice("Confirmed Policy", "192.0.2.131");
+        device.Id = await repository.AddAsync(device);
+        var availability = new AvailabilityRepository(store.ConnectionFactory);
+        var t0 = new DateTime(2026, 7, 15, 10, 0, 0, DateTimeKind.Utc);
+        var t1 = t0.AddMinutes(1);
+        var t3 = t0.AddMinutes(3);
+
+        await ApplyAvailabilityPingAsync(availability, device, true, DeviceStatus.Online, t0);
+        await ApplyAvailabilityPingAsync(availability, device, false, DeviceStatus.Warning, t1);
+        await ApplyAvailabilityPingAsync(availability, device, false, DeviceStatus.Offline, t3, DowntimeStartPolicy.ConfirmedDownTime);
+
+        var down = Assert.Single(await availability.GetPeriodsAsync(device.Id, t0, t3.AddMinutes(1)), period => period.Status == AvailabilityStatus.Down);
+
+        Assert.Equal(t3, down.StartedAtUtc);
+        Assert.Equal(t1, down.FirstFailureAtUtc);
+        Assert.Equal(t3, down.ConfirmedAtUtc);
+    }
+
+    [Fact]
+    public async Task Worker_heartbeat_gap_creates_unknown_period_without_backfilling_up()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var repository = new DeviceRepository(store.ConnectionFactory);
+        var device = CreateDevice("Heartbeat Gap", "192.0.2.132");
+        device.Id = await repository.AddAsync(device);
+        var availability = new AvailabilityRepository(store.ConnectionFactory);
+        var t0 = new DateTime(2026, 7, 15, 10, 0, 0, DateTimeKind.Utc);
+
+        await ApplyAvailabilityPingAsync(availability, device, true, DeviceStatus.Online, t0);
+        await availability.ReconcileWorkerHeartbeatGapAsync(t0.AddSeconds(15), t0.AddMinutes(10), 120);
+
+        var periods = await availability.GetPeriodsAsync(device.Id, t0, t0.AddMinutes(11));
+        var unknown = Assert.Single(periods, period => period.Status == AvailabilityStatus.Unknown);
+
+        Assert.Equal(t0.AddSeconds(135), unknown.StartedAtUtc);
+        Assert.Null(unknown.EndedAtUtc);
+    }
+
+    [Fact]
+    public async Task Maintenance_window_is_excluded_from_down_and_recorded_as_maintenance()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var repository = new DeviceRepository(store.ConnectionFactory);
+        var device = CreateDevice("Maintenance", "192.0.2.133");
+        device.Id = await repository.AddAsync(device);
+        var availability = new AvailabilityRepository(store.ConnectionFactory);
+        var maintenanceRepository = new MaintenanceWindowRepository(store.ConnectionFactory);
+        var t0 = new DateTime(2026, 7, 15, 10, 0, 0, DateTimeKind.Utc);
+        var maintenanceStart = t0.AddMinutes(10);
+        var maintenanceEnd = t0.AddMinutes(20);
+
+        await ApplyAvailabilityPingAsync(availability, device, true, DeviceStatus.Online, t0);
+        await maintenanceRepository.AddAsync(
+            new MaintenanceWindow
+            {
+                Name = "Planned",
+                StartedAtUtc = maintenanceStart,
+                EndedAtUtc = maintenanceEnd,
+                Status = MaintenanceWindowStatus.Active,
+                CreatedBy = "test"
+            },
+            new[] { new MaintenanceWindowTarget { TargetType = MonitoringTargetType.AllDevices } });
+        await availability.ReconcileMaintenanceWindowsAsync(maintenanceStart.AddSeconds(1));
+        await availability.ReconcileMaintenanceWindowsAsync(maintenanceEnd.AddSeconds(1));
+        await availability.RecalculateDailyAsync(DateOnly.FromDateTime(t0), DateOnly.FromDateTime(t0), TimeZoneInfo.Utc.Id, device.Id);
+
+        var daily = await ReadDailyAsync(store, device.Id, DateOnly.FromDateTime(t0), TimeZoneInfo.Utc.Id);
+
+        Assert.True(daily.MaintenanceSeconds >= 600);
+        Assert.Equal(0, daily.DownSeconds);
+    }
+
+    [Fact]
+    public async Task Daily_aggregate_is_idempotent_and_calculates_availability_coverage_and_delay()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var repository = new DeviceRepository(store.ConnectionFactory);
+        var device = CreateDevice("Daily", "192.0.2.134");
+        device.Id = await repository.AddAsync(device);
+        var availability = new AvailabilityRepository(store.ConnectionFactory);
+        var day = new DateTime(2026, 7, 15, 0, 0, 0, DateTimeKind.Utc);
+
+        await InsertAvailabilityPeriodAsync(store, device.Id, AvailabilityStatus.Up, day, day.AddHours(20));
+        await InsertAvailabilityPeriodAsync(store, device.Id, AvailabilityStatus.Down, day.AddHours(20), day.AddHours(22), firstFailureAtUtc: day.AddHours(20), confirmedAtUtc: day.AddHours(20).AddMinutes(2));
+        await availability.RecalculateDailyAsync(DateOnly.FromDateTime(day), DateOnly.FromDateTime(day), TimeZoneInfo.Utc.Id, device.Id);
+        await availability.RecalculateDailyAsync(DateOnly.FromDateTime(day), DateOnly.FromDateTime(day), TimeZoneInfo.Utc.Id, device.Id);
+
+        var count = await CountDailyAsync(store, device.Id, DateOnly.FromDateTime(day), TimeZoneInfo.Utc.Id);
+        var daily = await ReadDailyAsync(store, device.Id, DateOnly.FromDateTime(day), TimeZoneInfo.Utc.Id);
+
+        Assert.Equal(1, count);
+        Assert.Equal(72000, daily.UpSeconds);
+        Assert.Equal(7200, daily.DownSeconds);
+        Assert.Equal(7200, daily.UnknownSeconds);
+        Assert.Equal(120, daily.TotalDetectionDelaySeconds);
+        Assert.Equal(90.909, Math.Round(daily.AvailabilityPercent!.Value, 3));
+    }
+
+    [Fact]
+    public async Task Dashboard_uses_time_weighted_availability_not_simple_device_average()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var repository = new DeviceRepository(store.ConnectionFactory);
+        var first = CreateDevice("Weighted 1", "192.0.2.135");
+        var second = CreateDevice("Weighted 2", "192.0.2.136");
+        first.Id = await repository.AddAsync(first);
+        second.Id = await repository.AddAsync(second);
+        var start = DateTime.UtcNow.AddHours(-2);
+        var end = DateTime.UtcNow;
+        await InsertAvailabilityPeriodAsync(store, first.Id, AvailabilityStatus.Up, start, start.AddMinutes(90));
+        await InsertAvailabilityPeriodAsync(store, first.Id, AvailabilityStatus.Down, start.AddMinutes(90), start.AddMinutes(100));
+        await InsertAvailabilityPeriodAsync(store, second.Id, AvailabilityStatus.Up, start, start.AddMinutes(1));
+        await InsertAvailabilityPeriodAsync(store, second.Id, AvailabilityStatus.Down, start.AddMinutes(1), start.AddMinutes(10));
+
+        var service = new AvailabilityService(new AvailabilityRepository(store.ConnectionFactory));
+        var summary = await service.GetAvailabilitySummaryAsync(start, end, TimeZoneInfo.Utc.Id);
+        var weighted = summary.Sum(item => item.UpSeconds) * 100d / summary.Sum(item => item.UpSeconds + item.DownSeconds);
+        var simpleAverage = summary.Average(item => item.AvailabilityPercent!.Value);
+
+        Assert.NotEqual(Math.Round(simpleAverage, 3), Math.Round(weighted, 3));
+        Assert.Equal(82.727, Math.Round(weighted, 3));
+    }
+
+    [Fact]
+    public async Task Availability_summary_csv_contains_professional_columns_and_utf8_bom()
+    {
+        var temp = Path.Combine(Path.GetTempPath(), "nhm-availability-csv-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try
+        {
+            var path = Path.Combine(temp, "availability.csv");
+            await new CsvExportService().ExportAvailabilitySummaryAsync(
+                new[]
+                {
+                    new AvailabilitySummaryReportItem
+                    {
+                        DeviceId = 1,
+                        DeviceName = "Kamera Çatı",
+                        IpAddress = "192.0.2.140",
+                        DeviceType = DeviceType.Camera,
+                        GroupName = "Çatı",
+                        ReportStartUtc = DateTime.UtcNow.AddDays(-1),
+                        ReportEndUtc = DateTime.UtcNow,
+                        ExpectedMonitoringSeconds = 86400,
+                        UpSeconds = 86000,
+                        DownSeconds = 400,
+                        AvailabilityPercent = 99.537,
+                        StrictAvailabilityPercent = 99.537,
+                        CoveragePercent = 100,
+                        CurrentStatus = AvailabilityStatus.Up,
+                        CurrentStatusSinceUtc = DateTime.UtcNow.AddHours(-1),
+                        SlaTargetPercent = 99.9,
+                        SlaStatus = "Ihlal"
+                    }
+                },
+                path);
+
+            var bytes = await File.ReadAllBytesAsync(path);
+            var content = await File.ReadAllTextAsync(path, System.Text.Encoding.UTF8);
+
+            Assert.Equal(new byte[] { 0xEF, 0xBB, 0xBF }, bytes.Take(3).ToArray());
+            Assert.Contains("AvailabilityPercent", content);
+            Assert.Contains("StrictAvailabilityPercent", content);
+            Assert.Contains("CoveragePercent", content);
+            Assert.Contains("MTTRSeconds", content);
+            Assert.Contains("Kamera Çatı", content);
+        }
+        finally
+        {
+            Directory.Delete(temp, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Timeline_periods_are_returned_in_start_order()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var repository = new DeviceRepository(store.ConnectionFactory);
+        var device = CreateDevice("Timeline", "192.0.2.170");
+        device.Id = await repository.AddAsync(device);
+        var now = DateTime.UtcNow;
+        await InsertAvailabilityPeriodAsync(store, device.Id, AvailabilityStatus.Up, now.AddHours(-3), now.AddHours(-2));
+        await InsertAvailabilityPeriodAsync(store, device.Id, AvailabilityStatus.Down, now.AddHours(-2), now.AddHours(-1));
+
+        var timeline = await new AvailabilityService(new AvailabilityRepository(store.ConnectionFactory)).GetTimelineAsync(device.Id, now.AddHours(-4), now);
+
+        Assert.Collection(
+            timeline,
+            first => Assert.Equal(AvailabilityStatus.Up, first.Status),
+            second => Assert.Equal(AvailabilityStatus.Down, second.Status));
+    }
+
+    [Fact]
+    public async Task Maintenance_crud_persists_targets_and_status_changes()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var groups = new DeviceGroupRepository(store.ConnectionFactory);
+        var group = new DeviceGroup { Name = "Bakim Grubu" };
+        await groups.AddAsync(group);
+        var repository = new MaintenanceWindowRepository(store.ConnectionFactory);
+        var id = await repository.AddAsync(
+            new MaintenanceWindow
+            {
+                Name = "Planli Bakim",
+                StartedAtUtc = DateTime.UtcNow.AddMinutes(-5),
+                EndedAtUtc = DateTime.UtcNow.AddHours(1),
+                Reason = "Test",
+                SuppressNotifications = true,
+                ContinuePings = false,
+                Status = MaintenanceWindowStatus.Active
+            },
+            new[] { new MaintenanceWindowTarget { TargetType = MonitoringTargetType.Group, TargetId = group.Id } });
+
+        var item = Assert.Single(await repository.GetAllAsync());
+        Assert.Equal(id, item.Window.Id);
+        Assert.False(item.Window.ContinuePings);
+        Assert.Equal(MonitoringTargetType.Group, Assert.Single(item.Targets).TargetType);
+
+        await repository.CompleteAsync(id);
+        item = Assert.Single(await repository.GetAllAsync());
+        Assert.Equal(MaintenanceWindowStatus.Completed, item.Window.Status);
+    }
+
+    [Fact]
+    public async Task Monitoring_calendar_crud_persists_rules_assignments_and_default()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var repository = new MonitoringCalendarRepository(store.ConnectionFactory);
+        var id = await repository.AddAsync(
+            new MonitoringCalendar { Name = "Hafta Ici", TimezoneId = TimeZoneInfo.Local.Id, IsDefault = true },
+            new[]
+            {
+                new MonitoringCalendarRule { DayOfWeek = DayOfWeek.Monday, StartTime = TimeSpan.FromHours(8), EndTime = TimeSpan.FromHours(18), IsEnabled = true }
+            },
+            new[] { new DeviceMonitoringCalendarAssignment { TargetType = MonitoringTargetType.AllDevices } });
+
+        var item = (await repository.GetAllAsync()).First(calendar => calendar.Calendar.Id == id);
+        Assert.True(item.Calendar.IsDefault);
+        Assert.Single(item.Rules);
+        Assert.Single(item.Assignments);
+
+        await repository.UpdateAsync(
+            new MonitoringCalendar
+            {
+                Id = item.Calendar.Id,
+                Name = item.Calendar.Name,
+                TimezoneId = item.Calendar.TimezoneId,
+                IsDefault = item.Calendar.IsDefault,
+                CreatedAtUtc = item.Calendar.CreatedAtUtc,
+                UpdatedAtUtc = DateTime.UtcNow
+            },
+            new[]
+            {
+                new MonitoringCalendarRule { DayOfWeek = DayOfWeek.Tuesday, StartTime = TimeSpan.FromHours(9), EndTime = TimeSpan.FromHours(17), IsEnabled = true }
+            },
+            Array.Empty<DeviceMonitoringCalendarAssignment>());
+
+        item = (await repository.GetAllAsync()).First(calendar => calendar.Calendar.Id == id);
+        Assert.Equal(DayOfWeek.Tuesday, Assert.Single(item.Rules).DayOfWeek);
+    }
+
+    [Fact]
+    public async Task Group_sla_is_inherited_when_device_has_no_override()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var groups = new DeviceGroupRepository(store.ConnectionFactory);
+        var group = new DeviceGroup { Name = "SLA Grup", TargetAvailabilityPercent = 99.9 };
+        await groups.AddAsync(group);
+        var devices = new DeviceRepository(store.ConnectionFactory);
+        var device = CreateDevice("Inherited SLA", "192.0.2.171");
+        device.GroupId = group.Id;
+        device.GroupName = group.Name;
+        device.Id = await devices.AddAsync(device);
+        var now = DateTime.UtcNow;
+        await InsertAvailabilityPeriodAsync(store, device.Id, AvailabilityStatus.Up, now.AddHours(-1), now);
+
+        var summary = Assert.Single(await new AvailabilityRepository(store.ConnectionFactory).GetSummaryAsync(now.AddHours(-1), now, TimeZoneInfo.Local.Id));
+
+        Assert.Equal(99.9, summary.SlaTargetPercent);
+    }
+
+    [Fact]
+    public async Task Device_sla_override_wins_over_group_sla()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var groups = new DeviceGroupRepository(store.ConnectionFactory);
+        var group = new DeviceGroup { Name = "SLA Grup", TargetAvailabilityPercent = 99 };
+        await groups.AddAsync(group);
+        var devices = new DeviceRepository(store.ConnectionFactory);
+        var device = CreateDevice("Override SLA", "192.0.2.172");
+        device.GroupId = group.Id;
+        device.GroupName = group.Name;
+        device.SlaTargetAvailabilityPercent = 99.99;
+        device.Id = await devices.AddAsync(device);
+        var now = DateTime.UtcNow;
+        await InsertAvailabilityPeriodAsync(store, device.Id, AvailabilityStatus.Up, now.AddHours(-1), now);
+
+        var summary = Assert.Single(await new AvailabilityRepository(store.ConnectionFactory).GetSummaryAsync(now.AddHours(-1), now, TimeZoneInfo.Local.Id));
+
+        Assert.Equal(99.99, summary.SlaTargetPercent);
+    }
+
+    [Fact]
+    public void Service_readiness_maps_stale_heartbeat_to_unhealthy()
+    {
+        var check = SystemReadinessService.MapHeartbeatFreshness(DateTime.UtcNow.AddMinutes(-10), DateTime.UtcNow, 120, serviceRunning: true);
+
+        Assert.Equal(ReadinessLevel.Fail, check.Level);
+        Assert.Contains("heartbeat eski", check.Detail);
+    }
+
+    [Fact]
+    public void Service_status_mapping_detects_automatic_running_and_recovery()
+    {
+        var status = WindowsServiceStatusService.ParseStatus(
+            "STATE              : 4  RUNNING",
+            "START_TYPE         : 2   AUTO_START",
+            "FAILURE_ACTIONS    : RESTART -- Delay = 60000 milliseconds.");
+
+        Assert.True(status.IsRunning);
+        Assert.True(status.IsAutomaticStartup);
+        Assert.True(status.RecoveryActionsConfigured);
+    }
+
+    [Fact]
+    public void Production_readiness_script_parses()
+    {
+        var script = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "scripts", "production-readiness-test.ps1"));
+        var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "powershell",
+            Arguments = $"-NoProfile -ExecutionPolicy Bypass -Command \"[scriptblock]::Create((Get-Content -LiteralPath '{script}' -Raw)) | Out-Null\"",
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true
+        });
+        Assert.NotNull(process);
+        process!.WaitForExit(10000);
+        Assert.Equal(0, process.ExitCode);
+    }
+
+    [Fact]
+    public void Version_mismatch_is_detected()
+    {
+        Assert.False(SystemReadinessService.IsVersionMatch("1.2.3", "1.2.4"));
+        Assert.True(SystemReadinessService.IsVersionMatch("1.2.3.0", "1.2.3"));
+    }
+
+    private static async Task ApplyAvailabilityPingAsync(
+        AvailabilityRepository availability,
+        Device device,
+        bool isSuccess,
+        DeviceStatus status,
+        DateTime checkedAtUtc,
+        DowntimeStartPolicy policy = DowntimeStartPolicy.FirstFailedCheck)
+    {
+        var log = new PingLog
+        {
+            DeviceId = device.Id,
+            DeviceName = device.Name,
+            IpAddress = device.IpAddress,
+            DeviceType = device.DeviceType,
+            GroupName = device.GroupName,
+            Status = status,
+            IsReachable = isSuccess,
+            CheckedAt = checkedAtUtc,
+            TriggerType = PingTriggerType.Scheduled
+        };
+        var result = new PingDeviceResult(device, isSuccess, isSuccess ? 1 : null, checkedAtUtc, string.Empty, isSuccess ? string.Empty : "failed", status);
+        await availability.ApplyPingResultsAsync(new[] { result }, new Dictionary<int, PingLog> { [device.Id] = log }, policy);
+    }
+
+    private static async Task InsertAvailabilityPeriodAsync(
+        TestStore store,
+        int deviceId,
+        AvailabilityStatus status,
+        DateTime startedAtUtc,
+        DateTime endedAtUtc,
+        DateTime? firstFailureAtUtc = null,
+        DateTime? confirmedAtUtc = null)
+    {
+        await using var connection = await store.ConnectionFactory.CreateOpenConnectionAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO DeviceAvailabilityPeriods
+                (DeviceId, Status, StartedAtUtc, EndedAtUtc, DurationSeconds, IncidentId,
+                 ReasonCode, ReasonText, DetectionSource, FirstFailureAtUtc, ConfirmedAtUtc,
+                 CreatedAtUtc, UpdatedAtUtc)
+            VALUES
+                (@DeviceId, @Status, @StartedAtUtc, @EndedAtUtc, @DurationSeconds, NULL,
+                 'Test', '', 'Test', @FirstFailureAtUtc, @ConfirmedAtUtc,
+                 @CreatedAtUtc, @UpdatedAtUtc);
+            """;
+        command.Parameters.AddWithValue("@DeviceId", deviceId);
+        command.Parameters.AddWithValue("@Status", status.ToStorageValue());
+        command.Parameters.AddWithValue("@StartedAtUtc", startedAtUtc.ToUniversalTime().ToString("O"));
+        command.Parameters.AddWithValue("@EndedAtUtc", endedAtUtc.ToUniversalTime().ToString("O"));
+        command.Parameters.AddWithValue("@DurationSeconds", Math.Max(0, (long)(endedAtUtc - startedAtUtc).TotalSeconds));
+        command.Parameters.AddWithValue("@FirstFailureAtUtc", firstFailureAtUtc.HasValue ? firstFailureAtUtc.Value.ToUniversalTime().ToString("O") : DBNull.Value);
+        command.Parameters.AddWithValue("@ConfirmedAtUtc", confirmedAtUtc.HasValue ? confirmedAtUtc.Value.ToUniversalTime().ToString("O") : DBNull.Value);
+        command.Parameters.AddWithValue("@CreatedAtUtc", DateTime.UtcNow.ToString("O"));
+        command.Parameters.AddWithValue("@UpdatedAtUtc", DateTime.UtcNow.ToString("O"));
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<int> CountDailyAsync(TestStore store, int deviceId, DateOnly date, string timezoneId)
+    {
+        await using var connection = await store.ConnectionFactory.CreateOpenConnectionAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT COUNT(1)
+            FROM DeviceAvailabilityDaily
+            WHERE DeviceId = @DeviceId
+              AND Date = @Date
+              AND TimezoneId = @TimezoneId;
+            """;
+        command.Parameters.AddWithValue("@DeviceId", deviceId);
+        command.Parameters.AddWithValue("@Date", date.ToString("yyyy-MM-dd"));
+        command.Parameters.AddWithValue("@TimezoneId", timezoneId);
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<DeviceAvailabilityDaily> ReadDailyAsync(TestStore store, int deviceId, DateOnly date, string timezoneId)
+    {
+        await using var connection = await store.ConnectionFactory.CreateOpenConnectionAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT Id, DeviceId, Date, TimezoneId, ExpectedMonitoringSeconds, UpSeconds, DownSeconds,
+                   UnknownSeconds, MaintenanceSeconds, PausedSeconds, IncidentCount, RecoveredIncidentCount,
+                   LongestOutageSeconds, TotalDetectionDelaySeconds, AvailabilityPercent,
+                   StrictAvailabilityPercent, CoveragePercent, CalculatedAtUtc, CalculationVersion
+            FROM DeviceAvailabilityDaily
+            WHERE DeviceId = @DeviceId
+              AND Date = @Date
+              AND TimezoneId = @TimezoneId
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("@DeviceId", deviceId);
+        command.Parameters.AddWithValue("@Date", date.ToString("yyyy-MM-dd"));
+        command.Parameters.AddWithValue("@TimezoneId", timezoneId);
+        await using var reader = await command.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        return new DeviceAvailabilityDaily
+        {
+            Id = reader.GetInt64(0),
+            DeviceId = reader.GetInt32(1),
+            Date = DateOnly.Parse(reader.GetString(2)),
+            TimezoneId = reader.GetString(3),
+            ExpectedMonitoringSeconds = reader.GetInt64(4),
+            UpSeconds = reader.GetInt64(5),
+            DownSeconds = reader.GetInt64(6),
+            UnknownSeconds = reader.GetInt64(7),
+            MaintenanceSeconds = reader.GetInt64(8),
+            PausedSeconds = reader.GetInt64(9),
+            IncidentCount = reader.GetInt32(10),
+            RecoveredIncidentCount = reader.GetInt32(11),
+            LongestOutageSeconds = reader.GetInt64(12),
+            TotalDetectionDelaySeconds = reader.GetInt64(13),
+            AvailabilityPercent = reader.IsDBNull(14) ? null : reader.GetDouble(14),
+            StrictAvailabilityPercent = reader.IsDBNull(15) ? null : reader.GetDouble(15),
+            CoveragePercent = reader.IsDBNull(16) ? null : reader.GetDouble(16),
+            CalculatedAtUtc = DateTime.Parse(reader.GetString(17)),
+            CalculationVersion = reader.GetInt32(18)
+        };
     }
 
     private static async Task SeedDeviceAndPlanAsync(TestStore store, string ip, SchedulePlanTargetType targetType, string targetValue, DateTime nextRunAt)
@@ -394,5 +1298,35 @@ public sealed class NetworkHealthMonitorTests
             LegacyDataDirectory = store.LegacyDirectory,
             PollIntervalOverride = TimeSpan.FromMilliseconds(100)
         };
+    }
+
+    private sealed class TestHttpClientFactory : IHttpClientFactory
+    {
+        private readonly Func<HttpRequestMessage, HttpResponseMessage> _handler;
+
+        public TestHttpClientFactory(Func<HttpRequestMessage, HttpResponseMessage> handler)
+        {
+            _handler = handler;
+        }
+
+        public HttpClient CreateClient(string name)
+        {
+            return new HttpClient(new DelegateHandler(_handler));
+        }
+    }
+
+    private sealed class DelegateHandler : HttpMessageHandler
+    {
+        private readonly Func<HttpRequestMessage, HttpResponseMessage> _handler;
+
+        public DelegateHandler(Func<HttpRequestMessage, HttpResponseMessage> handler)
+        {
+            _handler = handler;
+        }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(_handler(request));
+        }
     }
 }

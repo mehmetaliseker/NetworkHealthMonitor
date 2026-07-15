@@ -1,5 +1,6 @@
 using NetworkHealthMonitor.Data;
 using NetworkHealthMonitor.Models;
+using System.Diagnostics;
 
 namespace NetworkHealthMonitor.Services;
 
@@ -15,6 +16,9 @@ public sealed class SchedulerService : ISchedulerService
     private readonly ScheduleTimingService _timingService;
     private readonly ISystemClock _clock;
     private readonly SchedulerRuntimeOptions _runtimeOptions;
+    private readonly WorkerHeartbeatRepository? _heartbeatRepository;
+    private readonly AvailabilityRepository? _availabilityRepository;
+    private readonly string? _workerInstanceId;
     private readonly SemaphoreSlim _lifecycleLock = new(1, 1);
     private CancellationTokenSource? _cancellationTokenSource;
     private Task? _loopTask;
@@ -30,7 +34,10 @@ public sealed class SchedulerService : ISchedulerService
         AppSettingsService settingsService,
         ScheduleTimingService? timingService = null,
         ISystemClock? clock = null,
-        SchedulerRuntimeOptions? runtimeOptions = null)
+        SchedulerRuntimeOptions? runtimeOptions = null,
+        WorkerHeartbeatRepository? heartbeatRepository = null,
+        AvailabilityRepository? availabilityRepository = null,
+        string? workerInstanceId = null)
     {
         _deviceRepository = deviceRepository;
         _deviceGroupRepository = deviceGroupRepository;
@@ -42,6 +49,9 @@ public sealed class SchedulerService : ISchedulerService
         _timingService = timingService ?? new ScheduleTimingService();
         _clock = clock ?? new SystemClock();
         _runtimeOptions = runtimeOptions ?? new SchedulerRuntimeOptions();
+        _heartbeatRepository = heartbeatRepository;
+        _availabilityRepository = availabilityRepository;
+        _workerInstanceId = workerInstanceId;
     }
 
     public event EventHandler<SchedulerStatusChangedEventArgs>? StatusChanged;
@@ -110,19 +120,35 @@ public sealed class SchedulerService : ISchedulerService
 
     public async Task RunDuePlansOnceAsync(CancellationToken cancellationToken = default)
     {
+        var cycleWatch = Stopwatch.StartNew();
         var settings = await _settingsService.LoadAsync();
         if (!settings.AutoCheckEnabled)
         {
+            await MarkSchedulerCycleAsync(cycleWatch.Elapsed.TotalMilliseconds, cancellationToken);
             return;
         }
 
         var plans = await _schedulePlanRepository.GetActiveAsync();
         if (plans.Count == 0)
         {
+            await MarkSchedulerCycleAsync(cycleWatch.Elapsed.TotalMilliseconds, cancellationToken);
             return;
         }
 
         var devices = await _deviceRepository.GetAutoCheckCandidatesAsync();
+        if (_availabilityRepository is not null)
+        {
+            await _availabilityRepository.ReconcileMaintenanceWindowsAsync(DateTime.UtcNow, cancellationToken);
+            var defaultCheckIntervalSeconds = Math.Max(
+                AppSettings.MinDeviceCheckIntervalSeconds,
+                settings.AutoCheckIntervalMinutes * 60);
+            await _availabilityRepository.ReconcileExpectedCheckGapsAsync(
+                settings.ExpectedCheckGraceMultiplier,
+                defaultCheckIntervalSeconds,
+                DateTime.UtcNow,
+                cancellationToken);
+        }
+
         var groups = await _deviceGroupRepository.GetAllAsync();
         var now = _clock.Now;
         var cycleLogsByDeviceId = new Dictionary<int, PingLog>();
@@ -147,9 +173,12 @@ public sealed class SchedulerService : ISchedulerService
             {
                 var nextRunAt = _timingService.CalculateNextRunAfterExecution(plan, _clock.Now);
                 await _schedulePlanRepository.UpdateRunStateAsync(plan.Id, _clock.Now, nextRunAt, $"Hata: {ex.Message}");
+                await MarkSchedulerExceptionAsync(ex, cancellationToken);
                 Notify($"{plan.Name}: otomatik kontrol sırasında hata oluştu: {ex.Message}", shouldRefresh: true);
             }
         }
+
+        await MarkSchedulerCycleAsync(cycleWatch.Elapsed.TotalMilliseconds, cancellationToken);
     }
 
     private async Task RunLoopAsync(CancellationToken cancellationToken)
@@ -248,13 +277,18 @@ public sealed class SchedulerService : ISchedulerService
             DeviceType = source.DeviceType,
             GroupName = source.GroupName,
             Status = source.Status,
+            IsReachable = source.IsReachable,
             LatencyMs = source.LatencyMs,
             ResponseMessage = source.ResponseMessage,
+            ErrorCode = source.ErrorCode,
             ErrorMessage = source.ErrorMessage,
             CheckedAt = source.CheckedAt,
+            Source = PingTriggerType.Scheduled.ToStorageValue(),
             TriggerType = PingTriggerType.Scheduled,
+            PlanId = plan.Id,
             SchedulePlanId = plan.Id,
-            SchedulePlanName = plan.Name
+            SchedulePlanName = plan.Name,
+            WorkerInstanceId = source.WorkerInstanceId
         };
     }
 
@@ -285,5 +319,38 @@ public sealed class SchedulerService : ISchedulerService
     private void Notify(string message, bool shouldRefresh = false)
     {
         StatusChanged?.Invoke(this, new SchedulerStatusChangedEventArgs(message, shouldRefresh));
+    }
+
+    private async Task MarkSchedulerCycleAsync(double elapsedMilliseconds, CancellationToken cancellationToken)
+    {
+        if (_heartbeatRepository is null || string.IsNullOrWhiteSpace(_workerInstanceId))
+        {
+            return;
+        }
+
+        await _heartbeatRepository.MarkSchedulerCycleAsync(_workerInstanceId, DateTime.UtcNow, elapsedMilliseconds, cancellationToken);
+    }
+
+    private async Task MarkSchedulerExceptionAsync(Exception exception, CancellationToken cancellationToken)
+    {
+        if (_heartbeatRepository is null || string.IsNullOrWhiteSpace(_workerInstanceId))
+        {
+            return;
+        }
+
+        try
+        {
+            await _heartbeatRepository.MarkDiagnosticErrorAsync(
+                _workerInstanceId,
+                exception is Microsoft.Data.Sqlite.SqliteException sqlite && sqlite.SqliteErrorCode == 5
+                    ? "LastDatabaseLockedError"
+                    : "LastSchedulerException",
+                exception.Message,
+                cancellationToken);
+        }
+        catch
+        {
+            // Diagnostics must not break scheduler execution.
+        }
     }
 }

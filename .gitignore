@@ -7,3 +7,21 @@ publish/
 *.suo
 *.db
 *.log
+
+# Build outputs
+**/bin/
+**/obj/
+publish/
+**/publish/
+NetworkHealthMonitor-win-x64/
+
+# Release packages
+NetworkHealthMonitor-Server-win-x64.zip
+NetworkHealthMonitor-Server-win-x64.zip.sha256
+*.zip.sha256
+
+# Runtime data
+*.db
+*.db-shm
+*.db-wal
+*.log

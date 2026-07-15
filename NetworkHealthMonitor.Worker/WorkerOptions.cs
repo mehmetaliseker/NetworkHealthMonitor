@@ -6,6 +6,12 @@ public sealed class WorkerOptions
 {
     public bool RunOnce { get; init; }
 
+    public bool HealthCheck { get; init; }
+
+    public bool SkipHeartbeatCheck { get; init; }
+
+    public int HeartbeatMaxAgeSeconds { get; init; } = 120;
+
     public IApplicationPathProvider PathProvider { get; init; } = new ProgramDataApplicationPathProvider();
 
     public string? LegacyDataDirectory { get; init; }
@@ -15,6 +21,9 @@ public sealed class WorkerOptions
     public static WorkerOptions Parse(string[] args)
     {
         var runOnce = false;
+        var healthCheck = false;
+        var skipHeartbeatCheck = false;
+        var heartbeatMaxAgeSeconds = 120;
         string? dataDirectory = null;
         string? legacyDirectory = null;
         TimeSpan? pollInterval = null;
@@ -25,6 +34,27 @@ public sealed class WorkerOptions
             if (string.Equals(arg, "--run-once", StringComparison.OrdinalIgnoreCase))
             {
                 runOnce = true;
+                continue;
+            }
+
+            if (string.Equals(arg, "--health-check", StringComparison.OrdinalIgnoreCase))
+            {
+                healthCheck = true;
+                continue;
+            }
+
+            if (string.Equals(arg, "--skip-heartbeat-check", StringComparison.OrdinalIgnoreCase))
+            {
+                skipHeartbeatCheck = true;
+                continue;
+            }
+
+            if (string.Equals(arg, "--heartbeat-max-age-seconds", StringComparison.OrdinalIgnoreCase)
+                && index + 1 < args.Length
+                && int.TryParse(args[++index], out var heartbeatSeconds)
+                && heartbeatSeconds > 0)
+            {
+                heartbeatMaxAgeSeconds = heartbeatSeconds;
                 continue;
             }
 
@@ -52,6 +82,9 @@ public sealed class WorkerOptions
         return new WorkerOptions
         {
             RunOnce = runOnce,
+            HealthCheck = healthCheck,
+            SkipHeartbeatCheck = skipHeartbeatCheck,
+            HeartbeatMaxAgeSeconds = heartbeatMaxAgeSeconds,
             PathProvider = string.IsNullOrWhiteSpace(dataDirectory)
                 ? new ProgramDataApplicationPathProvider()
                 : new FixedApplicationPathProvider(dataDirectory),

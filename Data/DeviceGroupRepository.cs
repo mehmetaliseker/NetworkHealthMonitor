@@ -21,13 +21,13 @@ public sealed class DeviceGroupRepository
         command.CommandText = """
             SELECT g.Id, g.Name, g.Description, g.DefaultSchedulePlanId, g.DefaultAutoCheckEnabled,
                    g.DefaultCheckIntervalSeconds, g.DefaultPingTimeoutMs, g.DefaultFailureRetryIntervalSeconds,
-                   g.DefaultFailureRetryLimit, g.DefaultFailureThreshold, g.CreatedAt, g.UpdatedAt,
+                   g.DefaultFailureRetryLimit, g.DefaultFailureThreshold, g.TargetAvailabilityPercent, g.CreatedAt, g.UpdatedAt,
                    COUNT(d.Id) AS DeviceCount
             FROM DeviceGroups g
-            LEFT JOIN Devices d ON d.GroupId = g.Id
+            LEFT JOIN Devices d ON d.GroupId = g.Id AND d.IsDeleted = 0
             GROUP BY g.Id, g.Name, g.Description, g.DefaultSchedulePlanId, g.DefaultAutoCheckEnabled,
                      g.DefaultCheckIntervalSeconds, g.DefaultPingTimeoutMs, g.DefaultFailureRetryIntervalSeconds,
-                     g.DefaultFailureRetryLimit, g.DefaultFailureThreshold, g.CreatedAt, g.UpdatedAt
+                     g.DefaultFailureRetryLimit, g.DefaultFailureThreshold, g.TargetAvailabilityPercent, g.CreatedAt, g.UpdatedAt
             ORDER BY g.Name COLLATE NOCASE;
             """;
 
@@ -52,11 +52,11 @@ public sealed class DeviceGroupRepository
             INSERT INTO DeviceGroups
                 (Name, Description, DefaultSchedulePlanId, DefaultAutoCheckEnabled, DefaultCheckIntervalSeconds,
                  DefaultPingTimeoutMs, DefaultFailureRetryIntervalSeconds, DefaultFailureRetryLimit,
-                 DefaultFailureThreshold, CreatedAt, UpdatedAt)
+                 DefaultFailureThreshold, TargetAvailabilityPercent, CreatedAt, UpdatedAt)
             VALUES
                 (@Name, @Description, @DefaultSchedulePlanId, @DefaultAutoCheckEnabled, @DefaultCheckIntervalSeconds,
                  @DefaultPingTimeoutMs, @DefaultFailureRetryIntervalSeconds, @DefaultFailureRetryLimit,
-                 @DefaultFailureThreshold, @CreatedAt, @UpdatedAt);
+                 @DefaultFailureThreshold, @TargetAvailabilityPercent, @CreatedAt, @UpdatedAt);
             SELECT last_insert_rowid();
             """;
 
@@ -82,6 +82,7 @@ public sealed class DeviceGroupRepository
                 DefaultFailureRetryIntervalSeconds = @DefaultFailureRetryIntervalSeconds,
                 DefaultFailureRetryLimit = @DefaultFailureRetryLimit,
                 DefaultFailureThreshold = @DefaultFailureThreshold,
+                TargetAvailabilityPercent = @TargetAvailabilityPercent,
                 UpdatedAt = @UpdatedAt
             WHERE Id = @Id;
             """;
@@ -160,9 +161,10 @@ public sealed class DeviceGroupRepository
             DefaultFailureRetryIntervalSeconds = reader.IsDBNull(7) ? null : reader.GetInt32(7),
             DefaultFailureRetryLimit = reader.IsDBNull(8) ? null : reader.GetInt32(8),
             DefaultFailureThreshold = reader.IsDBNull(9) ? null : reader.GetInt32(9),
-            CreatedAt = FromStorageDate(reader.GetString(10)),
-            UpdatedAt = FromStorageDate(reader.GetString(11)),
-            DeviceCount = reader.GetInt32(12)
+            TargetAvailabilityPercent = reader.IsDBNull(10) ? null : reader.GetDouble(10),
+            CreatedAt = FromStorageDate(reader.GetString(11)),
+            UpdatedAt = FromStorageDate(reader.GetString(12)),
+            DeviceCount = reader.GetInt32(13)
         };
     }
 
@@ -177,6 +179,7 @@ public sealed class DeviceGroupRepository
         AddParameter(command, "@DefaultFailureRetryIntervalSeconds", group.DefaultFailureRetryIntervalSeconds);
         AddParameter(command, "@DefaultFailureRetryLimit", group.DefaultFailureRetryLimit);
         AddParameter(command, "@DefaultFailureThreshold", group.DefaultFailureThreshold);
+        AddParameter(command, "@TargetAvailabilityPercent", group.TargetAvailabilityPercent);
         AddParameter(command, "@CreatedAt", ToStorageDate(group.CreatedAt));
         AddParameter(command, "@UpdatedAt", ToStorageDate(group.UpdatedAt));
     }

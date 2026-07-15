@@ -17,14 +17,24 @@ function Assert-Administrator {
 Assert-Administrator
 
 $resolvedBinary = (Resolve-Path $BinaryPath).Path
-if (-not (Test-Path $resolvedBinary)) {
-    throw "Worker exe bulunamadi: $resolvedBinary"
-}
+if (-not (Test-Path $resolvedBinary)) { throw "Worker exe bulunamadi: $resolvedBinary" }
 
 $programData = Join-Path $env:ProgramData "NetworkHealthMonitor"
-$logs = Join-Path $programData "logs"
-$backups = Join-Path $programData "backups"
-New-Item -ItemType Directory -Force -Path $programData, $logs, $backups | Out-Null
+$dirs = @(
+    $programData,
+    (Join-Path $programData "data"),
+    (Join-Path $programData "config"),
+    (Join-Path $programData "logs"),
+    (Join-Path $programData "backups")
+)
+New-Item -ItemType Directory -Force -Path $dirs | Out-Null
+
+$acl = Get-Acl $programData
+$rule = New-Object System.Security.AccessControl.FileSystemAccessRule("NT AUTHORITY\SYSTEM", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
+$acl.SetAccessRule($rule)
+$usersRule = New-Object System.Security.AccessControl.FileSystemAccessRule("BUILTIN\Users", "Modify", "ContainerInherit,ObjectInherit", "None", "Allow")
+$acl.SetAccessRule($usersRule)
+Set-Acl -Path $programData -AclObject $acl
 
 $testFile = Join-Path $programData ".access-test"
 "ok" | Set-Content -Path $testFile -Encoding ASCII
@@ -43,6 +53,17 @@ else {
 & sc.exe failure $ServiceName reset= 86400 actions= restart/60000/restart/60000/restart/300000 | Out-Null
 & sc.exe failureflag $ServiceName 1 | Out-Null
 
-Write-Host "Servis kuruldu veya guncellendi: $ServiceName"
-Write-Host "Binary: $resolvedBinary"
-Write-Host "Veri dizini: $programData"
+Start-Service -Name $ServiceName
+(Get-Service -Name $ServiceName).WaitForStatus("Running", [TimeSpan]::FromSeconds(30))
+
+$deadline = (Get-Date).AddSeconds(45)
+do {
+    Start-Sleep -Seconds 2
+    $health = & (Join-Path $PSScriptRoot "health-check.ps1") -ServiceName $ServiceName -WorkerPath $resolvedBinary -Quiet
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "Servis kuruldu ve saglik kontrolu basarili: $ServiceName"
+        exit 0
+    }
+} while ((Get-Date) -lt $deadline)
+
+throw "Servis baslatildi ancak heartbeat saglik kontrolu zamaninda basarili olmadi."

@@ -50,16 +50,28 @@ public sealed partial class MainViewModel
         await LoadGroupsAsync();
         await LoadSchedulePlansAsync();
         await LoadAvailabilityAsync();
+        await LoadDashboardAnalyticsAsync();
+        await LoadMaintenanceWindowsAsync();
+        await LoadMonitoringCalendarsAsync();
+        await RefreshReadinessAsync();
         await LoadOpenOutagesAsync();
         await LoadLogsAsync();
+        await LoadOutboxAsync();
         UpdateDashboard();
         RaiseCommandStates();
     }
 
     private async Task LoadDevicesAsync()
     {
-        var devices = await _deviceRepository.GetAllAsync();
+        var devices = await _deviceRepository.GetAllAsync(includeDeleted: true);
         var metrics = await _pingLogRepository.GetDeviceHealthMetricsAsync(DateTime.Now.AddDays(-30));
+        var nowUtc = DateTime.UtcNow;
+        var availability24 = (await _availabilityService.GetAvailabilitySummaryAsync(nowUtc.AddHours(-24), nowUtc, TimeZoneInfo.Local.Id, includeDeleted: true))
+            .ToDictionary(item => item.DeviceId);
+        var availability7 = (await _availabilityService.GetAvailabilitySummaryAsync(nowUtc.AddDays(-7), nowUtc, TimeZoneInfo.Local.Id, includeDeleted: true))
+            .ToDictionary(item => item.DeviceId);
+        var availability30 = (await _availabilityService.GetAvailabilitySummaryAsync(nowUtc.AddDays(-30), nowUtc, TimeZoneInfo.Local.Id, includeDeleted: true))
+            .ToDictionary(item => item.DeviceId);
         var settings = await _settingsService.LoadAsync();
         var groups = await _deviceGroupRepository.GetAllAsync();
         var groupsById = groups.ToDictionary(group => group.Id);
@@ -74,21 +86,39 @@ public sealed partial class MainViewModel
                 settings,
                 new PingOptions(settings.PingTimeoutMs, settings.MaxParallelPings, settings.DefaultFailureThreshold)).PolicySourceText;
 
-            if (!metrics.TryGetValue(device.Id, out var metric))
-            {
-                continue;
-            }
+            metrics.TryGetValue(device.Id, out var metric);
+            device.Uptime24HoursPercent = availability24.TryGetValue(device.Id, out var summary24) ? summary24.AvailabilityPercent : metric?.Uptime24HoursPercent;
+            device.Uptime7DaysPercent = availability7.TryGetValue(device.Id, out var summary7) ? summary7.AvailabilityPercent : metric?.Uptime7DaysPercent;
+            device.Uptime30DaysPercent = availability30.TryGetValue(device.Id, out var summary30) ? summary30.AvailabilityPercent : metric?.Uptime30DaysPercent;
+            device.UptimeOverallPercent = device.Uptime30DaysPercent;
+            device.AverageLatencyMs = metric?.AverageLatencyMs;
+            device.LastFailureAt = metric?.LastFailureAt;
+        }
 
-            device.Uptime24HoursPercent = metric.Uptime24HoursPercent;
-            device.Uptime7DaysPercent = metric.Uptime7DaysPercent;
-            device.Uptime30DaysPercent = metric.Uptime30DaysPercent;
-            device.UptimeOverallPercent = metric.UptimeOverallPercent;
-            device.AverageLatencyMs = metric.AverageLatencyMs;
-            device.LastFailureAt = metric.LastFailureAt;
+        foreach (var device in devices)
+        {
+            device.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName == nameof(Device.IsSelected))
+                {
+                    OnPropertyChanged(nameof(SelectedDeviceCountText));
+                    RaiseCommandStates();
+                }
+            };
         }
 
         ReplaceCollection(Devices, devices);
+        ReplaceCollection(DeviceOptions, new[] { new SelectionOption<int?>(null, "Tum cihazlar") }
+            .Concat(devices
+                .OrderBy(device => device.Name)
+                .Select(device => new SelectionOption<int?>((int?)device.Id, $"{device.Name} ({device.IpAddress})"))));
+        if (OutboxDeviceFilterId.HasValue && devices.All(device => device.Id != OutboxDeviceFilterId.Value))
+        {
+            OutboxDeviceFilterId = null;
+        }
+
         DevicesView.Refresh();
+        OnPropertyChanged(nameof(SelectedDeviceCountText));
     }
 
     private async Task LoadGroupsAsync()
@@ -99,7 +129,13 @@ public sealed partial class MainViewModel
             .GroupBy(item => item.GroupName)
             .ToDictionary(
                 group => group.Key,
-                group => (double?)group.Average(item => item.Availability30DaysPercent!.Value),
+                group =>
+                {
+                    var knownSeconds = group.Sum(item => item.UpSeconds + item.DownSeconds);
+                    return knownSeconds > 0
+                        ? (double?)group.Sum(item => item.UpSeconds) * 100d / knownSeconds
+                        : group.Average(item => item.Availability30DaysPercent!.Value);
+                },
                 StringComparer.OrdinalIgnoreCase);
 
         foreach (var group in groups)
@@ -134,6 +170,7 @@ public sealed partial class MainViewModel
         ReplaceCollection(AvailabilityItems, items);
         ApplyGroupAvailabilityToGroups();
         UpdateGroupAvailabilityRows();
+        await LoadDashboardAnalyticsAsync();
         UpdateDashboard();
     }
 
@@ -166,6 +203,16 @@ public sealed partial class MainViewModel
     private bool FilterDevice(object item)
     {
         if (item is not Device device)
+        {
+            return false;
+        }
+
+        if (DeletedDeviceFilter == ActiveDevicesText && device.IsDeleted)
+        {
+            return false;
+        }
+
+        if (DeletedDeviceFilter == DeletedDevicesText && !device.IsDeleted)
         {
             return false;
         }
@@ -338,6 +385,7 @@ public sealed partial class MainViewModel
         ClearDeviceFormCommand?.NotifyCanExecuteChanged();
         EditSelectedDeviceCommand?.NotifyCanExecuteChanged();
         DeleteSelectedDeviceCommand?.NotifyCanExecuteChanged();
+        RestoreSelectedDeviceCommand?.NotifyCanExecuteChanged();
         PingAllCommand?.NotifyCanExecuteChanged();
         PingFilteredDevicesCommand?.NotifyCanExecuteChanged();
         PingSelectedDeviceCommand?.NotifyCanExecuteChanged();
@@ -348,11 +396,15 @@ public sealed partial class MainViewModel
         AssignSelectedDevicesToGroupCommand?.NotifyCanExecuteChanged();
         ApplySelectedCheckIntervalCommand?.NotifyCanExecuteChanged();
         DeactivateSelectedDevicesCommand?.NotifyCanExecuteChanged();
+        DeleteSelectedDevicesBulkCommand?.NotifyCanExecuteChanged();
+        RestoreSelectedDevicesBulkCommand?.NotifyCanExecuteChanged();
+        ToggleAllVisibleDevicesSelectionCommand?.NotifyCanExecuteChanged();
         CancelPingCommand?.NotifyCanExecuteChanged();
         SaveGroupCommand?.NotifyCanExecuteChanged();
         ClearGroupFormCommand?.NotifyCanExecuteChanged();
         EditSelectedGroupCommand?.NotifyCanExecuteChanged();
         DeleteSelectedGroupCommand?.NotifyCanExecuteChanged();
+        DeleteSelectedGroupDevicesCommand?.NotifyCanExecuteChanged();
         PingSelectedGroupCommand?.NotifyCanExecuteChanged();
         SaveSchedulePlanCommand?.NotifyCanExecuteChanged();
         ClearSchedulePlanFormCommand?.NotifyCanExecuteChanged();
@@ -367,9 +419,28 @@ public sealed partial class MainViewModel
         ExportLogsCommand?.NotifyCanExecuteChanged();
         RefreshAvailabilityCommand?.NotifyCanExecuteChanged();
         ExportAvailabilityCommand?.NotifyCanExecuteChanged();
+        ExportAvailabilityIncidentsCommand?.NotifyCanExecuteChanged();
+        RecalculateAvailabilityCommand?.NotifyCanExecuteChanged();
+        RefreshSelectedDeviceTimelineCommand?.NotifyCanExecuteChanged();
+        SaveMaintenanceWindowCommand?.NotifyCanExecuteChanged();
+        ClearMaintenanceWindowFormCommand?.NotifyCanExecuteChanged();
+        EditSelectedMaintenanceWindowCommand?.NotifyCanExecuteChanged();
+        CancelSelectedMaintenanceWindowCommand?.NotifyCanExecuteChanged();
+        CompleteSelectedMaintenanceWindowCommand?.NotifyCanExecuteChanged();
+        SaveMonitoringCalendarCommand?.NotifyCanExecuteChanged();
+        ClearMonitoringCalendarFormCommand?.NotifyCanExecuteChanged();
+        EditSelectedMonitoringCalendarCommand?.NotifyCanExecuteChanged();
+        DeleteSelectedMonitoringCalendarCommand?.NotifyCanExecuteChanged();
+        RefreshReadinessCommand?.NotifyCanExecuteChanged();
         ExportDevicesCommand?.NotifyCanExecuteChanged();
         ImportDevicesCommand?.NotifyCanExecuteChanged();
+        ApplyCsvImportCommand?.NotifyCanExecuteChanged();
         CreateCsvTemplateCommand?.NotifyCanExecuteChanged();
+        RefreshOutboxCommand?.NotifyCanExecuteChanged();
+        RetrySelectedOutboxCommand?.NotifyCanExecuteChanged();
+        RetryOutboxCommand?.NotifyCanExecuteChanged();
+        CancelPendingOutboxCommand?.NotifyCanExecuteChanged();
+        ShowOutboxDetailCommand?.NotifyCanExecuteChanged();
         SaveSettingsCommand?.NotifyCanExecuteChanged();
         ResetSettingsCommand?.NotifyCanExecuteChanged();
         BackupDatabaseCommand?.NotifyCanExecuteChanged();
@@ -377,6 +448,7 @@ public sealed partial class MainViewModel
         OptimizeDatabaseCommand?.NotifyCanExecuteChanged();
         ExportSettingsCommand?.NotifyCanExecuteChanged();
         ImportSettingsCommand?.NotifyCanExecuteChanged();
+        SendTestNotificationCommand?.NotifyCanExecuteChanged();
     }
 }
 

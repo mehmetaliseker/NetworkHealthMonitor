@@ -45,6 +45,54 @@ public sealed class DeviceService : IDeviceService
         return OperationResult.Ok("Cihaz silindi.");
     }
 
+    public async Task<OperationResult> RestoreAsync(Device device)
+    {
+        if (device.Id <= 0)
+        {
+            return OperationResult.Fail("Geri yüklenecek cihaz bulunamadı.");
+        }
+
+        await _deviceRepository.RestoreAsync(device.Id);
+        return OperationResult.Ok("Cihaz geri yüklendi.");
+    }
+
+    public async Task<OperationResult> BulkDeleteAsync(IEnumerable<Device> devices)
+    {
+        var ids = devices.Where(device => device.Id > 0 && !device.IsDeleted).Select(device => device.Id).Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            return OperationResult.Fail("Silinecek cihaz bulunamadı.");
+        }
+
+        var affected = await _deviceRepository.BulkSoftDeleteAsync(ids);
+        return OperationResult.Ok($"{affected} cihaz silindi.");
+    }
+
+    public async Task<OperationResult> BulkRestoreAsync(IEnumerable<Device> devices)
+    {
+        var ids = devices.Where(device => device.Id > 0 && device.IsDeleted).Select(device => device.Id).Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            return OperationResult.Fail("Geri yuklenecek cihaz bulunamadi.");
+        }
+
+        var affected = await _deviceRepository.BulkRestoreAsync(ids);
+        return OperationResult.Ok($"{affected} cihaz geri yuklendi.");
+    }
+
+    public async Task<OperationResult> DeleteGroupDevicesAsync(DeviceGroup group, bool deleteEmptyGroup)
+    {
+        if (group.Id <= 0)
+        {
+            return OperationResult.Fail("Silinecek grup bulunamadi.");
+        }
+
+        var affected = await _deviceRepository.BulkSoftDeleteByGroupAsync(group.Id, deleteEmptyGroup);
+        return OperationResult.Ok(deleteEmptyGroup
+            ? $"{affected} cihaz silindi ve bos grup kaldirildi."
+            : $"{affected} cihaz silindi. Grup kaydi korundu.");
+    }
+
     private async Task<OperationResult> ValidateAsync(Device device)
     {
         if (string.IsNullOrWhiteSpace(device.Name))

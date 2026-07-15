@@ -149,14 +149,53 @@ public sealed partial class MainViewModel
     private async Task RefreshWorkerServiceStatusAsync()
     {
         var status = await _windowsServiceStatusService.GetStatusAsync();
-        SchedulerStatusText = status.DisplayText;
-        IsSchedulerRunning = status.Code == "Running";
+        var heartbeat = await _workerHeartbeatRepository.GetLatestAsync();
+        var counts = await _notificationOutboxRepository.GetCountsAsync();
+        PendingNotificationCount = counts.Pending;
+        FailedNotificationCount = counts.Failed;
+
+        WorkerVersionText = heartbeat?.Version ?? "-";
+        WorkerStartedAtText = FormatLocal(heartbeat?.StartedAtUtc);
+        WorkerLastSeenAtText = FormatLocal(heartbeat?.LastSeenAtUtc);
+        WorkerLastSchedulerCycleText = FormatLocal(heartbeat?.LastSchedulerCycleAtUtc);
+        WorkerLastScheduledPingText = FormatLocal(heartbeat?.LastSuccessfulPingAtUtc);
+        WorkerLastNotificationText = FormatLocal(heartbeat?.LastNotificationDispatchAtUtc);
+
+        var heartbeatAge = heartbeat is null ? TimeSpan.MaxValue : DateTime.UtcNow - heartbeat.LastSeenAtUtc;
+        if (status.Code == "NotFound")
+        {
+            WorkerHealthText = "Kurulu degil";
+        }
+        else if (status.Code != "Running")
+        {
+            WorkerHealthText = status.DisplayText;
+        }
+        else if (heartbeat is null || heartbeatAge > TimeSpan.FromMinutes(2))
+        {
+            WorkerHealthText = "Gecikmis";
+        }
+        else if (!string.IsNullOrWhiteSpace(heartbeat.LastError))
+        {
+            WorkerHealthText = "Hata";
+        }
+        else
+        {
+            WorkerHealthText = "Calisiyor";
+        }
+
+        SchedulerStatusText = $"{status.DisplayText} / {WorkerHealthText}";
+        IsSchedulerRunning = status.Code == "Running" && WorkerHealthText == "Calisiyor";
     }
 
     public async Task<string> GetWorkerServiceStatusTextAsync()
     {
         await RefreshWorkerServiceStatusAsync();
         return SchedulerStatusText;
+    }
+
+    private static string FormatLocal(DateTime? value)
+    {
+        return value.HasValue ? value.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss") : "-";
     }
 
     private void SchedulerStatusChanged(object? sender, SchedulerStatusChangedEventArgs e)

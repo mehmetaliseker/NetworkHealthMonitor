@@ -40,6 +40,24 @@ public sealed class AvailabilityReportItem
 
     public TimeSpan EstimatedOutageDuration { get; init; }
 
+    public AvailabilityStatus CurrentAvailabilityStatus { get; init; } = AvailabilityStatus.Unknown;
+
+    public DateTime? CurrentStatusSinceUtc { get; init; }
+
+    public long CurrentContinuousAvailabilitySeconds { get; init; }
+
+    public long UpSeconds { get; init; }
+
+    public long DownSeconds { get; init; }
+
+    public long UnknownSeconds { get; init; }
+
+    public long MaintenanceSeconds { get; init; }
+
+    public double? StrictAvailabilityPercent { get; init; }
+
+    public double? CoveragePercent { get; init; }
+
     public string DeviceTypeText => DeviceType.ToDisplayName();
 
     public string LastStatusText => LastStatus.ToDisplayName();
@@ -79,6 +97,22 @@ public sealed class AvailabilityReportItem
             return $"{EstimatedOutageDuration.TotalHours:0.0} sa";
         }
     }
+
+    public string CurrentAvailabilityStatusText => CurrentAvailabilityStatus.ToDisplayName();
+
+    public string CurrentStatusSinceText => FormatDate(CurrentStatusSinceUtc?.ToLocalTime());
+
+    public string CurrentContinuousAvailabilityText => AvailabilitySummaryReportItem.FormatDuration(CurrentContinuousAvailabilitySeconds);
+
+    public string DownDurationText => AvailabilitySummaryReportItem.FormatDuration(DownSeconds);
+
+    public string UnknownDurationText => AvailabilitySummaryReportItem.FormatDuration(UnknownSeconds);
+
+    public string MaintenanceDurationText => AvailabilitySummaryReportItem.FormatDuration(MaintenanceSeconds);
+
+    public string StrictAvailabilityText => FormatPercent(StrictAvailabilityPercent);
+
+    public string CoverageText => FormatPercent(CoveragePercent);
 
     private static string FormatDate(DateTime? value)
     {
