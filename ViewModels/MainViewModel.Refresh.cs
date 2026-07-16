@@ -107,7 +107,7 @@ public sealed partial class MainViewModel
         }
 
         ReplaceCollection(Devices, devices);
-        ReplaceCollection(DeviceOptions, new[] { new SelectionOption<int?>(null, "Tum cihazlar") }
+        ReplaceCollection(DeviceOptions, new[] { new SelectionOption<int?>(null, "Tüm cihazlar") }
             .Concat(devices
                 .OrderBy(device => device.Name)
                 .Select(device => new SelectionOption<int?>((int?)device.Id, $"{device.Name} ({device.IpAddress})"))));

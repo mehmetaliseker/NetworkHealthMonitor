@@ -26,7 +26,7 @@ public sealed class DeviceCheckPolicyService : IDeviceCheckPolicyService
             retryIntervalSeconds,
             retryLimit,
             failureThreshold,
-            $"Auto: {autoSource}, Aralık: {intervalSource}, Timeout: {timeoutSource}, Retry: {retryIntervalSource}/{retryLimitSource}, Eşik: {thresholdSource}");
+            $"Otomatik: {autoSource}, Aralık: {intervalSource}, Zaman aşımı: {timeoutSource}, Yeniden deneme: {retryIntervalSource}/{retryLimitSource}, Eşik: {thresholdSource}");
     }
 
     public bool IsDue(Device device, DeviceCheckPolicy policy, DateTime now)

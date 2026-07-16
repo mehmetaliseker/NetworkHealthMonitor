@@ -309,8 +309,8 @@ public sealed class IncidentService : IIncidentService
 
         lines.Add($"Tur: {result.Device.DeviceType.ToDisplayName()}");
         lines.Add($"Grup: {result.Device.GroupName}");
-        lines.Add($"Kesinti baslangici: {log.CheckedAt.ToLocalTime():dd.MM.yyyy HH:mm:ss}");
-        lines.Add($"Ardisik hata: {result.Device.ConsecutiveFailures + 1}");
+        lines.Add($"Kesinti başlangıcı: {log.CheckedAt.ToLocalTime():dd.MM.yyyy HH:mm:ss}");
+        lines.Add($"Ardışık hata: {result.Device.ConsecutiveFailures + 1}");
         lines.Add($"Son hata: {Trim(result.ErrorMessage, 300)}");
 
         return new NtfyNotificationPayload
@@ -318,7 +318,7 @@ public sealed class IncidentService : IIncidentService
             EventType = "DeviceDown",
             DeviceId = result.Device.Id,
             IncidentId = incidentId,
-            Title = $"{result.Device.Name} erisilemiyor",
+            Title = $"{result.Device.Name} erişilemiyor",
             Message = string.Join(Environment.NewLine, lines),
             Priority = "high",
             Tags = "warning,rotating_light"
@@ -342,8 +342,8 @@ public sealed class IncidentService : IIncidentService
             lines.Add($"IP: {result.Device.IpAddress}");
         }
 
-        lines.Add($"Duzelme zamani: {log.CheckedAt.ToLocalTime():dd.MM.yyyy HH:mm:ss}");
-        lines.Add($"Kesinti suresi: {FormatDuration(duration)}");
+        lines.Add($"Düzelme zamanı: {log.CheckedAt.ToLocalTime():dd.MM.yyyy HH:mm:ss}");
+        lines.Add($"Kesinti süresi: {FormatDuration(duration)}");
         lines.Add($"Gecikme: {(result.LatencyMs.HasValue ? result.LatencyMs.Value.ToString(CultureInfo.InvariantCulture) : "-")} ms");
 
         return new NtfyNotificationPayload
@@ -351,7 +351,7 @@ public sealed class IncidentService : IIncidentService
             EventType = "DeviceRecovered",
             DeviceId = result.Device.Id,
             IncidentId = incidentId,
-            Title = $"{result.Device.Name} tekrar erisilebilir",
+            Title = $"{result.Device.Name} tekrar erişilebilir",
             Message = string.Join(Environment.NewLine, lines),
             Priority = "default",
             Tags = "white_check_mark"
@@ -421,7 +421,7 @@ public sealed class IncidentService : IIncidentService
     {
         if (value.TotalDays >= 1)
         {
-            return $"{(int)value.TotalDays} gun {value.Hours} sa {value.Minutes} dk";
+            return $"{(int)value.TotalDays} gün {value.Hours} sa {value.Minutes} dk";
         }
 
         if (value.TotalHours >= 1)

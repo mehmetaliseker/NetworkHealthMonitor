@@ -119,14 +119,14 @@ public sealed class CsvImportPreviewRow
     public string StatusText => Status switch
     {
         CsvImportRowStatus.Add => "Eklenecek",
-        CsvImportRowStatus.Update => "Guncellenecek",
-        CsvImportRowStatus.Restore => "Geri yuklenecek",
-        CsvImportRowStatus.Unchanged => "Degismeyecek",
+        CsvImportRowStatus.Update => "Güncellenecek",
+        CsvImportRowStatus.Restore => "Geri yüklenecek",
+        CsvImportRowStatus.Unchanged => "Değişmeyecek",
         CsvImportRowStatus.Delete => "Silinecek",
         CsvImportRowStatus.Skip => "Atlanacak",
-        CsvImportRowStatus.Invalid => "Hatali",
-        CsvImportRowStatus.Duplicate => "Duplicate",
-        _ => "Hatali"
+        CsvImportRowStatus.Invalid => "Hatalı",
+        CsvImportRowStatus.Duplicate => "Yinelenen kayıt",
+        _ => "Hatalı"
     };
 }
 
@@ -196,17 +196,17 @@ public sealed class CsvImportPreview
     public bool HasImportableRows => Rows.Any(row => row.IsImportable) && !HasBlockingErrors;
 
     public string SummaryText => $"""
-        CSV satir sayisi: {TotalRows}
-        Gecerli satir: {ValidCsvRowCount}
-        Hatali satir: {InvalidRowCount}
+        CSV satır sayısı: {TotalRows}
+        Geçerli satır: {ValidCsvRowCount}
+        Hatalı satır: {InvalidRowCount}
 
         Yeni eklenecek: {AddCount}
-        Guncellenecek: {UpdateCount}
-        Degismeden kalacak: {UnchangedCount}
-        CSV'de bulunmadigi icin silinecek: {DeleteCount}
-        Geri yuklenecek: {RestoreCount}
+        Güncellenecek: {UpdateCount}
+        Değişmeden kalacak: {UnchangedCount}
+        CSV'de bulunmadığı için silinecek: {DeleteCount}
+        Geri yüklenecek: {RestoreCount}
         Atlanacak: {SkipCount}
-        Duplicate kayit: {DuplicateCount}
+        Yinelenen kayıt: {DuplicateCount}
         """;
 }
 

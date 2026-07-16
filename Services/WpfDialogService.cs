@@ -34,7 +34,7 @@ public sealed class WpfDialogService : IDialogService
     public CsvImportDuplicateAction ChooseDuplicateImportAction(string title, string message)
     {
         var result = WpfMessageBox.Show(
-            $"{message}\n\nEvet: var olanları güncelle\nHayır: var olanları atla\nİptal: import işlemini iptal et",
+            $"{message}\n\nEvet: var olanları güncelle\nHayır: var olanları atla\nİptal: içe aktarma işlemini iptal et",
             title,
             MessageBoxButton.YesNoCancel,
             MessageBoxImage.Question);

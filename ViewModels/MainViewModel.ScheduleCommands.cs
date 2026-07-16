@@ -164,7 +164,7 @@ public sealed partial class MainViewModel
         var heartbeatAge = heartbeat is null ? TimeSpan.MaxValue : DateTime.UtcNow - heartbeat.LastSeenAtUtc;
         if (status.Code == "NotFound")
         {
-            WorkerHealthText = "Kurulu degil";
+            WorkerHealthText = "Kurulu değil";
         }
         else if (status.Code != "Running")
         {
@@ -172,7 +172,7 @@ public sealed partial class MainViewModel
         }
         else if (heartbeat is null || heartbeatAge > TimeSpan.FromMinutes(2))
         {
-            WorkerHealthText = "Gecikmis";
+            WorkerHealthText = "Gecikmiş";
         }
         else if (!string.IsNullOrWhiteSpace(heartbeat.LastError))
         {
@@ -180,11 +180,11 @@ public sealed partial class MainViewModel
         }
         else
         {
-            WorkerHealthText = "Calisiyor";
+            WorkerHealthText = "Çalışıyor";
         }
 
         SchedulerStatusText = $"{status.DisplayText} / {WorkerHealthText}";
-        IsSchedulerRunning = status.Code == "Running" && WorkerHealthText == "Calisiyor";
+        IsSchedulerRunning = status.Code == "Running" && WorkerHealthText == "Çalışıyor";
     }
 
     public async Task<string> GetWorkerServiceStatusTextAsync()

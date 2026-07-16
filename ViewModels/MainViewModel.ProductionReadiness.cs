@@ -9,8 +9,8 @@ namespace NetworkHealthMonitor.ViewModels;
 
 public sealed partial class MainViewModel
 {
-    private const string SectionMaintenance = "Bakim";
-    private const string SectionCalendars = "Izleme Takvimleri";
+    private const string SectionMaintenance = "Bakım";
+    private const string SectionCalendars = "İzleme Takvimleri";
     private const string SectionReadiness = "Sistem Durumu";
 
     private readonly MaintenanceWindowRepository _maintenanceWindowRepository;
@@ -20,7 +20,7 @@ public sealed partial class MainViewModel
     private MaintenanceWindowListItem? _selectedMaintenanceWindow;
     private MonitoringCalendarListItem? _selectedMonitoringCalendar;
     private DeviceAvailabilityDetail _selectedDeviceAvailabilityDetail = new();
-    private string _selectedTimelineRange = "Son 30 gun";
+    private string _selectedTimelineRange = "Son 30 gün";
     private DateTime? _customTimelineStartDate;
     private DateTime? _customTimelineEndDate;
     private long? _editingMaintenanceWindowId;
@@ -81,16 +81,16 @@ public sealed partial class MainViewModel
     public ObservableCollection<ReadinessCheckItem> ServiceReadinessChecks { get; } = new();
     public ObservableCollection<ReadinessCheckItem> ServiceDiagnostics { get; } = new();
     public ObservableCollection<DeviceAvailabilityPeriod> SelectedDeviceAvailabilityTimeline { get; } = new();
-    public ObservableCollection<string> TimelineRangeOptions { get; } = new(new[] { "Son 24 saat", "Son 7 gun", "Son 30 gun", "Bu ay", "Ozel tarih araligi" });
+    public ObservableCollection<string> TimelineRangeOptions { get; } = new(new[] { "Son 24 saat", "Son 7 gün", "Son 30 gün", "Bu ay", "Özel tarih aralığı" });
     public ObservableCollection<SelectionOption<MonitoringTargetType>> MonitoringTargetTypeOptions { get; } = new(new[]
     {
-        new SelectionOption<MonitoringTargetType>(MonitoringTargetType.AllDevices, "Tum cihazlar"),
+        new SelectionOption<MonitoringTargetType>(MonitoringTargetType.AllDevices, "Tüm cihazlar"),
         new SelectionOption<MonitoringTargetType>(MonitoringTargetType.Group, "Grup"),
         new SelectionOption<MonitoringTargetType>(MonitoringTargetType.Device, "Cihaz")
     });
     public ObservableCollection<SelectionOption<double?>> SlaTargetOptions { get; } = new(new[]
     {
-        new SelectionOption<double?>((double?)null, "Tanimli degil"),
+        new SelectionOption<double?>((double?)null, "Tanımlı değil"),
         new SelectionOption<double?>(99d, "%99"),
         new SelectionOption<double?>(99.5d, "%99.5"),
         new SelectionOption<double?>(99.9d, "%99.9"),
@@ -137,7 +137,7 @@ public sealed partial class MainViewModel
         get => _selectedTimelineRange;
         set
         {
-            if (SetProperty(ref _selectedTimelineRange, value ?? "Son 30 gun"))
+            if (SetProperty(ref _selectedTimelineRange, value ?? "Son 30 gün"))
             {
                 _ = RefreshSelectedDeviceAvailabilityAsync();
             }
@@ -204,7 +204,7 @@ public sealed partial class MainViewModel
         set => SetProperty(ref _maintenanceContinuePings, value);
     }
 
-    public string MaintenanceFormActionText => _editingMaintenanceWindowId.HasValue ? "Guncelle" : "Bakim olustur";
+    public string MaintenanceFormActionText => _editingMaintenanceWindowId.HasValue ? "Güncelle" : "Bakım oluştur";
 
     public string CalendarFormName
     {
@@ -262,7 +262,7 @@ public sealed partial class MainViewModel
         set => SetProperty(ref _calendarAssignmentTargetId, value);
     }
 
-    public string CalendarFormActionText => _editingCalendarId.HasValue ? "Guncelle" : "Takvim olustur";
+    public string CalendarFormActionText => _editingCalendarId.HasValue ? "Güncelle" : "Takvim oluştur";
 
     public double? FormSlaTargetAvailabilityPercent
     {
@@ -331,13 +331,13 @@ public sealed partial class MainViewModel
             {
                 new AvailabilityRankingRow
                 {
-                    Title = "Analitik yuklenemedi",
-                    Subtitle = "Detaylar log dosyasinda.",
+                    Title = "Analitik yüklenemedi",
+                    Subtitle = "Detaylar log dosyasında.",
                     Value = "Hata",
                     Percent = 0
                 }
             });
-            StatusMessage = "Dashboard analitigi yuklenemedi; cihaz, plan, manuel ping ve ayarlar kullanilabilir.";
+            StatusMessage = "Dashboard analitiği yüklenemedi; cihaz, plan, manuel ping ve ayarlar kullanılabilir.";
         }
     }
 
@@ -425,7 +425,7 @@ public sealed partial class MainViewModel
     {
         if (string.IsNullOrWhiteSpace(MaintenanceFormName) || !MaintenanceFormStart.HasValue || !MaintenanceFormEnd.HasValue || MaintenanceFormEnd <= MaintenanceFormStart)
         {
-            _dialogService.ShowWarning("Bakim gecersiz", "Ad, baslangic ve bitis zamani zorunludur; bitis baslangictan sonra olmalidir.");
+            _dialogService.ShowWarning("Bakım geçersiz", "Ad, başlangıç ve bitiş zamanı zorunludur; bitiş başlangıçtan sonra olmalıdır.");
             return;
         }
 
@@ -469,7 +469,7 @@ public sealed partial class MainViewModel
 
             ClearMaintenanceWindowForm();
             await LoadMaintenanceWindowsAsync();
-            StatusMessage = "Bakim penceresi kaydedildi.";
+            StatusMessage = "Bakım penceresi kaydedildi.";
         }
         finally
         {
@@ -538,7 +538,7 @@ public sealed partial class MainViewModel
     {
         if (string.IsNullOrWhiteSpace(CalendarFormName))
         {
-            _dialogService.ShowWarning("Takvim gecersiz", "Takvim adi zorunludur.");
+            _dialogService.ShowWarning("Takvim geçersiz", "Takvim adı zorunludur.");
             return;
         }
 
@@ -576,7 +576,7 @@ public sealed partial class MainViewModel
 
             ClearMonitoringCalendarForm();
             await LoadMonitoringCalendarsAsync();
-            StatusMessage = "Izleme takvimi kaydedildi.";
+            StatusMessage = "İzleme takvimi kaydedildi.";
         }
         finally
         {
@@ -675,9 +675,9 @@ public sealed partial class MainViewModel
         return SelectedTimelineRange switch
         {
             "Son 24 saat" => (now.AddHours(-24), now),
-            "Son 7 gun" => (now.AddDays(-7), now),
+            "Son 7 gün" => (now.AddDays(-7), now),
             "Bu ay" => (new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1).ToUniversalTime(), now),
-            "Ozel tarih araligi" when CustomTimelineStartDate.HasValue && CustomTimelineEndDate.HasValue
+            "Özel tarih aralığı" when CustomTimelineStartDate.HasValue && CustomTimelineEndDate.HasValue
                 => (CustomTimelineStartDate.Value.ToUniversalTime(), CustomTimelineEndDate.Value.Date.AddDays(1).ToUniversalTime()),
             _ => (now.AddDays(-30), now)
         };

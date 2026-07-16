@@ -102,24 +102,24 @@ public sealed class MaintenanceWindowListItem
 
     public string Name => Window.Name;
 
-    public string StatusText => Window.Status.ToString();
+    public string StatusText => UiDisplayTexts.MaintenanceStatus(Window.Status);
 
     public string StartedAtText => Window.StartedAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss");
 
     public string EndedAtText => Window.EndedAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss");
 
     public string TargetText => Targets.Count == 0
-        ? "Tum cihazlar"
+        ? "Tüm cihazlar"
         : string.Join(", ", Targets.Select(target => target.TargetType switch
         {
             MonitoringTargetType.Device => $"Cihaz #{target.TargetId}",
             MonitoringTargetType.Group => $"Grup #{target.TargetId}",
-            _ => "Tum cihazlar"
+            _ => "Tüm cihazlar"
         }));
 
-    public string SuppressNotificationsText => Window.SuppressNotifications ? "Evet" : "Hayir";
+    public string SuppressNotificationsText => Window.SuppressNotifications ? "Evet" : "Hayır";
 
-    public string ContinuePingsText => Window.ContinuePings ? "Evet" : "Hayir";
+    public string ContinuePingsText => Window.ContinuePings ? "Evet" : "Hayır";
 }
 
 public sealed class MonitoringCalendarListItem
@@ -134,14 +134,14 @@ public sealed class MonitoringCalendarListItem
 
     public string TimezoneId => Calendar.TimezoneId;
 
-    public string IsDefaultText => Calendar.IsDefault ? "Evet" : "Hayir";
+    public string IsDefaultText => Calendar.IsDefault ? "Evet" : "Hayır";
 
     public string RulesText => Rules.Count == 0
-        ? "24x7"
+        ? "7/24"
         : string.Join("; ", Rules
             .Where(rule => rule.IsEnabled)
             .OrderBy(rule => rule.DayOfWeek)
-            .Select(rule => $"{rule.DayOfWeek} {rule.StartTime:hh\\:mm}-{rule.EndTime:hh\\:mm}"));
+            .Select(rule => $"{ToTurkishDay(rule.DayOfWeek)} {rule.StartTime:hh\\:mm}-{rule.EndTime:hh\\:mm}"));
 
     public string AssignmentsText => Assignments.Count == 0
         ? "Atama yok"
@@ -149,6 +149,21 @@ public sealed class MonitoringCalendarListItem
         {
             MonitoringTargetType.Device => $"Cihaz #{assignment.TargetId}",
             MonitoringTargetType.Group => $"Grup #{assignment.TargetId}",
-            _ => "Tum cihazlar"
+            _ => "Tüm cihazlar"
         }));
+
+    private static string ToTurkishDay(DayOfWeek day)
+    {
+        return day switch
+        {
+            DayOfWeek.Monday => "Pzt",
+            DayOfWeek.Tuesday => "Sal",
+            DayOfWeek.Wednesday => "Çar",
+            DayOfWeek.Thursday => "Per",
+            DayOfWeek.Friday => "Cum",
+            DayOfWeek.Saturday => "Cmt",
+            DayOfWeek.Sunday => "Paz",
+            _ => day.ToString()
+        };
+    }
 }

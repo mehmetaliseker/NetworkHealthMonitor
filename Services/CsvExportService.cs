@@ -103,7 +103,7 @@ public sealed class CsvExportService
     {
         var separator = NormalizeDelimiter(delimiter);
         var builder = new StringBuilder();
-        AppendRow(builder, separator, "Tarih/Saat", "Cihaz adi", "IP adresi", "Cihaz tipi", "Durum", "Gecikme", "Hata mesaji");
+        AppendRow(builder, separator, "Tarih/Saat", "Cihaz adı", "IP adresi", "Cihaz tipi", "Durum", "Gecikme", "Hata mesajı");
 
         foreach (var log in logs)
         {
@@ -120,23 +120,23 @@ public sealed class CsvExportService
         AppendRow(
             builder,
             separator,
-            "Cihaz adi",
+            "Cihaz adı",
             "IP adresi",
             "Cihaz tipi",
             "Grup",
             "Son durum",
-            "Son basarili kontrol",
-            "Son basarisiz kontrol",
-            "Basarili kontrol",
-            "Basarisiz kontrol",
-            "Olculen erisilebilirlik",
+            "Son başarılı kontrol",
+            "Son başarısız kontrol",
+            "Başarılı kontrol",
+            "Başarısız kontrol",
+            "Ölçülen erişilebilirlik",
             "Son 24 saat",
-            "Son 7 gun",
-            "Son 30 gun",
-            "Kesinti sayisi",
-            "Son kesinti baslangici",
-            "Son toparlanma",
-            "Tahmini kesinti suresi");
+            "Son 7 gün",
+            "Son 30 gün",
+            "Kesinti sayısı",
+            "Son kesinti başlangıcı",
+            "Son düzelme",
+            "Tahmini kesinti süresi");
 
         foreach (var item in items)
         {
@@ -247,42 +247,42 @@ public sealed class CsvExportService
         AppendRow(
             builder,
             separator,
-            "DeviceId",
-            "Cihaz Adi",
-            "IP Adresi",
-            "Cihaz Turu",
+            "Cihaz kimliği",
+            "Cihaz adı",
+            "IP adresi",
+            "Cihaz türü",
             "Grup",
-            "Rapor Baslangici UTC",
-            "Rapor Bitisi UTC",
-            "Timezone",
-            "Beklenen Izleme Suresi",
-            "UpSeconds",
-            "Erisilebilir Sure",
-            "DownSeconds",
-            "Kesinti Suresi",
-            "UnknownSeconds",
-            "Bilinmeyen Sure",
-            "MaintenanceSeconds",
-            "Bakim Suresi",
-            "AvailabilityPercent",
-            "StrictAvailabilityPercent",
-            "CoveragePercent",
-            "IncidentCount",
-            "RecoveredIncidentCount",
-            "MTTRSeconds",
+            "Rapor başlangıcı UTC",
+            "Rapor bitişi UTC",
+            "Saat dilimi",
+            "Beklenen izleme süresi",
+            "Erişilebilir saniye",
+            "Erişilebilir süre",
+            "Kesinti saniye",
+            "Kesinti süresi",
+            "Kontrol edilmedi saniye",
+            "Kontrol edilmedi süre",
+            "Bakım saniye",
+            "Bakım süresi",
+            "Erişilebilirlik %",
+            "Katı erişilebilirlik %",
+            "Kapsam %",
+            "Kesinti sayısı",
+            "Kapanan kesinti sayısı",
+            "MTTR saniye",
             "MTTR",
-            "MTBFSeconds",
+            "MTBF saniye",
             "MTBF",
-            "LongestOutageSeconds",
-            "En Uzun Kesinti",
-            "CurrentStatus",
-            "CurrentStatusSince",
-            "CurrentContinuousAvailabilitySeconds",
-            "Kesintisiz Erisilebilir Sure",
-            "LastCheckedAt",
-            "LastSuccessfulCheckAt",
-            "SlaTargetPercent",
-            "SlaStatus");
+            "En uzun kesinti saniye",
+            "En uzun kesinti",
+            "Mevcut durum",
+            "Mevcut durum başlangıcı",
+            "Kesintisiz erişilebilir saniye",
+            "Kesintisiz erişilebilir süre",
+            "Son kontrol",
+            "Son başarılı kontrol",
+            "SLA hedef %",
+            "SLA durumu");
 
         foreach (var item in items)
         {
@@ -340,21 +340,21 @@ public sealed class CsvExportService
         AppendRow(
             builder,
             separator,
-            "IncidentId",
-            "DeviceId",
+            "Kesinti kimliği",
+            "Cihaz kimliği",
             "Cihaz",
             "IP",
             "Grup",
-            "FirstFailureAtUtc",
-            "ConfirmedDownAtUtc",
-            "EndedAtUtc",
-            "DowntimeSeconds",
-            "DetectionDelaySeconds",
-            "FailureCount",
-            "ErrorCode",
-            "ErrorMessage",
-            "NotificationStatus",
-            "MaintenanceRelated");
+            "İlk hata UTC",
+            "Kesinti doğrulama UTC",
+            "Bitiş UTC",
+            "Kesinti süresi sn",
+            "Tespit gecikmesi sn",
+            "Hata sayısı",
+            "Hata kodu",
+            "Hata mesajı",
+            "Bildirim durumu",
+            "Bakımla ilişkili");
 
         foreach (var item in items)
         {
@@ -823,13 +823,13 @@ public sealed class CsvExportService
         AddChange(changes, "Tip", existing.DeviceType.ToDisplayName(), record.DeviceType.ToDisplayName());
         AddChange(changes, "Grup", existing.GroupName, record.GroupName);
         AddChange(changes, "Konum", existing.Location, record.Location);
-        AddChange(changes, "Aciklama", existing.Description, record.Description);
+        AddChange(changes, "Açıklama", existing.Description, record.Description);
         AddChange(changes, "Kritik", existing.IsCritical, record.IsCritical);
         AddChange(changes, "Aktif", existing.IsEnabled, record.IsEnabled);
         AddChange(changes, "Oto", existing.AutoCheckEnabled, record.AutoCheckEnabled);
-        AddChange(changes, "Timeout", existing.PingTimeoutMs, record.PingTimeoutMs);
+        AddChange(changes, "Zaman aşımı", existing.PingTimeoutMs, record.PingTimeoutMs);
         AddChange(changes, "Aralik", existing.CheckIntervalSeconds, record.CheckIntervalSeconds);
-        AddChange(changes, "Retry", existing.FailureRetryIntervalSeconds, record.RetryIntervalSeconds);
+        AddChange(changes, "Yeniden deneme", existing.FailureRetryIntervalSeconds, record.RetryIntervalSeconds);
         AddChange(changes, "Limit", existing.FailureRetryLimit, record.RetryLimit);
         AddChange(changes, "Esik", existing.FailureThreshold, record.FailureThreshold);
         return changes.Count == 0 ? "Degisiklik yok." : string.Join("; ", changes);

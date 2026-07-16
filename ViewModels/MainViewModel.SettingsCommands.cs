@@ -60,7 +60,7 @@ public sealed partial class MainViewModel
     {
         if (PingTimeoutMs < AppSettings.MinPingTimeoutMs || PingTimeoutMs > AppSettings.MaxPingTimeoutMs)
         {
-            _dialogService.ShowWarning("Geçersiz ayar", $"Ping timeout değeri {AppSettings.MinPingTimeoutMs} ile {AppSettings.MaxPingTimeoutMs} ms arasında olmalıdır.");
+            _dialogService.ShowWarning("Geçersiz ayar", $"Ping zaman aşımı değeri {AppSettings.MinPingTimeoutMs} ile {AppSettings.MaxPingTimeoutMs} ms arasında olmalıdır.");
             return;
         }
 
@@ -114,7 +114,7 @@ public sealed partial class MainViewModel
             }
             catch (Exception ex)
             {
-                _dialogService.ShowWarning("Export klasörü kullanılamıyor", ex.Message);
+                _dialogService.ShowWarning("Dışa aktarma klasörü kullanılamıyor", ex.Message);
                 return;
             }
         }

@@ -151,7 +151,7 @@ public sealed class SchedulePlan : ObservableObject
 
     public string IntervalText => $"{IntervalMinutes} dk";
 
-    public string IsActiveText => IsActive ? "Aktif" : "Pasif";
+    public string IsActiveText => UiDisplayTexts.ActiveState(IsActive);
 
     public string LastRunAtText => LastRunAt.HasValue ? LastRunAt.Value.ToString("dd.MM.yyyy HH:mm:ss") : "-";
 

@@ -19,12 +19,7 @@ public sealed class ReadinessCheckItem
 
     public string Detail { get; init; } = string.Empty;
 
-    public string LevelText => Level switch
-    {
-        ReadinessLevel.Pass => "PASS",
-        ReadinessLevel.Warning => "WARN",
-        _ => "FAIL"
-    };
+    public string LevelText => UiDisplayTexts.ReadinessLevelText(Level);
 }
 
 public sealed class ServiceReadinessSnapshot
@@ -35,7 +30,7 @@ public sealed class ServiceReadinessSnapshot
 
     public bool IsHealthy => Checks.All(check => check.Level != ReadinessLevel.Fail);
 
-    public string OverallStatusText => IsHealthy ? "Healthy" : "Unhealthy";
+    public string OverallStatusText => IsHealthy ? "Sağlıklı" : "Sorunlu";
 }
 
 public sealed class AvailabilityTrendPoint

@@ -181,7 +181,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private CsvImportScope _csvImportScope = CsvImportScope.AllActiveDevices;
     private int? _csvImportGroupId;
     private string _csvImportFilePath = string.Empty;
-    private string _csvImportPreviewSummary = "CSV onizlemesi henuz alinmadi.";
+    private string _csvImportPreviewSummary = "CSV önizlemesi henüz alınmadı.";
     private CsvImportPreview? _csvImportPreview;
     private bool _openUiOnWindowsLogin;
     private bool _deleteEmptyGroupAfterDeviceDelete;
@@ -280,21 +280,35 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         DeviceTypePolicies = new ObservableCollection<DeviceTypePolicy>(DeviceTypePolicy.CreateDefaults());
         CsvImportModeOptions = new ObservableCollection<SelectionOption<CsvImportMode>>(new[]
         {
-            new SelectionOption<CsvImportMode>(CsvImportMode.AddOnly, "Sadece yeni cihazlari ekle"),
-            new SelectionOption<CsvImportMode>(CsvImportMode.Upsert, "Ekle veya guncelle"),
-            new SelectionOption<CsvImportMode>(CsvImportMode.Sync, "CSV ile tamamen esitle")
+            new SelectionOption<CsvImportMode>(CsvImportMode.AddOnly, "Yalnızca yeni cihazları ekle"),
+            new SelectionOption<CsvImportMode>(CsvImportMode.Upsert, "Ekle veya güncelle"),
+            new SelectionOption<CsvImportMode>(CsvImportMode.Sync, "CSV ile tamamen eşitle")
         });
         CsvImportScopeOptions = new ObservableCollection<SelectionOption<CsvImportScope>>(new[]
         {
-            new SelectionOption<CsvImportScope>(CsvImportScope.AllActiveDevices, "Tum aktif cihazlari CSV ile esitle"),
-            new SelectionOption<CsvImportScope>(CsvImportScope.SelectedGroup, "Yalnizca secili grubu CSV ile esitle")
+            new SelectionOption<CsvImportScope>(CsvImportScope.AllActiveDevices, "Tüm etkin cihazları CSV ile eşitle"),
+            new SelectionOption<CsvImportScope>(CsvImportScope.SelectedGroup, "Yalnızca seçili grubu CSV ile eşitle")
         });
-        OutboxStatusOptions = new ObservableCollection<string>(new[] { AllOutboxStatusesText, "Pending", "Processing", "Sent", "Failed", "Cancelled" });
-        OutboxEventTypeOptions = new ObservableCollection<string>(new[] { AllOutboxEventTypesText, "DeviceDown", "DeviceRecovered", "Test" });
+        OutboxStatusOptions = new ObservableCollection<SelectionOption<string>>(new[]
+        {
+            new SelectionOption<string>(AllOutboxStatusesText, AllOutboxStatusesText),
+            new SelectionOption<string>("Pending", "Bekliyor"),
+            new SelectionOption<string>("Processing", "İşleniyor"),
+            new SelectionOption<string>("Sent", "Gönderildi"),
+            new SelectionOption<string>("Failed", "Başarısız"),
+            new SelectionOption<string>("Cancelled", "İptal edildi")
+        });
+        OutboxEventTypeOptions = new ObservableCollection<SelectionOption<string>>(new[]
+        {
+            new SelectionOption<string>(AllOutboxEventTypesText, AllOutboxEventTypesText),
+            new SelectionOption<string>("DeviceDown", "Kesinti bildirimi"),
+            new SelectionOption<string>("DeviceRecovered", "Düzelme bildirimi"),
+            new SelectionOption<string>("Test", "Test bildirimi")
+        });
         DowntimeStartPolicyOptions = new ObservableCollection<SelectionOption<DowntimeStartPolicy>>(new[]
         {
-            new SelectionOption<DowntimeStartPolicy>(DowntimeStartPolicy.FirstFailedCheck, "Ilk basarisiz kontrol"),
-            new SelectionOption<DowntimeStartPolicy>(DowntimeStartPolicy.ConfirmedDownTime, "Down dogrulama zamani")
+            new SelectionOption<DowntimeStartPolicy>(DowntimeStartPolicy.FirstFailedCheck, "İlk başarısız kontrol"),
+            new SelectionOption<DowntimeStartPolicy>(DowntimeStartPolicy.ConfirmedDownTime, "Kesinti doğrulama zamanı")
         });
 
         DevicesView = CollectionViewSource.GetDefaultView(Devices);
@@ -499,9 +513,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public ObservableCollection<SelectionOption<DowntimeStartPolicy>> DowntimeStartPolicyOptions { get; }
 
-    public ObservableCollection<string> OutboxStatusOptions { get; }
+    public ObservableCollection<SelectionOption<string>> OutboxStatusOptions { get; }
 
-    public ObservableCollection<string> OutboxEventTypeOptions { get; }
+    public ObservableCollection<SelectionOption<string>> OutboxEventTypeOptions { get; }
 
     public ICollectionView DevicesView { get; }
 
@@ -1727,6 +1741,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public string DatabaseLocation => DatabasePaths.DatabaseFilePath;
 
-    public string AvailabilityNotice => "Bu ekran gercek cihaz uptime degeri degil, ping tabanli ag erisilebilirligi raporudur. Worker veya beklenen kontrol bosluklari Unknown olarak, planli bakim Maintenance olarak hesaplanir.";
+    public string AvailabilityNotice => "Bu ekran gerçek cihaz uptime değeri değil; ping tabanlı ağ erişilebilirliği raporudur. İzleme servisi veya beklenen kontrol boşlukları kontrol edilmedi olarak, planlı bakım bakım durumunda hesaplanır.";
 
 }

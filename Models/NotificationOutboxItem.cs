@@ -47,4 +47,8 @@ public sealed class NotificationOutboxItem
     public string NextAttemptAtText => NextAttemptAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss");
 
     public string IncidentText => IncidentId.HasValue ? IncidentId.Value.ToString() : "-";
+
+    public string StatusText => UiDisplayTexts.OutboxStatus(Status);
+
+    public string EventTypeText => UiDisplayTexts.OutboxEventType(EventType);
 }

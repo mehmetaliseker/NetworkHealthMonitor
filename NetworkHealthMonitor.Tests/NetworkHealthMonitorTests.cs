@@ -1051,10 +1051,10 @@ public sealed class NetworkHealthMonitorTests
             var content = await File.ReadAllTextAsync(path, System.Text.Encoding.UTF8);
 
             Assert.Equal(new byte[] { 0xEF, 0xBB, 0xBF }, bytes.Take(3).ToArray());
-            Assert.Contains("AvailabilityPercent", content);
-            Assert.Contains("StrictAvailabilityPercent", content);
-            Assert.Contains("CoveragePercent", content);
-            Assert.Contains("MTTRSeconds", content);
+            Assert.Contains("Erişilebilirlik %", content);
+            Assert.Contains("Katı erişilebilirlik %", content);
+            Assert.Contains("Kapsam %", content);
+            Assert.Contains("MTTR saniye", content);
             Assert.Contains("Kamera Çatı", content);
         }
         finally

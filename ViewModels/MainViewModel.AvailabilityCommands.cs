@@ -5,19 +5,19 @@ public sealed partial class MainViewModel
     private async Task RecalculateAvailabilityAsync()
     {
         IsBusy = true;
-        StatusMessage = "Availability verileri yeniden hesaplaniyor...";
+        StatusMessage = "Erişilebilirlik verileri yeniden hesaplanıyor...";
         try
         {
             var end = DateOnly.FromDateTime(DateTime.Now);
             var start = end.AddDays(-30);
             await _availabilityService.RecalculateDailyAsync(start, end, TimeZoneInfo.Local.Id);
             await LoadAvailabilityAsync();
-            StatusMessage = "Availability verileri yeniden hesaplandi.";
+            StatusMessage = "Erişilebilirlik verileri yeniden hesaplandı.";
         }
         catch (Exception ex)
         {
-            _dialogService.ShowError("Availability yeniden hesaplanamadi", ex.Message);
-            StatusMessage = "Availability yeniden hesaplanamadi.";
+            _dialogService.ShowError("Erişilebilirlik yeniden hesaplanamadı", ex.Message);
+            StatusMessage = "Erişilebilirlik yeniden hesaplanamadı.";
         }
         finally
         {

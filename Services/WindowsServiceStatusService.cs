@@ -15,8 +15,8 @@ public sealed class WindowsServiceStatusService : IWindowsServiceStatusService
             {
                 return query.Output.Contains("1060", StringComparison.OrdinalIgnoreCase)
                        || query.Error.Contains("1060", StringComparison.OrdinalIgnoreCase)
-                    ? new WindowsServiceStatus("NotFound", "Bulunamadi") { IsInstalled = false }
-                    : new WindowsServiceStatus("Inaccessible", "Erisilemiyor") { IsInstalled = false };
+                    ? new WindowsServiceStatus("NotFound", "Bulunamadı") { IsInstalled = false }
+                    : new WindowsServiceStatus("Inaccessible", "Erişilemiyor") { IsInstalled = false };
             }
 
             var qc = await RunScAsync($"qc \"{ServiceName}\"", cancellationToken);
@@ -25,7 +25,7 @@ public sealed class WindowsServiceStatusService : IWindowsServiceStatusService
         }
         catch
         {
-            return new WindowsServiceStatus("Inaccessible", "Erisilemiyor") { IsInstalled = false };
+            return new WindowsServiceStatus("Inaccessible", "Erişilemiyor") { IsInstalled = false };
         }
     }
 
@@ -55,14 +55,14 @@ public sealed class WindowsServiceStatusService : IWindowsServiceStatusService
         var isAutomatic = startupType.Contains("AUTO", StringComparison.OrdinalIgnoreCase);
         var recoveryConfigured = failureOutput.Contains("RESTART", StringComparison.OrdinalIgnoreCase);
         var baseStatus = queryOutput.Contains("RUNNING", StringComparison.OrdinalIgnoreCase)
-            ? new WindowsServiceStatus("Running", "Calisiyor") { IsRunning = true }
+            ? new WindowsServiceStatus("Running", "Çalışıyor") { IsRunning = true }
             : queryOutput.Contains("START_PENDING", StringComparison.OrdinalIgnoreCase)
-                ? new WindowsServiceStatus("StartPending", "Baslatiliyor")
+                ? new WindowsServiceStatus("StartPending", "Başlatılıyor")
                 : queryOutput.Contains("STOP_PENDING", StringComparison.OrdinalIgnoreCase)
                     ? new WindowsServiceStatus("StopPending", "Durduruluyor")
                     : queryOutput.Contains("STOPPED", StringComparison.OrdinalIgnoreCase)
                         ? new WindowsServiceStatus("Stopped", "Durduruldu")
-                        : WindowsServiceStatus.Unknown("Erisilemiyor") with { IsInstalled = true };
+                        : WindowsServiceStatus.Unknown("Erişilemiyor") with { IsInstalled = true };
 
         return baseStatus with
         {

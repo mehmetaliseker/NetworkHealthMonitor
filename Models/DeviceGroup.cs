@@ -201,7 +201,7 @@ public sealed class DeviceGroup : ObservableObject
 
             if (DefaultPingTimeoutMs.HasValue)
             {
-                parts.Add($"timeout {DefaultPingTimeoutMs.Value} ms");
+                parts.Add($"zaman aşımı {DefaultPingTimeoutMs.Value} ms");
             }
 
             if (DefaultFailureRetryIntervalSeconds.HasValue)

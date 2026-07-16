@@ -36,42 +36,42 @@ public sealed class SystemReadinessService
         var heartbeat = await _heartbeatRepository.GetLatestAsync(cancellationToken);
         var outboxCounts = await _outboxRepository.GetCountsAsync(cancellationToken);
 
-        checks.Add(Check("Service kurulu", service.IsInstalled, service.DisplayText, service.Code));
-        checks.Add(Check("Service Running", service.IsRunning, service.DisplayText, service.Code));
-        checks.Add(Check("Startup type Automatic", service.IsAutomaticStartup, service.StartupType, "Automatic veya Automatic Delayed Start beklenir."));
-        checks.Add(Check("Service recovery", service.RecoveryActionsConfigured, service.RecoveryActionsConfigured ? "Configured" : "Missing", "Failure recovery restart actions beklenir."));
+        checks.Add(Check("Servis kurulu", service.IsInstalled, service.DisplayText, service.Code));
+        checks.Add(Check("İzleme servisi çalışıyor", service.IsRunning, service.DisplayText, service.Code));
+        checks.Add(Check("Otomatik başlatma", service.IsAutomaticStartup, service.StartupType, "Automatic veya Automatic Delayed Start beklenir."));
+        checks.Add(Check("Servis kurtarma", service.RecoveryActionsConfigured, service.RecoveryActionsConfigured ? "Yapılandırıldı" : "Eksik", "Başarısızlık sonrası yeniden başlatma eylemleri beklenir."));
         checks.Add(MapHeartbeatFreshness(heartbeat?.LastSeenAtUtc, nowUtc, settings.HeartbeatGraceSeconds, service.IsRunning));
         checks.Add(await CheckDatabaseAsync(cancellationToken));
-        checks.Add(Check("Pending outbox", true, outboxCounts.Pending.ToString(CultureInfo.CurrentCulture), string.Empty));
-        checks.Add(Check("Failed outbox", outboxCounts.Failed == 0, outboxCounts.Failed.ToString(CultureInfo.CurrentCulture), "Failed bildirimler retry edilmeli."));
+        checks.Add(Check("Bekleyen bildirimler", true, outboxCounts.Pending.ToString(CultureInfo.CurrentCulture), string.Empty));
+        checks.Add(Check("Başarısız bildirimler", outboxCounts.Failed == 0, outboxCounts.Failed.ToString(CultureInfo.CurrentCulture), "Başarısız bildirimler yeniden denenmelidir."));
         checks.Add(CheckDiskFree());
-        checks.Add(Check("UI/Worker version", IsVersionMatch(GetUiVersion(), heartbeat?.Version), $"{GetUiVersion()} / {heartbeat?.Version ?? "-"}", "UI ve Worker publish ayni surumden gelmeli."));
+        checks.Add(Check("UI / izleme servisi sürümü", IsVersionMatch(GetUiVersion(), heartbeat?.Version), $"{GetUiVersion()} / {heartbeat?.Version ?? "-"}", "UI ve izleme servisi aynı yayından gelmelidir."));
 
-        diagnostics.Add(Diagnostic("Process uptime", heartbeat is null ? "-" : AvailabilitySummaryReportItem.FormatDuration((long)(nowUtc - heartbeat.StartedAtUtc).TotalSeconds)));
-        diagnostics.Add(Diagnostic("Worker restart count", (await GetWorkerRestartCountAsync(cancellationToken)).ToString(CultureInfo.CurrentCulture)));
+        diagnostics.Add(Diagnostic("Süreç çalışma süresi", heartbeat is null ? "-" : AvailabilitySummaryReportItem.FormatDuration((long)(nowUtc - heartbeat.StartedAtUtc).TotalSeconds)));
+        diagnostics.Add(Diagnostic("İzleme servisi yeniden başlatma sayısı", (await GetWorkerRestartCountAsync(cancellationToken)).ToString(CultureInfo.CurrentCulture)));
         diagnostics.Add(Diagnostic("Son kritik hata", heartbeat?.LastCriticalError ?? string.Empty));
-        diagnostics.Add(Diagnostic("Son database locked", heartbeat?.LastDatabaseLockedError ?? string.Empty));
-        diagnostics.Add(Diagnostic("Son scheduler exception", heartbeat?.LastSchedulerException ?? string.Empty));
-        diagnostics.Add(Diagnostic("Son ntfy exception", heartbeat?.LastNtfyException ?? string.Empty));
-        diagnostics.Add(Diagnostic("Ortalama scheduler cycle", heartbeat is null ? "-" : $"{heartbeat.AverageSchedulerCycleMs:0} ms"));
-        diagnostics.Add(Diagnostic("Son scheduler dongusu", FormatDate(heartbeat?.LastSchedulerCycleAtUtc)));
-        diagnostics.Add(Diagnostic("Son scheduled ping", FormatDate(heartbeat?.LastSuccessfulPingAtUtc)));
-        diagnostics.Add(Diagnostic("Son notification dispatch", FormatDate(heartbeat?.LastNotificationDispatchAtUtc)));
+        diagnostics.Add(Diagnostic("Son veritabanı kilit hatası", heartbeat?.LastDatabaseLockedError ?? string.Empty));
+        diagnostics.Add(Diagnostic("Son zamanlayıcı hatası", heartbeat?.LastSchedulerException ?? string.Empty));
+        diagnostics.Add(Diagnostic("Son ntfy hatası", heartbeat?.LastNtfyException ?? string.Empty));
+        diagnostics.Add(Diagnostic("Ortalama zamanlayıcı döngüsü", heartbeat is null ? "-" : $"{heartbeat.AverageSchedulerCycleMs:0} ms"));
+        diagnostics.Add(Diagnostic("Son zamanlayıcı döngüsü", FormatDate(heartbeat?.LastSchedulerCycleAtUtc)));
+        diagnostics.Add(Diagnostic("Son otomatik kontrol", FormatDate(heartbeat?.LastSuccessfulPingAtUtc)));
+        diagnostics.Add(Diagnostic("Son bildirim gönderimi", FormatDate(heartbeat?.LastNotificationDispatchAtUtc)));
         var ping24 = await GetPingCounts24hAsync(cancellationToken);
         diagnostics.Add(Diagnostic("Son 24 saat toplam ping", ping24.Total.ToString(CultureInfo.CurrentCulture)));
-        diagnostics.Add(Diagnostic("Son 24 saat basarisiz ping", ping24.Failed.ToString(CultureInfo.CurrentCulture)));
-        diagnostics.Add(Diagnostic("Database file size", FormatBytes(GetFileSize(DatabasePaths.DatabaseFilePath))));
-        diagnostics.Add(Diagnostic("Log directory size", FormatBytes(GetDirectorySize(DatabasePaths.LogDirectory))));
-        diagnostics.Add(Diagnostic("Son backup", GetLastBackupText()));
+        diagnostics.Add(Diagnostic("Son 24 saat başarısız ping", ping24.Failed.ToString(CultureInfo.CurrentCulture)));
+        diagnostics.Add(Diagnostic("Veritabanı dosya boyutu", FormatBytes(GetFileSize(DatabasePaths.DatabaseFilePath))));
+        diagnostics.Add(Diagnostic("Log klasörü boyutu", FormatBytes(GetDirectorySize(DatabasePaths.LogDirectory))));
+        diagnostics.Add(Diagnostic("Son yedek", GetLastBackupText()));
         var build = ApplicationBuildInfo.Current;
-        diagnostics.Add(Diagnostic("Product version", build.ProductVersion));
-        diagnostics.Add(Diagnostic("File version", build.FileVersion));
-        diagnostics.Add(Diagnostic("Build timestamp UTC", build.BuildTimestampUtc));
+        diagnostics.Add(Diagnostic("Ürün sürümü", build.ProductVersion));
+        diagnostics.Add(Diagnostic("Dosya sürümü", build.FileVersion));
+        diagnostics.Add(Diagnostic("Derleme zamanı (UTC)", build.BuildTimestampUtc));
         diagnostics.Add(Diagnostic("Git commit SHA", build.GitCommitSha));
-        diagnostics.Add(Diagnostic("Beklenen schema version", build.ExpectedSchemaVersion));
-        diagnostics.Add(Diagnostic("Aktif DB yolu", DatabasePaths.DatabaseFilePath));
-        diagnostics.Add(Diagnostic("Uygulama surumu", GetUiVersion()));
-        diagnostics.Add(Diagnostic("Worker surumu", heartbeat?.Version ?? "-"));
+        diagnostics.Add(Diagnostic("Beklenen şema sürümü", build.ExpectedSchemaVersion));
+        diagnostics.Add(Diagnostic("Aktif veritabanı yolu", DatabasePaths.DatabaseFilePath));
+        diagnostics.Add(Diagnostic("Uygulama sürümü", GetUiVersion()));
+        diagnostics.Add(Diagnostic("İzleme servisi sürümü", heartbeat?.Version ?? "-"));
 
         return new ServiceReadinessSnapshot
         {
@@ -96,10 +96,10 @@ public sealed class SystemReadinessService
         {
             return new ReadinessCheckItem
             {
-                Name = "Worker heartbeat guncel",
+                Name = "İzleme servisi heartbeat güncel",
                 Level = ReadinessLevel.Fail,
                 Value = "-",
-                Detail = "Heartbeat kaydi yok."
+                Detail = "Heartbeat kaydı yok."
             };
         }
 
@@ -108,12 +108,12 @@ public sealed class SystemReadinessService
         var healthy = ageSeconds <= allowed;
         return new ReadinessCheckItem
         {
-            Name = "Worker heartbeat guncel",
+            Name = "İzleme servisi heartbeat güncel",
             Level = healthy ? ReadinessLevel.Pass : ReadinessLevel.Fail,
             Value = $"{ageSeconds:0} sn",
             Detail = serviceRunning && !healthy
-                ? "Service Running ancak heartbeat eski; sistem saglikli sayilmaz."
-                : $"Grace {allowed} sn."
+                ? "İzleme servisi çalışıyor ancak heartbeat eski; sistem sağlıklı sayılmaz."
+                : $"Tolerans {allowed} sn."
         };
     }
 
@@ -125,15 +125,15 @@ public sealed class SystemReadinessService
             await using var command = connection.CreateCommand();
             command.CommandText = "SELECT 1;";
             await command.ExecuteScalarAsync(cancellationToken);
-            return Check("Veritabani erisilebilir", true, "OK", DatabasePaths.DatabaseFilePath);
+            return Check("Veritabanı erişilebilir", true, "Tamam", DatabasePaths.DatabaseFilePath);
         }
         catch (Exception ex)
         {
             return new ReadinessCheckItem
             {
-                Name = "Veritabani erisilebilir",
+                Name = "Veritabanı erişilebilir",
                 Level = ReadinessLevel.Fail,
-                Value = "FAIL",
+                Value = "Başarısız",
                 Detail = ex.Message
             };
         }
@@ -146,13 +146,13 @@ public sealed class SystemReadinessService
             var root = Path.GetPathRoot(DatabasePaths.RootDirectory) ?? DatabasePaths.RootDirectory;
             var drive = new DriveInfo(root);
             var free = drive.AvailableFreeSpace;
-            return Check("Disk bos alani", free > 1024L * 1024L * 1024L, FormatBytes(free), "En az 1 GB onerilir.");
+            return Check("Disk boş alanı", free > 1024L * 1024L * 1024L, FormatBytes(free), "En az 1 GB önerilir.");
         }
         catch (Exception ex)
         {
             return new ReadinessCheckItem
             {
-                Name = "Disk bos alani",
+                Name = "Disk boş alanı",
                 Level = ReadinessLevel.Warning,
                 Value = "-",
                 Detail = ex.Message

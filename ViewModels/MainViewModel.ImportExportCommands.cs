@@ -33,7 +33,7 @@ public sealed partial class MainViewModel
 
     private async Task CreateCsvTemplateAsync()
     {
-        var path = _dialogService.GetSaveCsvFilePath($"cihaz-import-sablonu-{DateTime.Now:yyyy-MM-dd}.csv", ExportDirectory);
+        var path = _dialogService.GetSaveCsvFilePath($"cihaz-ice-aktarma-sablonu-{DateTime.Now:yyyy-MM-dd}.csv", ExportDirectory);
         if (path is null)
         {
             return;
@@ -44,12 +44,12 @@ public sealed partial class MainViewModel
         {
             await _deviceImportExportService.ExportTemplateAsync(path, CsvDelimiter);
             await RememberExportDirectoryAsync(path);
-            StatusMessage = $"CSV import şablonu oluşturuldu: {path}";
+            StatusMessage = $"CSV içe aktarma şablonu oluşturuldu: {path}";
         }
         catch (Exception ex)
         {
             _dialogService.ShowError("CSV şablonu oluşturulamadı", $"CSV dosyası oluşturulamadı. Seçilen klasöre yazma izniniz olmayabilir.\n\n{ex.Message}");
-            StatusMessage = "CSV import şablonu oluşturulamadı.";
+            StatusMessage = "CSV içe aktarma şablonu oluşturulamadı.";
         }
         finally
         {
@@ -69,7 +69,7 @@ public sealed partial class MainViewModel
             && CsvImportScope == NetworkHealthMonitor.Models.CsvImportScope.SelectedGroup
             && !CsvImportGroupId.HasValue)
         {
-            _dialogService.ShowWarning("Grup secilmedi", "Grup kapsamli CSV esitleme icin once bir grup secin.");
+            _dialogService.ShowWarning("Grup seçilmedi", "Grup kapsamlı CSV eşitleme için önce bir grup seçin.");
             return;
         }
 
@@ -80,13 +80,13 @@ public sealed partial class MainViewModel
             var preview = await _deviceImportExportService.ReadImportPreviewAsync(path, Devices, options, CsvDelimiter);
             ApplyCsvPreview(path, preview);
             StatusMessage = preview.HasBlockingErrors
-                ? "CSV onizleme tamamlandi; hatalar duzeltilmeden import uygulanamaz."
-                : "CSV onizleme tamamlandi. Ozet ve ayrinti sekmelerini kontrol edin.";
+                ? "CSV önizleme tamamlandı; hatalar düzeltilmeden içe aktarma uygulanamaz."
+                : "CSV önizleme tamamlandı. Özet ve ayrıntı sekmelerini kontrol edin.";
         }
         catch (Exception ex)
         {
             _dialogService.ShowError("CSV okunamadı", $"CSV dosyası okunamadı. Dosya kullanımda, hatalı formatta veya erişim izni kısıtlı olabilir.\n\n{ex.Message}");
-            StatusMessage = "CSV import tamamlanamadı.";
+            StatusMessage = "CSV içe aktarma tamamlanamadı.";
         }
         finally
         {
@@ -98,19 +98,19 @@ public sealed partial class MainViewModel
     {
         if (_csvImportPreview is null)
         {
-            _dialogService.ShowWarning("Onizleme gerekli", "Import uygulamadan once CSV onizlemesi alin.");
+            _dialogService.ShowWarning("Önizleme gerekli", "İçe aktarmayı uygulamadan önce CSV önizlemesi alın.");
             return;
         }
 
         if (!_csvImportPreview.HasImportableRows)
         {
-            _dialogService.ShowWarning("Import uygulanamaz", "CSV onizlemesinde bloklayici hata var veya gecerli satir yok.");
+            _dialogService.ShowWarning("İçe aktarma uygulanamaz", "CSV önizlemesinde bloklayıcı hata var veya geçerli satır yok.");
             return;
         }
 
         if (!_dialogService.Confirm(
-                "CSV import uygulansin mi?",
-                _csvImportPreview.SummaryText + "\n\nCSV ile tamamen esitle modunda CSV'de olmayan cihazlar soft-delete yapilir; ping ve kesinti gecmisi korunur."))
+                "CSV içe aktarma uygulansın mı?",
+                _csvImportPreview.SummaryText + "\n\nCSV ile tamamen eşitle modunda CSV'de olmayan cihazlar soft-delete yapılır; ping ve kesinti geçmişi korunur."))
         {
             return;
         }
@@ -121,12 +121,12 @@ public sealed partial class MainViewModel
             var result = await _deviceImportExportService.ApplyImportAsync(_csvImportPreview, CreateCsvImportOptions(CsvImportFilePath));
             ClearCsvPreview();
             await ReloadAllAsync();
-            StatusMessage = $"CSV import tamamlandi. Eklenen: {result.Added}, guncellenen: {result.Updated}, silinen: {result.Deleted}, geri yuklenen: {result.Restored}, atlanan: {result.Skipped}. Backup: {result.BackupPath}";
+            StatusMessage = $"CSV içe aktarma tamamlandı. Eklenen: {result.Added}, güncellenen: {result.Updated}, silinen: {result.Deleted}, geri yüklenen: {result.Restored}, atlanan: {result.Skipped}. Yedek: {result.BackupPath}";
         }
         catch (Exception ex)
         {
-            _dialogService.ShowError("CSV import uygulanamadi", ex.Message);
-            StatusMessage = "CSV import transaction rollback ile iptal edildi.";
+            _dialogService.ShowError("CSV içe aktarma uygulanamadı", ex.Message);
+            StatusMessage = "CSV içe aktarma işlemi geri alındı.";
         }
         finally
         {
@@ -167,7 +167,7 @@ public sealed partial class MainViewModel
     {
         _csvImportPreview = null;
         CsvImportFilePath = string.Empty;
-        CsvImportPreviewSummary = "CSV onizlemesi henuz alinmadi.";
+        CsvImportPreviewSummary = "CSV önizlemesi henüz alınmadı.";
         CsvNewRows.Clear();
         CsvUpdateRows.Clear();
         CsvDeleteRows.Clear();
@@ -193,7 +193,7 @@ public sealed partial class MainViewModel
 
     private async Task ExportAvailabilityAsync()
     {
-        var path = _dialogService.GetSaveCsvFilePath($"NetworkHealthMonitor_AvailabilitySummary_{DateTime.Now:yyyyMMdd_HHmmss}.csv", ExportDirectory);
+        var path = _dialogService.GetSaveCsvFilePath($"NetworkHealthMonitor_ErisilebilirlikOzeti_{DateTime.Now:yyyyMMdd_HHmmss}.csv", ExportDirectory);
         if (path is null)
         {
             return;
@@ -207,12 +207,12 @@ public sealed partial class MainViewModel
             var items = await _availabilityService.GetAvailabilitySummaryAsync(startUtc, endUtc, TimeZoneInfo.Local.Id);
             await _csvExportService.ExportAvailabilitySummaryAsync(items, path, CsvDelimiter);
             await RememberExportDirectoryAsync(path);
-            StatusMessage = $"Availability summary CSV dışa aktarıldı: {path}";
+            StatusMessage = $"Erişilebilirlik özeti CSV olarak dışa aktarıldı: {path}";
         }
         catch (Exception ex)
         {
-            _dialogService.ShowError("Availability CSV oluşturulamadı", ex.Message);
-            StatusMessage = "Availability CSV dışa aktarılamadı.";
+            _dialogService.ShowError("Erişilebilirlik CSV oluşturulamadı", ex.Message);
+            StatusMessage = "Erişilebilirlik CSV dışa aktarılamadı.";
         }
         finally
         {
@@ -222,7 +222,7 @@ public sealed partial class MainViewModel
 
     private async Task ExportAvailabilityIncidentsAsync()
     {
-        var path = _dialogService.GetSaveCsvFilePath($"NetworkHealthMonitor_AvailabilityIncidents_{DateTime.Now:yyyyMMdd_HHmmss}.csv", ExportDirectory);
+        var path = _dialogService.GetSaveCsvFilePath($"NetworkHealthMonitor_Kesintiler_{DateTime.Now:yyyyMMdd_HHmmss}.csv", ExportDirectory);
         if (path is null)
         {
             return;
@@ -236,12 +236,12 @@ public sealed partial class MainViewModel
             var items = await _availabilityService.GetIncidentReportAsync(startUtc, endUtc);
             await _csvExportService.ExportAvailabilityIncidentsAsync(items, path, CsvDelimiter);
             await RememberExportDirectoryAsync(path);
-            StatusMessage = $"Availability incident CSV dışa aktarıldı: {path}";
+            StatusMessage = $"Kesinti CSV'si dışa aktarıldı: {path}";
         }
         catch (Exception ex)
         {
-            _dialogService.ShowError("Incident CSV oluşturulamadı", ex.Message);
-            StatusMessage = "Incident CSV dışa aktarılamadı.";
+            _dialogService.ShowError("Kesinti CSV oluşturulamadı", ex.Message);
+            StatusMessage = "Kesinti CSV dışa aktarılamadı.";
         }
         finally
         {
@@ -263,4 +263,3 @@ public sealed partial class MainViewModel
         await _settingsService.SaveAsync(settings);
     }
 }
-

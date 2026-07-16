@@ -26,12 +26,14 @@ public sealed partial class MainViewModel
         var items = GetSelectedOutboxItems(parameter).Where(item => item.Status == "Failed").ToList();
         if (items.Count == 0)
         {
-            _dialogService.ShowWarning("Kayit secilmedi", "Tekrar denenecek Failed kayit secin.");
+            _dialogService.ShowWarning("Kayıt seçilmedi", "Yeniden denenecek başarısız kayıt seçin.");
             return;
         }
 
         WarnIfAuthorizationFailure(items);
-        if (!_dialogService.Confirm("Failed bildirimler tekrar denensin mi?", $"{items.Count} failed kayit Pending durumuna alinacak. Worker bir sonraki dispatcher dongusunde gonderecek."))
+        if (!_dialogService.Confirm(
+                "Başarısız bildirimler yeniden denensin mi?",
+                $"{items.Count} başarısız kayıt bekliyor durumuna alınacak. İzleme servisi bir sonraki bildirim döngüsünde gönderecektir."))
         {
             return;
         }
@@ -41,7 +43,7 @@ public sealed partial class MainViewModel
         {
             var affected = await _notificationOutboxRepository.RetryFailedAsync(items.Select(item => item.Id), DateTime.UtcNow);
             await LoadOutboxAsync();
-            StatusMessage = $"{affected} failed bildirim tekrar denemeye alindi.";
+            StatusMessage = $"{affected} başarısız bildirim yeniden denemeye alındı.";
         }
         finally
         {
@@ -66,7 +68,9 @@ public sealed partial class MainViewModel
             return;
         }
 
-        if (!_dialogService.Confirm("Pending bildirim iptal edilsin mi?", $"Outbox #{item.Id} Cancelled durumuna alinacak."))
+        if (!_dialogService.Confirm(
+                "Bekleyen bildirim iptal edilsin mi?",
+                $"Bildirim kuyruğu #{item.Id} iptal edildi durumuna alınacaktır."))
         {
             return;
         }
@@ -76,7 +80,7 @@ public sealed partial class MainViewModel
         {
             var affected = await _notificationOutboxRepository.CancelPendingAsync(new[] { item.Id }, DateTime.UtcNow);
             await LoadOutboxAsync();
-            StatusMessage = $"{affected} pending bildirim iptal edildi.";
+            StatusMessage = $"{affected} bekleyen bildirim iptal edildi.";
         }
         finally
         {
@@ -92,22 +96,22 @@ public sealed partial class MainViewModel
         }
 
         _dialogService.ShowInfo(
-            $"Outbox #{item.Id}",
+            $"Bildirim kuyruğu #{item.Id}",
             $"""
-            Durum: {item.Status}
-            Bildirim turu: {item.EventType}
+            Durum: {item.StatusText}
+            Bildirim türü: {item.EventTypeText}
             Cihaz: {(string.IsNullOrWhiteSpace(item.DeviceName) ? "-" : item.DeviceName)}
-            Incident: {item.IncidentText}
-            Olusturulma: {item.CreatedAtText}
-            Gonderilme: {item.SentAtText}
-            Deneme sayisi: {item.AttemptCount}
+            Kesinti: {item.IncidentText}
+            Oluşturulma: {item.CreatedAtText}
+            Gönderilme: {item.SentAtText}
+            Deneme sayısı: {item.AttemptCount}
             Son deneme: {item.LastAttemptAtText}
             Sonraki deneme: {item.NextAttemptAtText}
 
             Son hata:
             {item.LastError}
 
-            Payload:
+            İçerik:
             {item.PayloadJson}
             """);
     }
@@ -141,7 +145,7 @@ public sealed partial class MainViewModel
         }
 
         _dialogService.ShowWarning(
-            "ntfy yetkilendirme hatasi",
-            "Secili kayitlarda 401/403 hatasi var. Tekrar denemeden once ntfy URL, topic ve access token ayarlarini kontrol edin.");
+            "ntfy yetkilendirme hatası",
+            "Seçili kayıtlarda 401/403 hatası var. Yeniden denemeden önce sunucu adresi, konu ve erişim anahtarı ayarlarını kontrol edin.");
     }
 }

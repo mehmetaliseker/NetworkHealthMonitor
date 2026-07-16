@@ -127,7 +127,7 @@ public sealed class Device : ObservableObject
         }
     }
 
-    public string IsActiveText => IsActive ? "Aktif" : "Pasif";
+    public string IsActiveText => UiDisplayTexts.ActiveState(IsActive);
 
     public bool IsEnabled
     {
@@ -172,7 +172,7 @@ public sealed class Device : ObservableObject
 
     public string DeletedAtText => DeletedAtUtc.HasValue ? DeletedAtUtc.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss", CultureInfo.CurrentCulture) : "-";
 
-    public string IsDeletedOrDisabledText => IsDeleted ? "Silinmiş" : IsEnabled && IsActive ? "Aktif" : "Pasif";
+    public string IsDeletedOrDisabledText => IsDeleted ? "Silinmiş" : IsEnabled && IsActive ? "Etkin" : "Devre dışı";
 
     public bool IsSelected
     {
