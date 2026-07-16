@@ -20,11 +20,11 @@ public static class DeviceStatusExtensions
     {
         return status switch
         {
-            DeviceStatus.Online => "Online / Sağlıklı",
+            DeviceStatus.Online => "Erişilebilir",
             DeviceStatus.Warning => "Uyarı",
             DeviceStatus.UnderWatch => "Takipte",
-            DeviceStatus.Offline => "Muhtemel erişilemiyor",
-            DeviceStatus.PingBlockedOrNoReply => "Ping yanıtlamıyor olabilir",
+            DeviceStatus.Offline => "Erişilemiyor",
+            DeviceStatus.PingBlockedOrNoReply => "Yanıt alınamadı",
             DeviceStatus.Checking => "Kontrol ediliyor",
             DeviceStatus.Unknown => "Kontrol edilmedi",
             _ => "Kontrol edilmedi"

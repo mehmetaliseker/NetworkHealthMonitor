@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Drawing;
 using System.Reflection;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Threading;
 using NetworkHealthMonitor.Data;
 using NetworkHealthMonitor.Infrastructure;
@@ -101,6 +102,10 @@ public partial class MainWindow : Window
         Loaded += MainWindowLoaded;
         Closing += MainWindowClosing;
         StateChanged += MainWindowStateChanged;
+        SizeChanged += MainWindow_SizeChanged;
+        DevicesGrid.MouseDoubleClick += DevicesGrid_MouseDoubleClick;
+
+        _viewModel.IsCompactLayout = Width < 1280;
 
         _notifyIcon = CreateNotifyIcon();
     }
@@ -246,5 +251,23 @@ public partial class MainWindow : Window
     {
         _exitRequested = true;
         Close();
+    }
+
+    private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        _viewModel.IsCompactLayout = ActualWidth < 1280;
+    }
+
+    private void DevicesGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (_viewModel.SelectedDevice is null || _viewModel.IsBusy)
+        {
+            return;
+        }
+
+        if (_viewModel.EditDeviceCommand.CanExecute(_viewModel.SelectedDevice))
+        {
+            _viewModel.EditDeviceCommand.Execute(_viewModel.SelectedDevice);
+        }
     }
 }

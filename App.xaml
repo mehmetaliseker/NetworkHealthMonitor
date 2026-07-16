@@ -14,6 +14,16 @@
         <SolidColorBrush x:Key="SuccessBrush" Color="#16A34A" />
         <SolidColorBrush x:Key="TextBrush" Color="#172033" />
         <SolidColorBrush x:Key="MutedTextBrush" Color="#64748B" />
+        <SolidColorBrush x:Key="SuccessBannerBackgroundBrush" Color="#ECFDF5" />
+        <SolidColorBrush x:Key="SuccessBannerBorderBrush" Color="#86EFAC" />
+        <SolidColorBrush x:Key="ErrorBannerBackgroundBrush" Color="#FEF2F2" />
+        <SolidColorBrush x:Key="ErrorBannerBorderBrush" Color="#FCA5A5" />
+
+        <Thickness x:Key="SpacingXs">4</Thickness>
+        <Thickness x:Key="SpacingSm">8</Thickness>
+        <Thickness x:Key="SpacingMd">12</Thickness>
+        <Thickness x:Key="SpacingLg">16</Thickness>
+        <Thickness x:Key="SpacingXl">24</Thickness>
 
         <Style TargetType="Window">
             <Setter Property="FontFamily" Value="Segoe UI" />
@@ -35,6 +45,41 @@
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="8" />
             <Setter Property="Padding" Value="12" />
+        </Style>
+
+        <Style x:Key="FormLabelStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+        </Style>
+
+        <Style x:Key="EmptyStateStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="TextAlignment" Value="Center" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="{StaticResource SpacingXl}" />
+        </Style>
+
+        <Style x:Key="SuccessBannerStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource SuccessBannerBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource SuccessBannerBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="12,10" />
+            <Setter Property="Margin" Value="0,0,0,10" />
+        </Style>
+
+        <Style x:Key="ErrorBannerStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource ErrorBannerBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource ErrorBannerBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="12,10" />
+            <Setter Property="Margin" Value="0,0,0,10" />
         </Style>
 
         <Style TargetType="Button">
@@ -83,6 +128,38 @@
             <Setter Property="Background" Value="{StaticResource SuccessBrush}" />
         </Style>
 
+        <Style x:Key="GhostButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="GhostBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              RecognizesAccessKey="True" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="GhostBorder" Property="Background" Value="#EEF3FA" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="GhostBorder" Property="Opacity" Value="0.55" />
+                                <Setter Property="Cursor" Value="Arrow" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="SmallButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="MinHeight" Value="28" />
             <Setter Property="Padding" Value="9,4" />
@@ -104,6 +181,52 @@
             <Setter Property="HorizontalContentAlignment" Value="Left" />
             <Setter Property="Padding" Value="14,10" />
             <Setter Property="Margin" Value="0,2" />
+        </Style>
+
+        <Style x:Key="SidebarNavButtonStyle" TargetType="Button" BasedOn="{StaticResource SidebarButtonStyle}">
+            <Setter Property="FontWeight" Value="Normal" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="NavRoot"
+                                Background="Transparent"
+                                Padding="{TemplateBinding Padding}"
+                                Margin="{TemplateBinding Margin}">
+                            <Grid>
+                                <Border x:Name="NavAccent"
+                                        Width="3"
+                                        HorizontalAlignment="Left"
+                                        Background="Transparent"
+                                        CornerRadius="2" />
+                                <ContentPresenter Margin="10,0,0,0"
+                                                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalAlignment="Center"
+                                                  RecognizesAccessKey="True" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Tag" Value="True">
+                                <Setter Property="FontWeight" Value="Bold" />
+                                <Setter TargetName="NavAccent" Property="Background" Value="{StaticResource PrimaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="NavRoot" Property="Background" Value="#1F2937" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="NavRoot" Property="Opacity" Value="0.55" />
+                                <Setter Property="Cursor" Value="Arrow" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SidebarSecondaryNavButtonStyle" TargetType="Button" BasedOn="{StaticResource SidebarNavButtonStyle}">
+            <Setter Property="Foreground" Value="{StaticResource SidebarMutedBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Padding" Value="14,7" />
+            <Setter Property="Margin" Value="0,1" />
         </Style>
 
         <Style TargetType="TextBox">

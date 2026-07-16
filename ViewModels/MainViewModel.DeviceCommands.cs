@@ -43,8 +43,15 @@ public sealed partial class MainViewModel
             }
 
             StatusMessage = result.Message;
-            ClearDeviceForm();
             await ReloadAllAsync();
+            SelectedDevice = Devices.FirstOrDefault(item => item.Id == device.Id) ?? Devices.FirstOrDefault(item =>
+                string.Equals(item.IpAddress, device.IpAddress, StringComparison.OrdinalIgnoreCase));
+            IsDeviceFormVisible = SelectedDevice is not null && !IsCompactLayout;
+            if (IsCompactLayout)
+            {
+                IsDeviceFormVisible = false;
+            }
+
             CurrentSection = SectionDevices;
         }
         finally
@@ -79,7 +86,8 @@ public sealed partial class MainViewModel
         FormSlaTargetAvailabilityPercent = device.SlaTargetAvailabilityPercent;
         OnPropertyChanged(nameof(DeviceFormTitle));
         OnPropertyChanged(nameof(DeviceFormActionText));
-        CurrentSection = SectionDeviceEdit;
+        IsDeviceFormVisible = true;
+        CurrentSection = SectionDevices;
     }
 
     private void ClearDeviceForm()
@@ -105,6 +113,19 @@ public sealed partial class MainViewModel
         OnPropertyChanged(nameof(DeviceFormActionText));
     }
 
+    private void ClearDeviceFilters()
+    {
+        DeviceSearchText = string.Empty;
+        DeviceTypeFilter = AllDeviceTypesText;
+        DeviceStatusFilter = AllStatusesText;
+        DeviceGroupFilter = AllGroupsText;
+        CriticalFilter = AllCriticalText;
+        DeletedDeviceFilter = ActiveDevicesText;
+        OnPropertyChanged(nameof(ActiveDeviceFilterCount));
+        OnPropertyChanged(nameof(ActiveDeviceFilterCountText));
+        OnPropertyChanged(nameof(HasNoFilteredDevices));
+    }
+
     private async Task DeleteDeviceAsync(Device? device)
     {
         if (device is null)
@@ -116,14 +137,14 @@ public sealed partial class MainViewModel
             plan.IsActive
             && _schedulePlanTargetResolver.ResolveTargets(plan, new[] { device }, DeviceGroups, respectAutoCheck: false).Any());
         var message = $"""
-            Cihaz adi: {device.Name}
-            IP adresi: {device.IpAddress}
-            Cihaz tipi: {device.DeviceType.ToDisplayName()}
-            Grup: {(string.IsNullOrWhiteSpace(device.GroupName) ? "-" : device.GroupName)}
-            Etkilenecek aktif plan sayisi: {activePlanCount}
+            “{device.Name}” adlı cihaz aktif listeden kaldırılacaktır.
 
-            Bu cihaz otomatik kontrollerden cikarilacaktir.
-            Gecmis ping ve kesinti kayitlari korunacaktir.
+            IP adresi: {device.IpAddress}
+            Cihaz türü: {device.DeviceType.ToDisplayName()}
+            Grup: {(string.IsNullOrWhiteSpace(device.GroupName) ? "-" : device.GroupName)}
+            Etkilenecek aktif plan sayısı: {activePlanCount}
+
+            Geçmiş ping kayıtları ve kesinti geçmişi korunacaktır.
             """;
 
         if (!_dialogService.Confirm("Cihaz silinsin mi?", message))
@@ -135,7 +156,14 @@ public sealed partial class MainViewModel
         try
         {
             var result = await _deviceService.DeleteAsync(device);
-            StatusMessage = result.Message;
+            StatusMessage = result.Success ? "Cihaz silindi." : result.Message;
+            if (SelectedDevice?.Id == device.Id)
+            {
+                SelectedDevice = null;
+            }
+
+            IsDeviceFormVisible = false;
+            ClearDeviceForm();
             await ReloadAllAsync();
         }
         finally

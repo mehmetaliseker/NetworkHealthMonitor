@@ -295,37 +295,61 @@ public sealed partial class MainViewModel
     {
         var settings = CreateSettingsFromCurrentValues();
         settings.Notifications.Enabled = true;
+        settings.Notifications.BaseUrl = settings.Notifications.BaseUrl.Trim();
+        settings.Notifications.Topic = settings.Notifications.Topic.Trim();
+        settings.Notifications.AccessToken = settings.Notifications.AccessToken.Trim();
+
+        var topic = settings.Notifications.Topic;
         var payload = new NtfyNotificationPayload
         {
             EventType = "Test",
-            Title = "Network Health Monitor test bildirimi",
-            Message = $"Test zamani: {DateTime.Now:dd.MM.yyyy HH:mm:ss}",
+            Title = "NetworkHealthMonitor test bildirimi",
+            Message = "Bildirim ayarlarınız başarıyla doğrulandı.",
             Priority = "default",
-            Tags = "bell"
+            Tags = "white_check_mark"
         };
 
         IsBusy = true;
+        IsSendingTestNotification = true;
+        NotificationLastTestResult = "Bildirim gönderiliyor…";
+        NotificationLastTestTechnicalDetail = string.Empty;
+        NotificationShowTechnicalDetail = false;
         try
         {
             var result = await _ntfyNotificationClient.PublishAsync(settings.Notifications, payload);
-            NotificationLastTestResult = result.Success ? "Test bildirimi gonderildi." : result.SafeErrorMessage;
-            settings.Notifications.LastTestAtUtc = DateTime.UtcNow;
-            settings.Notifications.LastTestResult = NotificationLastTestResult;
             if (result.Success)
             {
+                NotificationLastTestResult =
+                    $"Test bildirimi başarıyla gönderildi.{Environment.NewLine}" +
+                    $"Telefonunuzdaki ntfy uygulamasında “{topic}” konusunu kontrol edin.";
                 settings.Notifications.LastSuccessfulNotificationAtUtc = DateTime.UtcNow;
                 settings.Notifications.LastNotificationError = string.Empty;
+                NotificationLastError = string.Empty;
+                NotificationLastTestTechnicalDetail = string.Empty;
             }
             else
             {
+                NotificationLastTestResult = string.IsNullOrWhiteSpace(result.UserMessage)
+                    ? result.SafeErrorMessage
+                    : result.UserMessage;
+                NotificationLastTestTechnicalDetail = result.TechnicalDetail;
                 settings.Notifications.LastNotificationError = result.SafeErrorMessage;
+                NotificationLastError = result.SafeErrorMessage;
             }
 
+            settings.Notifications.LastTestAtUtc = DateTime.UtcNow;
+            settings.Notifications.LastTestResult = NotificationLastTestResult;
             await _settingsService.SaveAsync(settings);
             ApplySettings(settings);
+            NotificationLastTestResult = settings.Notifications.LastTestResult;
+            if (!result.Success)
+            {
+                NotificationLastTestTechnicalDetail = result.TechnicalDetail;
+            }
         }
         finally
         {
+            IsSendingTestNotification = false;
             IsBusy = false;
         }
     }

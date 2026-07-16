@@ -15,12 +15,12 @@ public static class PingTriggerTypeExtensions
     {
         return triggerType switch
         {
-            PingTriggerType.Scheduled => "Otomatik",
-            PingTriggerType.GroupManual => "Grup manuel",
-            PingTriggerType.TypeManual => "Tip manuel",
-            PingTriggerType.SelectedDeviceManual => "Seçili cihaz manuel",
-            PingTriggerType.Manual => "Manuel",
-            _ => "Manuel"
+            PingTriggerType.Scheduled => "Otomatik kontrol",
+            PingTriggerType.GroupManual => "Grup manuel kontrol",
+            PingTriggerType.TypeManual => "Tip manuel kontrol",
+            PingTriggerType.SelectedDeviceManual => "Seçili cihaz manuel kontrol",
+            PingTriggerType.Manual => "Manuel kontrol",
+            _ => "Manuel kontrol"
         };
     }
 

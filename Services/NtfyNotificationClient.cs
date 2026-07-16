@@ -1,12 +1,19 @@
 using System.Net;
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
+using System.Text;
+using System.Text.Json;
 using NetworkHealthMonitor.Models;
 
 namespace NetworkHealthMonitor.Services;
 
 public sealed class NtfyNotificationClient : INtfyNotificationClient
 {
+    private static readonly JsonSerializerOptions SerializerOptions = new()
+    {
+        PropertyNamingPolicy = null,
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+    };
+
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ISecretProtector _secretProtector;
 
@@ -23,23 +30,48 @@ public sealed class NtfyNotificationClient : INtfyNotificationClient
     {
         if (!settings.Enabled)
         {
-            return new NtfyPublishResult(false, true, null, null, "Notifications are disabled.");
+            return CreateValidationFailure(
+                "Bildirimler kapalı.\nTest için ntfy bildirimlerini etkinleştirin veya test gönderimi ayarları geçici olarak açar.",
+                NtfyFailureKind.Disabled,
+                isTransient: true);
         }
 
-        if (string.IsNullOrWhiteSpace(settings.Topic))
+        var topic = NtfyPublishRequestFactory.NormalizeTopic(settings.Topic);
+        if (!NtfyPublishRequestFactory.IsTopicValid(topic))
         {
-            return new NtfyPublishResult(false, false, null, null, "Notification topic is empty.");
+            return CreateValidationFailure(
+                "Konu adı geçersiz.\nKonu boş olamaz ve /, ? veya # karakterleri içeremez.",
+                NtfyFailureKind.Validation);
         }
 
-        if (!Uri.TryCreate(settings.BaseUrl, UriKind.Absolute, out var baseUri))
+        Uri baseUri;
+        try
         {
-            return new NtfyPublishResult(false, false, null, null, "Notification server URL is invalid.");
+            baseUri = NtfyPublishRequestFactory.NormalizeBaseUri(settings.BaseUrl);
+        }
+        catch (ArgumentException)
+        {
+            return CreateValidationFailure(
+                "Sunucu adresi geçersiz.\nhttp:// veya https:// ile başlayan geçerli bir adres girin.",
+                NtfyFailureKind.Validation);
         }
 
         if (baseUri.Scheme != Uri.UriSchemeHttps && !(settings.AllowInsecureHttp && baseUri.Scheme == Uri.UriSchemeHttp))
         {
-            return new NtfyPublishResult(false, false, null, null, "Notification server must use HTTPS unless insecure HTTP is explicitly allowed.");
+            return CreateValidationFailure(
+                "Sunucu adresi güvenli olmalıdır.\nGenel kullanım için https:// kullanın.",
+                NtfyFailureKind.Validation);
         }
+
+        if (LooksLikeTopicInUrl(baseUri, topic))
+        {
+            return CreateValidationFailure(
+                "Sunucu adresine konu eklemeyin.\nSunucu alanı yalnızca https://ntfy.sh gibi kök adresi içermelidir; konu ayrı alana yazılır.",
+                NtfyFailureKind.Validation);
+        }
+
+        var requestDto = NtfyPublishRequestFactory.Create(settings, payload);
+        var json = JsonSerializer.Serialize(requestDto, SerializerOptions);
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(settings.RequestTimeoutSeconds, 1, 120)));
@@ -47,20 +79,12 @@ public sealed class NtfyNotificationClient : INtfyNotificationClient
         try
         {
             using var client = _httpClientFactory.CreateClient("NetworkHealthMonitor.ntfy");
-            client.BaseAddress = baseUri;
             client.Timeout = Timeout.InfiniteTimeSpan;
 
-            using var request = new HttpRequestMessage(HttpMethod.Post, string.Empty);
-            request.Content = JsonContent.Create(new
-            {
-                topic = settings.Topic,
-                title = Trim(payload.Title, 160),
-                message = Trim(payload.Message, 1800),
-                priority = payload.Priority,
-                tags = payload.Tags
-            });
+            using var request = new HttpRequestMessage(HttpMethod.Post, baseUri);
+            request.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
-            var token = _secretProtector.Unprotect(settings.AccessToken);
+            var token = (_secretProtector.Unprotect(settings.AccessToken) ?? string.Empty).Trim();
             if (!string.IsNullOrWhiteSpace(token))
             {
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -73,18 +97,30 @@ public sealed class NtfyNotificationClient : INtfyNotificationClient
             }
 
             var body = await ReadSafeBodyAsync(response, timeoutCts.Token);
-            return new NtfyPublishResult(
+            var technical = NtfyUserMessageMapper.CreateTechnicalDetail((int)response.StatusCode, body, NtfyFailureKind.Http);
+            var failure = new NtfyPublishResult(
                 false,
                 IsTransient(response.StatusCode),
                 (int)response.StatusCode,
                 response.Headers.RetryAfter?.Delta,
-                string.IsNullOrWhiteSpace(body)
-                    ? $"HTTP {(int)response.StatusCode}"
-                    : $"HTTP {(int)response.StatusCode}: {body}");
+                technical,
+                string.Empty,
+                technical,
+                NtfyFailureKind.Http);
+
+            var userMessage = NtfyUserMessageMapper.CreateUserMessage(failure);
+            return failure with
+            {
+                SafeErrorMessage = userMessage,
+                UserMessage = userMessage
+            };
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return new NtfyPublishResult(false, true, null, null, "Notification request timed out.");
+            var technical = NtfyUserMessageMapper.CreateTechnicalDetail(null, "Request timed out.", NtfyFailureKind.Timeout);
+            var userMessage = NtfyUserMessageMapper.CreateUserMessage(new NtfyPublishResult(
+                false, true, null, null, technical, string.Empty, technical, NtfyFailureKind.Timeout));
+            return new NtfyPublishResult(false, true, null, null, userMessage, userMessage, technical, NtfyFailureKind.Timeout);
         }
         catch (OperationCanceledException)
         {
@@ -92,8 +128,40 @@ public sealed class NtfyNotificationClient : INtfyNotificationClient
         }
         catch (HttpRequestException ex)
         {
-            return new NtfyPublishResult(false, true, null, null, Trim(ex.Message, 500));
+            var technical = NtfyUserMessageMapper.CreateTechnicalDetail(
+                null,
+                NtfyUserMessageMapper.Sanitize(ex.Message),
+                NtfyFailureKind.Network);
+            var userMessage = NtfyUserMessageMapper.CreateUserMessage(new NtfyPublishResult(
+                false, true, null, null, technical, string.Empty, technical, NtfyFailureKind.Network));
+            return new NtfyPublishResult(false, true, null, null, userMessage, userMessage, technical, NtfyFailureKind.Network);
         }
+    }
+
+    private static bool LooksLikeTopicInUrl(Uri baseUri, string topic)
+    {
+        if (string.IsNullOrWhiteSpace(baseUri.AbsolutePath) || baseUri.AbsolutePath == "/")
+        {
+            return false;
+        }
+
+        var path = baseUri.AbsolutePath.Trim('/');
+        return path.Equals(topic, StringComparison.OrdinalIgnoreCase)
+            || path.Contains('/', StringComparison.Ordinal);
+    }
+
+    private static NtfyPublishResult CreateValidationFailure(string userMessage, string failureKind, bool isTransient = false)
+    {
+        var technical = NtfyUserMessageMapper.CreateTechnicalDetail(null, userMessage, failureKind);
+        return new NtfyPublishResult(
+            false,
+            isTransient,
+            null,
+            null,
+            userMessage,
+            userMessage,
+            technical,
+            failureKind);
     }
 
     private static bool IsTransient(HttpStatusCode statusCode)
@@ -106,12 +174,6 @@ public sealed class NtfyNotificationClient : INtfyNotificationClient
     private static async Task<string> ReadSafeBodyAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
-        return Trim(body.ReplaceLineEndings(" "), 500);
-    }
-
-    private static string Trim(string value, int maxLength)
-    {
-        var text = value?.Trim() ?? string.Empty;
-        return text.Length <= maxLength ? text : text[..maxLength];
+        return NtfyUserMessageMapper.Sanitize(body.ReplaceLineEndings(" ").Trim());
     }
 }

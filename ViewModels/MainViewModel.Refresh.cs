@@ -413,6 +413,7 @@ public sealed partial class MainViewModel
         StartSchedulerCommand?.NotifyCanExecuteChanged();
         StopSchedulerCommand?.NotifyCanExecuteChanged();
         RefreshLogsCommand?.NotifyCanExecuteChanged();
+        RefreshDevicesCommand?.NotifyCanExecuteChanged();
         ClearLogsCommand?.NotifyCanExecuteChanged();
         ClearOldLogsCommand?.NotifyCanExecuteChanged();
         ExportLogsCommand?.NotifyCanExecuteChanged();

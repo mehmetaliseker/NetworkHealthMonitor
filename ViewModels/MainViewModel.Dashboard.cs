@@ -43,17 +43,17 @@ public sealed partial class MainViewModel
         var cards = new[]
         {
             new SummaryCardViewModel("Toplam aktif cihaz", "0", "#2563EB"),
-            new SummaryCardViewModel("Up cihaz", "0", "#16A34A"),
-            new SummaryCardViewModel("Down cihaz", "0", "#DC2626"),
-            new SummaryCardViewModel("Unknown cihaz", "0", "#64748B"),
-            new SummaryCardViewModel("Maintenance cihaz", "0", "#0F766E"),
-            new SummaryCardViewModel("Acik incident", "0", "#EA580C"),
-            new SummaryCardViewModel("24s availability", "-", "#0F766E"),
-            new SummaryCardViewModel("7g availability", "-", "#0F766E"),
-            new SummaryCardViewModel("30g availability", "-", "#0F766E"),
-            new SummaryCardViewModel("Genel coverage", "-", "#7C3AED"),
+            new SummaryCardViewModel("Erişilebilir", "0", "#16A34A"),
+            new SummaryCardViewModel("Erişilemiyor", "0", "#DC2626"),
+            new SummaryCardViewModel("Kontrol edilmedi", "0", "#64748B"),
+            new SummaryCardViewModel("Bakımda", "0", "#0F766E"),
+            new SummaryCardViewModel("Açık kesinti", "0", "#EA580C"),
+            new SummaryCardViewModel("24 saat erişilebilirlik", "-", "#0F766E"),
+            new SummaryCardViewModel("7 gün erişilebilirlik", "-", "#0F766E"),
+            new SummaryCardViewModel("30 gün erişilebilirlik", "-", "#0F766E"),
+            new SummaryCardViewModel("Genel kapsama", "-", "#475569"),
             new SummaryCardViewModel("SLA ihlali", "0", "#DC2626"),
-            new SummaryCardViewModel("Failed bildirim", "0", "#DC2626")
+            new SummaryCardViewModel("Başarısız bildirim", "0", "#DC2626")
         };
 
         SummaryCards.Clear();

@@ -31,13 +31,14 @@ public static class AvailabilityStatusExtensions
     {
         return status switch
         {
-            AvailabilityStatus.Up => "Ag erisilebilir",
-            AvailabilityStatus.SuspectedDown => "Kesinti supheli",
+            AvailabilityStatus.Up => "Erişilebilir",
+            AvailabilityStatus.SuspectedDown => "Kesinti şüpheli",
             AvailabilityStatus.Down => "Kesinti",
-            AvailabilityStatus.SuspectedRecovery => "Toparlanma supheli",
-            AvailabilityStatus.Maintenance => "Planli bakim",
-            AvailabilityStatus.Paused => "Izleme duraklatildi",
-            _ => "Bilinmiyor"
+            AvailabilityStatus.SuspectedRecovery => "Düzelme şüpheli",
+            AvailabilityStatus.Maintenance => "Planlı bakım",
+            AvailabilityStatus.Paused => "İzleme duraklatıldı",
+            AvailabilityStatus.Unknown => "Kontrol edilmedi",
+            _ => "Kontrol edilmedi"
         };
     }
 

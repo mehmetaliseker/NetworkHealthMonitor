@@ -10,27 +10,27 @@ namespace NetworkHealthMonitor.ViewModels;
 
 public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 {
-    private const string SectionDashboard = "Dashboard";
+    private const string SectionDashboard = "Genel Bakış";
     private const string SectionDevices = "Cihazlar";
-    private const string SectionDeviceEdit = "Cihaz Ekle / Düzenle";
+    private const string SectionDeviceEdit = "Cihaz Formu";
     private const string SectionGroups = "Cihaz Grupları";
-    private const string SectionSchedules = "Otomatik Kontrol Planları";
-    private const string SectionAvailability = "Ag Erisilebilirligi";
-    private const string SectionLogs = "Ping Logları";
-    private const string SectionNotifications = "Bildirim Kuyrugu";
+    private const string SectionSchedules = "Kontrol Planları";
+    private const string SectionAvailability = "Kesintiler";
+    private const string SectionLogs = "Ping Kayıtları";
+    private const string SectionNotifications = "Bildirimler";
     private const string SectionSettings = "Ayarlar";
-    private const string AllDeviceTypesText = "Tüm Tipler";
-    private const string AllStatusesText = "Tüm Durumlar";
-    private const string AllGroupsText = "Tüm Gruplar";
-    private const string AllTriggersText = "Tüm Kaynaklar";
-    private const string AllCriticalText = "Tüm Cihazlar";
-    private const string CriticalOnlyText = "Sadece kritik";
+    private const string AllDeviceTypesText = "Tüm tipler";
+    private const string AllStatusesText = "Tüm durumlar";
+    private const string AllGroupsText = "Tüm gruplar";
+    private const string AllTriggersText = "Tüm kaynaklar";
+    private const string AllCriticalText = "Tüm cihazlar";
+    private const string CriticalOnlyText = "Yalnızca kritik";
     private const string NonCriticalOnlyText = "Kritik olmayan";
-    private const string ActiveDevicesText = "Aktif kayitlar";
+    private const string ActiveDevicesText = "Etkin kayıtlar";
     private const string DeletedDevicesText = "Silinen cihazlar";
-    private const string AllDeletionStatesText = "Tum kayitlar";
-    private const string AllOutboxStatusesText = "Tum durumlar";
-    private const string AllOutboxEventTypesText = "Tum bildirimler";
+    private const string AllDeletionStatesText = "Tüm kayıtlar";
+    private const string AllOutboxStatusesText = "Tüm durumlar";
+    private const string AllOutboxEventTypesText = "Tüm bildirimler";
 
     private readonly DeviceRepository _deviceRepository;
     private readonly DeviceGroupRepository _deviceGroupRepository;
@@ -152,6 +152,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private int _notificationMaxRetryCount = 5;
     private int _notificationInitialRetryDelaySeconds = 30;
     private string _notificationLastTestResult = string.Empty;
+    private string _notificationLastTestTechnicalDetail = string.Empty;
+    private bool _notificationShowTechnicalDetail;
+    private bool _isSendingTestNotification;
+    private bool _isDeviceFormVisible;
+    private bool _isCompactLayout;
     private string _notificationLastSuccessfulAtText = "-";
     private string _notificationLastError = string.Empty;
     private string _workerHealthText = "Bilinmiyor";
@@ -300,9 +305,22 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         LogsView = CollectionViewSource.GetDefaultView(Logs);
         LogsView.SortDescriptions.Add(new SortDescription(nameof(PingLog.CheckedAt), ListSortDirection.Descending));
 
-        NavigateDashboardCommand = new RelayCommand(() => CurrentSection = SectionDashboard);
-        NavigateDevicesCommand = new RelayCommand(() => CurrentSection = SectionDevices);
-        NavigateDeviceEditCommand = new RelayCommand(() => CurrentSection = SectionDeviceEdit);
+        NavigateDashboardCommand = new RelayCommand(() =>
+        {
+            IsDeviceFormVisible = false;
+            CurrentSection = SectionDashboard;
+        });
+        NavigateDevicesCommand = new RelayCommand(() =>
+        {
+            IsDeviceFormVisible = false;
+            CurrentSection = SectionDevices;
+        });
+        NavigateDeviceEditCommand = new RelayCommand(() =>
+        {
+            ClearDeviceForm();
+            IsDeviceFormVisible = true;
+            CurrentSection = SectionDevices;
+        });
         NavigateGroupsCommand = new RelayCommand(() => CurrentSection = SectionGroups);
         NavigateSchedulesCommand = new RelayCommand(() => CurrentSection = SectionSchedules);
         NavigateAvailabilityCommand = new RelayCommand(() => CurrentSection = SectionAvailability);
@@ -312,6 +330,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         NavigateLogsCommand = new RelayCommand(() => CurrentSection = SectionLogs);
         NavigateNotificationsCommand = new RelayCommand(() => CurrentSection = SectionNotifications);
         NavigateSettingsCommand = new RelayCommand(() => CurrentSection = SectionSettings);
+        CloseDeviceFormCommand = new RelayCommand(() =>
+        {
+            ClearDeviceForm();
+            IsDeviceFormVisible = false;
+        });
+        ClearDeviceFiltersCommand = new RelayCommand(ClearDeviceFilters);
 
         SaveDeviceCommand = new AsyncRelayCommand(SaveDeviceAsync, () => !IsBusy);
         ClearDeviceFormCommand = new RelayCommand(ClearDeviceForm, () => !IsBusy);
@@ -354,6 +378,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         StopSchedulerCommand = new AsyncRelayCommand(ShowServiceControlInfoAsync, () => !IsBusy);
 
         RefreshLogsCommand = new AsyncRelayCommand(LoadLogsAsync, () => !IsBusy);
+        RefreshDevicesCommand = new AsyncRelayCommand(ReloadAllAsync, () => !IsBusy);
         ClearLogsCommand = new AsyncRelayCommand(ClearLogsAsync, () => Logs.Count > 0 && !IsBusy);
         ClearOldLogsCommand = new AsyncRelayCommand(ClearOldLogsAsync, () => !IsBusy && LogRetentionDays > 0);
         ExportLogsCommand = new AsyncRelayCommand(ExportLogsAsync, () => Logs.Count > 0 && !IsBusy);
@@ -388,7 +413,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         OptimizeDatabaseCommand = new AsyncRelayCommand(OptimizeDatabaseAsync, () => !IsBusy);
         ExportSettingsCommand = new AsyncRelayCommand(ExportSettingsAsync, () => !IsBusy);
         ImportSettingsCommand = new AsyncRelayCommand(ImportSettingsAsync, () => !IsBusy);
-        SendTestNotificationCommand = new AsyncRelayCommand(SendTestNotificationAsync, () => !IsBusy);
+        SendTestNotificationCommand = new AsyncRelayCommand(
+            SendTestNotificationAsync,
+            () => !IsBusy && !IsSendingTestNotification && CanSendTestNotification);
         OpenLogFolderCommand = new RelayCommand(OpenLogFolder);
 
         _schedulerService.StatusChanged += SchedulerStatusChanged;
@@ -489,6 +516,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public RelayCommand NavigateLogsCommand { get; }
     public RelayCommand NavigateNotificationsCommand { get; }
     public RelayCommand NavigateSettingsCommand { get; }
+    public RelayCommand CloseDeviceFormCommand { get; }
+    public RelayCommand ClearDeviceFiltersCommand { get; }
     public AsyncRelayCommand SaveDeviceCommand { get; }
     public RelayCommand ClearDeviceFormCommand { get; }
     public RelayCommand EditSelectedDeviceCommand { get; }
@@ -526,6 +555,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public AsyncRelayCommand StartSchedulerCommand { get; }
     public AsyncRelayCommand StopSchedulerCommand { get; }
     public AsyncRelayCommand RefreshLogsCommand { get; }
+    public AsyncRelayCommand RefreshDevicesCommand { get; }
     public AsyncRelayCommand ClearLogsCommand { get; }
     public AsyncRelayCommand ClearOldLogsCommand { get; }
     public AsyncRelayCommand ExportLogsCommand { get; }
@@ -564,6 +594,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 OnPropertyChanged(nameof(IsDashboardSection));
                 OnPropertyChanged(nameof(IsDevicesSection));
                 OnPropertyChanged(nameof(IsDeviceEditSection));
+                OnPropertyChanged(nameof(IsDeviceWorkspaceVisible));
                 OnPropertyChanged(nameof(IsGroupsSection));
                 OnPropertyChanged(nameof(IsSchedulesSection));
                 OnPropertyChanged(nameof(IsAvailabilitySection));
@@ -573,38 +604,65 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 OnPropertyChanged(nameof(IsLogsSection));
                 OnPropertyChanged(nameof(IsNotificationsSection));
                 OnPropertyChanged(nameof(IsSettingsSection));
+                OnPropertyChanged(nameof(IsDashboardNavSelected));
+                OnPropertyChanged(nameof(IsDevicesNavSelected));
+                OnPropertyChanged(nameof(IsSchedulesNavSelected));
+                OnPropertyChanged(nameof(IsLogsNavSelected));
+                OnPropertyChanged(nameof(IsAvailabilityNavSelected));
+                OnPropertyChanged(nameof(IsNotificationsNavSelected));
+                OnPropertyChanged(nameof(IsSettingsNavSelected));
+                OnPropertyChanged(nameof(IsReadinessNavSelected));
+                OnPropertyChanged(nameof(IsGroupsNavSelected));
+                OnPropertyChanged(nameof(IsMaintenanceNavSelected));
+                OnPropertyChanged(nameof(IsCalendarsNavSelected));
             }
         }
     }
 
-    public string SectionTitle => CurrentSection;
+    public string SectionTitle => CurrentSection switch
+    {
+        SectionDeviceEdit => SectionDevices,
+        _ => CurrentSection
+    };
 
     public string SectionSubtitle => CurrentSection switch
     {
-        SectionDashboard => "Ağın genel durumunu, kritik cihazları ve son kontrolleri izleyin.",
-        SectionDevices => "Manuel eklenen cihazları arayın, filtreleyin ve hızlı ping işlemleri yapın.",
-        SectionDeviceEdit => "Cihaz ekleme ve düzenleme işlemleri bu ayrı formdan yapılır.",
-        SectionGroups => "Kullanıcı tanımlı grupları yönetin ve grup bazlı ping çalıştırın.",
+        SectionDashboard => "İzleme servisi durumu, cihaz özeti ve açık kesintileri tek bakışta görün.",
+        SectionDevices => "Ağdaki cihazları görüntüleyin, filtreleyin ve yönetin.",
+        SectionDeviceEdit => "Cihaz bilgilerini girin veya güncelleyin.",
+        SectionGroups => "Kullanıcı tanımlı grupları yönetin ve grup bazlı kontrol çalıştırın.",
         SectionSchedules => "Cihaz, tip, grup veya kritik cihaz bazlı otomatik kontrol planları oluşturun.",
-        SectionAvailability => "Ping tabanli ag erisilebilirligi, kesinti, Unknown ve coverage metriklerini takip edin.",
-        SectionMaintenance => "Planli bakim pencerelerini ve hedeflerini yonetin.",
-        SectionCalendars => "Izleme takvimleri, gun/saat kurallari ve cihaz/grup atamalarini yonetin.",
-        SectionReadiness => "Windows Service, heartbeat, outbox, disk ve diagnostics durumunu dogrulayin.",
+        SectionAvailability => "Açık ve kapanan kesintileri, erişilebilirlik metriklerini inceleyin.",
+        SectionMaintenance => "Planlı bakım pencerelerini ve hedeflerini yönetin.",
+        SectionCalendars => "İzleme takvimleri, gün/saat kuralları ve cihaz/grup atamalarını yönetin.",
+        SectionReadiness => "İzleme servisi, heartbeat, bildirim kuyruğu ve sistem kontrollerini doğrulayın.",
         SectionLogs => "Ping geçmişini filtreleyin, temizleyin ve CSV olarak dışa aktarın.",
         SectionSettings => "Genel uygulama davranışlarını ve veri bakımını yönetin.",
-        SectionNotifications => "Failed ve pending bildirim outbox kayitlarini yonetin.",
+        SectionNotifications => "ntfy bağlantı ayarlarını yönetin ve bildirim kuyruğunu izleyin.",
         _ => string.Empty
     };
 
     public bool IsDashboardSection => CurrentSection == SectionDashboard;
-    public bool IsDevicesSection => CurrentSection == SectionDevices;
-    public bool IsDeviceEditSection => CurrentSection == SectionDeviceEdit;
+    public bool IsDevicesSection => CurrentSection is SectionDevices or SectionDeviceEdit;
+    public bool IsDeviceEditSection => CurrentSection == SectionDeviceEdit || (CurrentSection == SectionDevices && IsDeviceFormVisible && IsCompactLayout);
+    public bool IsDeviceWorkspaceVisible => CurrentSection is SectionDevices or SectionDeviceEdit;
     public bool IsGroupsSection => CurrentSection == SectionGroups;
     public bool IsSchedulesSection => CurrentSection == SectionSchedules;
     public bool IsAvailabilitySection => CurrentSection == SectionAvailability;
     public bool IsLogsSection => CurrentSection == SectionLogs;
     public bool IsNotificationsSection => CurrentSection == SectionNotifications;
     public bool IsSettingsSection => CurrentSection == SectionSettings;
+    public bool IsDashboardNavSelected => IsDashboardSection;
+    public bool IsDevicesNavSelected => IsDeviceWorkspaceVisible;
+    public bool IsSchedulesNavSelected => IsSchedulesSection;
+    public bool IsLogsNavSelected => IsLogsSection;
+    public bool IsAvailabilityNavSelected => IsAvailabilitySection;
+    public bool IsNotificationsNavSelected => IsNotificationsSection;
+    public bool IsSettingsNavSelected => IsSettingsSection;
+    public bool IsReadinessNavSelected => IsReadinessSection;
+    public bool IsGroupsNavSelected => IsGroupsSection;
+    public bool IsMaintenanceNavSelected => IsMaintenanceSection;
+    public bool IsCalendarsNavSelected => IsCalendarsSection;
 
     public bool IsBusy
     {
@@ -682,6 +740,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (SetProperty(ref _deviceSearchText, value ?? string.Empty))
             {
                 DevicesView.Refresh();
+                NotifyDeviceFilterState();
             }
         }
     }
@@ -694,6 +753,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (SetProperty(ref _deviceTypeFilter, value ?? AllDeviceTypesText))
             {
                 DevicesView.Refresh();
+                NotifyDeviceFilterState();
                 RaiseCommandStates();
             }
         }
@@ -707,6 +767,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (SetProperty(ref _deviceStatusFilter, value ?? AllStatusesText))
             {
                 DevicesView.Refresh();
+                NotifyDeviceFilterState();
             }
         }
     }
@@ -719,6 +780,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (SetProperty(ref _deviceGroupFilter, value ?? AllGroupsText))
             {
                 DevicesView.Refresh();
+                NotifyDeviceFilterState();
             }
         }
     }
@@ -731,6 +793,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (SetProperty(ref _criticalFilter, value ?? AllCriticalText))
             {
                 DevicesView.Refresh();
+                NotifyDeviceFilterState();
             }
         }
     }
@@ -743,6 +806,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (SetProperty(ref _deletedDeviceFilter, value ?? ActiveDevicesText))
             {
                 DevicesView.Refresh();
+                NotifyDeviceFilterState();
                 RaiseCommandStates();
             }
         }
@@ -1265,13 +1329,27 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public string NotificationBaseUrl
     {
         get => _notificationBaseUrl;
-        set => SetProperty(ref _notificationBaseUrl, value ?? string.Empty);
+        set
+        {
+            if (SetProperty(ref _notificationBaseUrl, value ?? string.Empty))
+            {
+                OnPropertyChanged(nameof(CanSendTestNotification));
+                RaiseCommandStates();
+            }
+        }
     }
 
     public string NotificationTopic
     {
         get => _notificationTopic;
-        set => SetProperty(ref _notificationTopic, value ?? string.Empty);
+        set
+        {
+            if (SetProperty(ref _notificationTopic, value ?? string.Empty))
+            {
+                OnPropertyChanged(nameof(CanSendTestNotification));
+                RaiseCommandStates();
+            }
+        }
     }
 
     public string NotificationAccessToken
@@ -1339,6 +1417,123 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         get => _notificationLastTestResult;
         private set => SetProperty(ref _notificationLastTestResult, value ?? string.Empty);
     }
+
+    public string NotificationLastTestTechnicalDetail
+    {
+        get => _notificationLastTestTechnicalDetail;
+        private set => SetProperty(ref _notificationLastTestTechnicalDetail, value ?? string.Empty);
+    }
+
+    public bool NotificationShowTechnicalDetail
+    {
+        get => _notificationShowTechnicalDetail;
+        set => SetProperty(ref _notificationShowTechnicalDetail, value);
+    }
+
+    public bool IsSendingTestNotification
+    {
+        get => _isSendingTestNotification;
+        private set
+        {
+            if (SetProperty(ref _isSendingTestNotification, value))
+            {
+                RaiseCommandStates();
+            }
+        }
+    }
+
+    public bool CanSendTestNotification =>
+        !string.IsNullOrWhiteSpace(NotificationBaseUrl)
+        && !string.IsNullOrWhiteSpace(NotificationTopic)
+        && NtfyPublishRequestFactory.IsTopicValid(NotificationTopic);
+
+    public bool IsDeviceFormVisible
+    {
+        get => _isDeviceFormVisible;
+        set
+        {
+            if (SetProperty(ref _isDeviceFormVisible, value))
+            {
+                OnPropertyChanged(nameof(IsDeviceEditSection));
+                OnPropertyChanged(nameof(ShowDeviceListPane));
+                OnPropertyChanged(nameof(ShowDeviceFormPane));
+            }
+        }
+    }
+
+    public bool IsCompactLayout
+    {
+        get => _isCompactLayout;
+        set
+        {
+            if (SetProperty(ref _isCompactLayout, value))
+            {
+                OnPropertyChanged(nameof(IsDeviceEditSection));
+                OnPropertyChanged(nameof(ShowDeviceListPane));
+                OnPropertyChanged(nameof(ShowDeviceFormPane));
+                OnPropertyChanged(nameof(DeviceWorkspaceColumns));
+            }
+        }
+    }
+
+    public bool ShowDeviceListPane => IsDeviceWorkspaceVisible && (!IsCompactLayout || !IsDeviceFormVisible);
+
+    public bool ShowDeviceFormPane => IsDeviceWorkspaceVisible && IsDeviceFormVisible;
+
+    public string DeviceWorkspaceColumns => IsCompactLayout || !IsDeviceFormVisible ? "*" : "*,380";
+
+    private void NotifyDeviceFilterState()
+    {
+        OnPropertyChanged(nameof(ActiveDeviceFilterCount));
+        OnPropertyChanged(nameof(ActiveDeviceFilterCountText));
+        OnPropertyChanged(nameof(HasNoFilteredDevices));
+    }
+
+    public int ActiveDeviceFilterCount
+    {
+        get
+        {
+            var count = 0;
+            if (!string.IsNullOrWhiteSpace(DeviceSearchText))
+            {
+                count++;
+            }
+
+            if (DeviceTypeFilter != AllDeviceTypesText)
+            {
+                count++;
+            }
+
+            if (DeviceStatusFilter != AllStatusesText)
+            {
+                count++;
+            }
+
+            if (DeviceGroupFilter != AllGroupsText)
+            {
+                count++;
+            }
+
+            if (CriticalFilter != AllCriticalText)
+            {
+                count++;
+            }
+
+            if (DeletedDeviceFilter != ActiveDevicesText)
+            {
+                count++;
+            }
+
+            return count;
+        }
+    }
+
+    public string ActiveDeviceFilterCountText =>
+        ActiveDeviceFilterCount == 0
+            ? "Filtre yok"
+            : $"{ActiveDeviceFilterCount} aktif filtre";
+
+    public bool HasNoFilteredDevices => DevicesView is { IsEmpty: true };
 
     public string NotificationLastSuccessfulAtText
     {
