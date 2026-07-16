@@ -316,6 +316,31 @@ public sealed partial class MainViewModel
             }));
     }
 
+    private async Task TryLoadDashboardAnalyticsAsync()
+    {
+        try
+        {
+            await LoadDashboardAnalyticsAsync();
+        }
+        catch (Exception ex)
+        {
+            AppErrorLogger.Log(ex, "DashboardAnalytics");
+            ReplaceCollection(DashboardAvailabilityTrend, Array.Empty<AvailabilityTrendPoint>());
+            ReplaceCollection(LongestOutages, Array.Empty<AvailabilityRankingRow>());
+            ReplaceCollection(IncidentRanking, new[]
+            {
+                new AvailabilityRankingRow
+                {
+                    Title = "Analitik yuklenemedi",
+                    Subtitle = "Detaylar log dosyasinda.",
+                    Value = "Hata",
+                    Percent = 0
+                }
+            });
+            StatusMessage = "Dashboard analitigi yuklenemedi; cihaz, plan, manuel ping ve ayarlar kullanilabilir.";
+        }
+    }
+
     private static double? CalculateWeightedAvailability(IEnumerable<AvailabilitySummaryReportItem> items)
     {
         var materialized = items.ToList();

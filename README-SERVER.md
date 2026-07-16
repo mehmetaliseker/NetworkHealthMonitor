@@ -14,10 +14,29 @@ Expand-Archive .\NetworkHealthMonitor-Server-win-x64.zip C:\Apps\NetworkHealthMo
 cd C:\Apps\NetworkHealthMonitor
 ```
 
+SHA-256 dosyasi kurulan bir program degildir; ZIP'in indirme/kopyalama sirasinda bozulmadigini dogrulamak icin kullanilan dosya butunlugu bilgisidir.
+
+```powershell
+Get-FileHash .\NetworkHealthMonitor-Server-win-x64.zip -Algorithm SHA256
+Get-Content .\NetworkHealthMonitor-Server-win-x64.zip.sha256
+```
+
+Iki hash degeri ayni olmalidir.
+
 Worker service kurulumu:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\install-service.ps1
+```
+
+Worker service yonetimi:
+
+```powershell
+.\scripts\start-service.ps1
+.\scripts\service-status.ps1
+.\scripts\stop-service.ps1
+.\scripts\restart-service.ps1
+.\scripts\uninstall-service.ps1
 ```
 
 UI acma:
@@ -25,6 +44,8 @@ UI acma:
 ```powershell
 .\ui\NetworkHealthMonitor.exe
 ```
+
+UI kapali olsa bile Worker service kurulu ve Running durumundaysa otomatik ping devam eder. Worker calismiyorsa UI acilir ve manuel ping/cihaz/plan/ayar ekranlari kullanilabilir, ancak otomatik plan pingleri ve outbox dispatch arka planda ilerlemez.
 
 ## ProgramData dizini
 UI ve Worker ayni veriyi kullanir:
@@ -226,6 +247,15 @@ Restore mevcut veriyi once ayrica yedekler, servisi durdurur, veriyi geri yukler
 
 `NewWorkerPath` worker publish klasoru veya tek worker exe olabilir. Klasor verilirse dependency DLL'leri de kopyalanir.
 
+Onerilen guncelleme sirasi:
+1. Eski kurulum klasorunu silmeden once `.\scripts\backup-data.ps1` ile backup alin.
+2. Yeni ZIP'i yeni bir kalici klasore acin.
+3. Yonetici PowerShell ile yeni klasorde `.\scripts\upgrade-service.ps1 -NewWorkerPath ".\worker"` calistirin.
+4. `.\scripts\service-status.ps1` ve `.\scripts\health-check.ps1` ile Worker sagligini kontrol edin.
+5. UI'yi `.\ui\NetworkHealthMonitor.exe` ile acin.
+
+Eski surumden ilk geciste `%LocalAppData%\NetworkHealthMonitor\network_health_monitor.db` veya `C:\ProgramData\NetworkHealthMonitor\network_health_monitor.db` bulunursa aktif DB yokken `C:\ProgramData\NetworkHealthMonitor\data\network_health_monitor.db` konumuna kopyalanir, kaynak dosya silinmez ve backup olusturulur. Aktif DB zaten varsa eski kaynak tekrar kopyalanip guncel semayi ezmez.
+
 ## Production readiness testi
 
 Publish paketinde son kurulum oncesi otomatik kontrol:
@@ -262,3 +292,4 @@ UI Ayarlar ekranindan "Log klasorunu ac" komutu da kullanilabilir.
 - SQLite locked: UI ve Worker kisa transaction/WAL kullanir; uzun sureli antivirus veya backup kilitlerini kontrol edin.
 - Bildirim gelmiyor: topic, BaseUrl, token, outbox pending/failed sayilari ve `health-check.ps1` ciktisini kontrol edin.
 - Script health-check: PowerShell artik `Microsoft.Data.Sqlite.dll` icin `Add-Type` kullanmaz; publish Worker exe `--health-check` komutunu calistirir ve hata kodunu tasir.
+- `no such column` veya `no such table`: UI ve Worker'i kapatip `.\scripts\health-check.ps1` calistirin. Hata devam ederse `C:\ProgramData\NetworkHealthMonitor\logs` altindaki son logda DB yolu, migration kimligi ve eksik tablo/sutun bilgisi yer alir.

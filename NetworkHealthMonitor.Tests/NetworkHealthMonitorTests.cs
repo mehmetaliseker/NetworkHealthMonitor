@@ -506,6 +506,142 @@ public sealed class NetworkHealthMonitorTests
     }
 
     [Fact]
+    public async Task Clean_database_schema_contract_and_startup_queries_succeed()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var now = DateTime.UtcNow;
+
+        await store.ConnectionFactory.VerifySchemaAsync();
+        await AssertColumnExistsAsync(store, "Devices", "IsDeleted");
+        await AssertColumnExistsAsync(store, "Devices", "DeletedAtUtc");
+        await AssertColumnExistsAsync(store, "Devices", "IsEnabled");
+        await AssertColumnExistsAsync(store, "PingLogs", "IsReachable");
+        await AssertColumnExistsAsync(store, "PingLogs", "ErrorCode");
+        await AssertColumnExistsAsync(store, "PingLogs", "Source");
+        await AssertColumnExistsAsync(store, "PingLogs", "PlanId");
+        await AssertColumnExistsAsync(store, "PingLogs", "WorkerInstanceId");
+        await AssertColumnExistsAsync(store, "DeviceIncidents", "EndedAtUtc");
+        await AssertMigrationRecordedAsync(store, DatabaseMigrationRunner.DeviceIncidentsEndedAtUtcMigrationId);
+
+        var availability = new AvailabilityRepository(store.ConnectionFactory);
+        Assert.Empty(await new DeviceRepository(store.ConnectionFactory).GetAllAsync(includeDeleted: true));
+        Assert.Empty(await new SchedulePlanRepository(store.ConnectionFactory).GetAllAsync());
+        Assert.Empty(await new PingLogRepository(store.ConnectionFactory).GetRecentAsync());
+        Assert.Empty(await availability.GetSummaryAsync(now.AddDays(-1), now, TimeZoneInfo.Local.Id, includeDeleted: true));
+        _ = await availability.GetDashboardSummaryAsync(now);
+        Assert.Empty(await availability.GetIncidentRankingAsync(now.AddDays(-30), now, 10));
+        _ = await new NotificationOutboxRepository(store.ConnectionFactory).GetCountsAsync();
+        Assert.Null(await new WorkerHeartbeatRepository(store.ConnectionFactory).GetLatestAsync());
+    }
+
+    [Fact]
+    public async Task Partial_core_server_migration_adds_ended_at_utc_and_preserves_incident_data()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "nhm-tests-" + Guid.NewGuid().ToString("N"));
+        var programData = Path.Combine(root, "programdata");
+        var legacy = Path.Combine(root, "legacy-localappdata");
+        try
+        {
+            DatabasePaths.Configure(new FixedApplicationPathProvider(programData), legacy);
+            await CreatePartialCoreServerDatabaseAsync(DatabasePaths.DatabaseFilePath);
+
+            var factory = new SqliteConnectionFactory();
+            await factory.InitializeAsync();
+            await factory.InitializeAsync();
+
+            await using var connection = await factory.CreateOpenConnectionAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT EndedAtUtc FROM DeviceIncidents WHERE Id = 1;";
+            var endedAt = Convert.ToString(await command.ExecuteScalarAsync());
+
+            Assert.Equal("2026-07-15T13:00:00.0000000Z", endedAt);
+            await AssertColumnExistsAsync(factory, "DeviceIncidents", "EndedAtUtc");
+            await AssertMigrationRecordedAsync(factory, DatabaseMigrationRunner.DeviceIncidentsEndedAtUtcMigrationId);
+            Assert.Single(await new AvailabilityRepository(factory).GetIncidentRankingAsync(DateTime.UtcNow.AddDays(-30), DateTime.UtcNow, 10));
+        }
+        finally
+        {
+            TryDeleteDirectory(root);
+        }
+    }
+
+    [Fact]
+    public async Task Very_old_localappdata_database_is_backed_up_migrated_and_queryable()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "nhm-tests-" + Guid.NewGuid().ToString("N"));
+        var programData = Path.Combine(root, "programdata");
+        var legacy = Path.Combine(root, "legacy-localappdata");
+        try
+        {
+            DatabasePaths.Configure(new FixedApplicationPathProvider(programData), legacy);
+            await CreateVeryOldDatabaseAsync(DatabasePaths.LegacyDatabaseFilePath, "Legacy Device", "192.0.2.210");
+
+            var factory = new SqliteConnectionFactory();
+            await factory.InitializeAsync();
+
+            Assert.True(File.Exists(DatabasePaths.DatabaseFilePath));
+            Assert.True(Directory.EnumerateFiles(DatabasePaths.BackupDirectory, "legacy-localappdata-*.db").Any());
+            Assert.Single(await new DeviceRepository(factory).GetAllAsync(includeDeleted: true));
+            Assert.Single(await new PingLogRepository(factory).GetRecentAsync());
+            await factory.VerifySchemaAsync();
+        }
+        finally
+        {
+            TryDeleteDirectory(root);
+        }
+    }
+
+    [Fact]
+    public async Task Programdata_root_database_is_copied_to_data_directory_before_migrations()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "nhm-tests-" + Guid.NewGuid().ToString("N"));
+        var programData = Path.Combine(root, "programdata");
+        var legacy = Path.Combine(root, "legacy-localappdata");
+        try
+        {
+            DatabasePaths.Configure(new FixedApplicationPathProvider(programData), legacy);
+            await CreateVeryOldDatabaseAsync(DatabasePaths.LegacyProgramDataDatabaseFilePath, "Root Device", "192.0.2.211");
+
+            var factory = new SqliteConnectionFactory();
+            await factory.InitializeAsync();
+
+            Assert.True(File.Exists(DatabasePaths.DatabaseFilePath));
+            Assert.True(File.Exists(DatabasePaths.LegacyProgramDataDatabaseFilePath));
+            Assert.True(Directory.EnumerateFiles(DatabasePaths.BackupDirectory, "programdata-root-*.db").Any());
+            Assert.Contains(await new DeviceRepository(factory).GetAllAsync(includeDeleted: true), device => device.IpAddress == "192.0.2.211");
+            await factory.VerifySchemaAsync();
+        }
+        finally
+        {
+            TryDeleteDirectory(root);
+        }
+    }
+
+    [Fact]
+    public async Task Concurrent_initialization_applies_migration_once_and_keeps_sqlite_integrity()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "nhm-tests-" + Guid.NewGuid().ToString("N"));
+        var programData = Path.Combine(root, "programdata");
+        var legacy = Path.Combine(root, "legacy-localappdata");
+        try
+        {
+            DatabasePaths.Configure(new FixedApplicationPathProvider(programData), legacy);
+            var first = new SqliteConnectionFactory();
+            var second = new SqliteConnectionFactory();
+
+            await Task.WhenAll(first.InitializeAsync(), second.InitializeAsync());
+
+            await first.VerifySchemaAsync();
+            Assert.Equal(1, await CountMigrationAsync(first, DatabaseMigrationRunner.DeviceIncidentsEndedAtUtcMigrationId));
+            await AssertIntegrityOkAsync(first);
+        }
+        finally
+        {
+            TryDeleteDirectory(root);
+        }
+    }
+
+    [Fact]
     public async Task Manual_and_scheduled_ping_sources_are_logged()
     {
         await using var store = await TestStore.CreateAsync();
@@ -608,6 +744,7 @@ public sealed class NetworkHealthMonitorTests
         Assert.Equal(0, await CountOpenIncidentsAsync(store));
         Assert.Equal(1, await CountOutboxAsync(store, "DeviceDown"));
         Assert.Equal(1, await CountOutboxAsync(store, "DeviceRecovered"));
+        Assert.Equal(1, await CountClosedIncidentsWithEndedAtAsync(store));
     }
 
     [Fact]
@@ -665,6 +802,14 @@ public sealed class NetworkHealthMonitorTests
         await using var connection = await store.ConnectionFactory.CreateOpenConnectionAsync();
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT COUNT(1) FROM DeviceIncidents WHERE Status = 'Open';";
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<int> CountClosedIncidentsWithEndedAtAsync(TestStore store)
+    {
+        await using var connection = await store.ConnectionFactory.CreateOpenConnectionAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(1) FROM DeviceIncidents WHERE Status = 'Closed' AND EndedAtUtc IS NOT NULL;";
         return Convert.ToInt32(await command.ExecuteScalarAsync());
     }
 
@@ -1288,6 +1433,195 @@ public sealed class NetworkHealthMonitorTests
         await using var command = connection.CreateCommand();
         command.CommandText = $"CREATE TABLE {tableName} (Id INTEGER PRIMARY KEY);";
         await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task CreatePartialCoreServerDatabaseAsync(string path)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        await using var connection = new SqliteConnection($"Data Source={path}");
+        await connection.OpenAsync();
+        await ExecuteNonQueryAsync(connection, """
+            CREATE TABLE SchemaMigrations (
+                Version TEXT PRIMARY KEY,
+                AppliedAtUtc TEXT NOT NULL
+            );
+            """);
+        await ExecuteNonQueryAsync(connection, """
+            INSERT INTO SchemaMigrations (Version, AppliedAtUtc)
+            VALUES ('2026071501-core-server-schema', '2026-07-15T00:00:00.0000000Z');
+            """);
+        await ExecuteNonQueryAsync(connection, """
+            CREATE TABLE Devices (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Name TEXT NOT NULL,
+                IpAddress TEXT NOT NULL UNIQUE,
+                DeviceType TEXT NOT NULL,
+                GroupName TEXT NOT NULL DEFAULT '',
+                CreatedAt TEXT NOT NULL,
+                UpdatedAt TEXT NOT NULL
+            );
+            """);
+        await ExecuteNonQueryAsync(connection, """
+            INSERT INTO Devices (Id, Name, IpAddress, DeviceType, GroupName, CreatedAt, UpdatedAt)
+            VALUES (1, 'Partial Incident Device', '192.0.2.220', 'Camera', 'Partial', '2026-07-15T10:00:00.0000000Z', '2026-07-15T10:00:00.0000000Z');
+            """);
+        await ExecuteNonQueryAsync(connection, """
+            CREATE TABLE DeviceIncidents (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                DeviceId INTEGER NOT NULL,
+                StartedAtUtc TEXT NOT NULL,
+                RecoveredAtUtc TEXT NULL,
+                Status TEXT NOT NULL,
+                InitialFailureCount INTEGER NOT NULL DEFAULT 0,
+                CurrentFailureCount INTEGER NOT NULL DEFAULT 0,
+                RecoverySuccessCount INTEGER NOT NULL DEFAULT 0,
+                FirstFailureAtUtc TEXT NULL,
+                ConfirmedDownAtUtc TEXT NULL,
+                DetectionDelaySeconds INTEGER NOT NULL DEFAULT 0,
+                LastFailureAtUtc TEXT NULL,
+                LastSuccessAtUtc TEXT NULL,
+                DownNotificationCreatedAtUtc TEXT NULL,
+                RecoveryNotificationCreatedAtUtc TEXT NULL,
+                FlapCount INTEGER NOT NULL DEFAULT 0,
+                CreatedAtUtc TEXT NOT NULL,
+                UpdatedAtUtc TEXT NOT NULL,
+                FOREIGN KEY (DeviceId) REFERENCES Devices(Id) ON DELETE CASCADE
+            );
+            """);
+        await ExecuteNonQueryAsync(connection, """
+            INSERT INTO DeviceIncidents
+                (Id, DeviceId, StartedAtUtc, RecoveredAtUtc, Status, InitialFailureCount,
+                 CurrentFailureCount, RecoverySuccessCount, FirstFailureAtUtc, ConfirmedDownAtUtc,
+                 DetectionDelaySeconds, LastFailureAtUtc, LastSuccessAtUtc,
+                 DownNotificationCreatedAtUtc, RecoveryNotificationCreatedAtUtc, FlapCount,
+                 CreatedAtUtc, UpdatedAtUtc)
+            VALUES
+                (1, 1, '2026-07-15T12:00:00.0000000Z', '2026-07-15T13:00:00.0000000Z', 'Closed', 3,
+                 3, 2, '2026-07-15T11:58:00.0000000Z', '2026-07-15T12:00:00.0000000Z',
+                 120, '2026-07-15T12:00:00.0000000Z', '2026-07-15T13:00:00.0000000Z',
+                 NULL, NULL, 0, '2026-07-15T12:00:00.0000000Z', '2026-07-15T13:00:00.0000000Z');
+            """);
+    }
+
+    private static async Task CreateVeryOldDatabaseAsync(string path, string deviceName, string ipAddress)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        await using var connection = new SqliteConnection($"Data Source={path}");
+        await connection.OpenAsync();
+        await ExecuteNonQueryAsync(connection, """
+            CREATE TABLE Devices (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Name TEXT NOT NULL,
+                IpAddress TEXT NOT NULL UNIQUE,
+                DeviceType TEXT NOT NULL,
+                GroupName TEXT NOT NULL DEFAULT '',
+                CreatedAt TEXT NOT NULL,
+                UpdatedAt TEXT NOT NULL
+            );
+            """);
+        await using (var insertDevice = connection.CreateCommand())
+        {
+            insertDevice.CommandText = """
+                INSERT INTO Devices (Id, Name, IpAddress, DeviceType, GroupName, CreatedAt, UpdatedAt)
+                VALUES (1, @Name, @IpAddress, 'Camera', 'Legacy', '2026-07-15T10:00:00.0000000Z', '2026-07-15T10:00:00.0000000Z');
+                """;
+            insertDevice.Parameters.AddWithValue("@Name", deviceName);
+            insertDevice.Parameters.AddWithValue("@IpAddress", ipAddress);
+            await insertDevice.ExecuteNonQueryAsync();
+        }
+
+        await ExecuteNonQueryAsync(connection, """
+            CREATE TABLE PingLogs (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                DeviceId INTEGER NULL,
+                DeviceName TEXT NOT NULL,
+                IpAddress TEXT NOT NULL,
+                DeviceType TEXT NOT NULL,
+                Status TEXT NOT NULL,
+                LatencyMs INTEGER NULL,
+                CheckedAt TEXT NOT NULL
+            );
+            """);
+        await using var insertLog = connection.CreateCommand();
+        insertLog.CommandText = """
+            INSERT INTO PingLogs (DeviceId, DeviceName, IpAddress, DeviceType, Status, LatencyMs, CheckedAt)
+            VALUES (1, @Name, @IpAddress, 'Camera', 'Online', 1, '2026-07-15T10:01:00.0000000Z');
+            """;
+        insertLog.Parameters.AddWithValue("@Name", deviceName);
+        insertLog.Parameters.AddWithValue("@IpAddress", ipAddress);
+        await insertLog.ExecuteNonQueryAsync();
+    }
+
+    private static async Task ExecuteNonQueryAsync(SqliteConnection connection, string commandText)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = commandText;
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static Task AssertColumnExistsAsync(TestStore store, string tableName, string columnName)
+    {
+        return AssertColumnExistsAsync(store.ConnectionFactory, tableName, columnName);
+    }
+
+    private static async Task AssertColumnExistsAsync(SqliteConnectionFactory factory, string tableName, string columnName)
+    {
+        await using var connection = await factory.CreateOpenConnectionAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"PRAGMA table_info({tableName});";
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            if (string.Equals(reader.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+        }
+
+        Assert.Fail($"Expected column {tableName}.{columnName} was not found.");
+    }
+
+    private static Task AssertMigrationRecordedAsync(TestStore store, string migrationId)
+    {
+        return AssertMigrationRecordedAsync(store.ConnectionFactory, migrationId);
+    }
+
+    private static async Task AssertMigrationRecordedAsync(SqliteConnectionFactory factory, string migrationId)
+    {
+        Assert.Equal(1, await CountMigrationAsync(factory, migrationId));
+    }
+
+    private static async Task<int> CountMigrationAsync(SqliteConnectionFactory factory, string migrationId)
+    {
+        await using var connection = await factory.CreateOpenConnectionAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(1) FROM SchemaMigrations WHERE Version = @Version;";
+        command.Parameters.AddWithValue("@Version", migrationId);
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task AssertIntegrityOkAsync(SqliteConnectionFactory factory)
+    {
+        await using var connection = await factory.CreateOpenConnectionAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA integrity_check;";
+        Assert.Equal("ok", Convert.ToString(await command.ExecuteScalarAsync()));
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            SqliteConnection.ClearAllPools();
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
+            }
+        }
+        catch
+        {
+            // Best effort cleanup for temp test data.
+        }
     }
 
     private static WorkerOptions CreateWorkerOptions(TestStore store)

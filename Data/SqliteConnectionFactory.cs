@@ -6,12 +6,19 @@ using NetworkHealthMonitor.Models;
 
 namespace NetworkHealthMonitor.Data;
 
-public sealed class SqliteConnectionFactory
+public sealed class SqliteConnectionFactory : IDatabaseInitializer
 {
     private readonly string _connectionString;
+    private readonly IDatabaseMigrationRunner _migrationRunner;
 
     public SqliteConnectionFactory()
+        : this(new DatabaseMigrationRunner())
     {
+    }
+
+    public SqliteConnectionFactory(IDatabaseMigrationRunner migrationRunner)
+    {
+        _migrationRunner = migrationRunner;
         DatabasePaths.EnsureDirectories();
         _connectionString = new SqliteConnectionStringBuilder
         {
@@ -31,7 +38,7 @@ public sealed class SqliteConnectionFactory
         return connection;
     }
 
-    public async Task InitializeAsync()
+    public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         using var initializationLock = AcquireInitializationLock();
 
@@ -58,9 +65,25 @@ public sealed class SqliteConnectionFactory
         await CreateWorkerHeartbeatAsync(connection);
         await CreateAvailabilitySchemaAsync(connection);
         await CreateAppSettingsAsync(connection);
+        await RecordMigrationAsync(connection, "2026071501-core-server-schema");
+        await _migrationRunner.ApplyMigrationsAsync(connection, cancellationToken);
         await CreateIndexesAsync(connection);
         await MigrateLegacyGroupNamesAsync(connection);
-        await RecordMigrationAsync(connection, "2026071501-core-server-schema");
+        await DatabaseSchemaContract.VerifyAsync(connection, cancellationToken);
+        LogInitializationMetadata();
+    }
+
+    public async Task VerifySchemaAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = await CreateOpenConnectionAsync();
+        await DatabaseSchemaContract.VerifyAsync(connection, cancellationToken);
+    }
+
+    private static void LogInitializationMetadata()
+    {
+        var build = ApplicationBuildInfo.Current;
+        AppErrorLogger.LogInfo(
+            $"Database initialized. ProductVersion={build.ProductVersion}; FileVersion={build.FileVersion}; BuildTimestampUtc={build.BuildTimestampUtc}; GitCommitSha={build.GitCommitSha}; ExpectedSchemaVersion={build.ExpectedSchemaVersion}; DatabasePath={DatabasePaths.DatabaseFilePath}");
     }
 
     private static IDisposable AcquireInitializationLock()
@@ -354,7 +377,7 @@ public sealed class SqliteConnectionFactory
                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
                 DeviceId INTEGER NOT NULL,
                 StartedAtUtc TEXT NOT NULL,
-                RecoveredAtUtc TEXT NULL,
+                EndedAtUtc TEXT NULL,
                 Status TEXT NOT NULL,
                 InitialFailureCount INTEGER NOT NULL DEFAULT 0,
                 CurrentFailureCount INTEGER NOT NULL DEFAULT 0,
@@ -622,6 +645,7 @@ public sealed class SqliteConnectionFactory
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_PingLogs_CheckedAt ON PingLogs(CheckedAt DESC);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_PingLogs_IsReachable ON PingLogs(IsReachable);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_PingLogs_Status ON PingLogs(Status);");
+        await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_PingLogs_ErrorCode ON PingLogs(ErrorCode);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_PingLogs_Source ON PingLogs(Source);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_PingLogs_PlanId ON PingLogs(PlanId);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_PingLogs_DeviceId_CheckedAt ON PingLogs(DeviceId, CheckedAt DESC);");
@@ -643,6 +667,7 @@ public sealed class SqliteConnectionFactory
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_DeviceIncidents_DeviceId ON DeviceIncidents(DeviceId);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_DeviceIncidents_Status ON DeviceIncidents(Status);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_DeviceIncidents_StartedAtUtc ON DeviceIncidents(StartedAtUtc);");
+        await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_DeviceIncidents_EndedAtUtc ON DeviceIncidents(EndedAtUtc);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_DeviceIncidents_DeviceId_Status ON DeviceIncidents(DeviceId, Status);");
         await ExecuteAsync(connection, "CREATE UNIQUE INDEX IF NOT EXISTS UX_DeviceIncidents_Open_Device ON DeviceIncidents(DeviceId) WHERE Status = 'Open';");
         await ExecuteAsync(connection, "CREATE UNIQUE INDEX IF NOT EXISTS UX_NotificationOutbox_DeduplicationKey ON NotificationOutbox(DeduplicationKey);");
@@ -663,6 +688,7 @@ public sealed class SqliteConnectionFactory
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_MaintenanceWindowTargets_Target ON MaintenanceWindowTargets(TargetType, TargetId);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_MonitoringAssignments_Target ON DeviceMonitoringCalendarAssignments(TargetType, TargetId);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_AvailabilityRecalcAudit_RequestedAt ON AvailabilityRecalculationAudits(RequestedAtUtc DESC);");
+        await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_WorkerHeartbeat_LastSeenAtUtc ON WorkerHeartbeat(LastSeenAtUtc DESC);");
     }
 
     private static async Task MigrateLegacyGroupNamesAsync(SqliteConnection connection)

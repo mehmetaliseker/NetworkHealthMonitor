@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Drawing;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Threading;
 using NetworkHealthMonitor.Data;
@@ -121,13 +122,37 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             AppErrorLogger.Log(ex, "Startup");
+            if (!string.IsNullOrWhiteSpace(DatabasePaths.DatabaseFilePath))
+            {
+                WpfMessageBox.Show(
+                    BuildStartupErrorMessage(ex),
+                    "Baslatma hatasi",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                WpfApplication.Current.Shutdown(1);
+            }
+            else
+            {
             WpfMessageBox.Show(
                 $"Uygulama başlatılamadı. Teknik ayrıntılar log dosyasına yazıldı:\n{AppErrorLogger.LogFilePath}",
                 "Başlatma hatası",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
-            WpfApplication.Current.Shutdown(1);
+                WpfApplication.Current.Shutdown(1);
+            }
         }
+    }
+
+    private static string BuildStartupErrorMessage(Exception exception)
+    {
+        var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "unknown";
+        return string.Join(
+            Environment.NewLine,
+            "Uygulama baslatilamadi.",
+            $"DB yolu: {DatabasePaths.DatabaseFilePath}",
+            $"Log yolu: {AppErrorLogger.LogFilePath}",
+            $"Uygulama surumu: {version}",
+            $"Hata ozeti: {exception.GetType().Name}: {exception.Message}");
     }
 
     private async void MainWindowClosing(object? sender, CancelEventArgs e)

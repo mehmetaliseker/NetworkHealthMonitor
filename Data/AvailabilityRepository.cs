@@ -665,7 +665,7 @@ public sealed class AvailabilityRepository
             SELECT i.Id, i.DeviceId, d.Name, d.IpAddress, d.GroupName,
                    COALESCE(i.FirstFailureAtUtc, i.StartedAtUtc) AS FirstFailureAtUtc,
                    COALESCE(i.ConfirmedDownAtUtc, i.LastFailureAtUtc, i.StartedAtUtc) AS ConfirmedAtUtc,
-                   i.RecoveredAtUtc, i.CurrentFailureCount,
+                   i.EndedAtUtc, i.CurrentFailureCount,
                    COALESCE(l.ErrorCode, ''), COALESCE(l.ErrorMessage, ''),
                    COALESCE(n.Status, ''),
                    CASE WHEN EXISTS (
@@ -673,7 +673,7 @@ public sealed class AvailabilityRepository
                        FROM DeviceAvailabilityPeriods p
                        WHERE p.DeviceId = i.DeviceId
                          AND p.Status = 'Maintenance'
-                         AND p.StartedAtUtc < COALESCE(i.RecoveredAtUtc, @EndUtc)
+                          AND p.StartedAtUtc < COALESCE(i.EndedAtUtc, @EndUtc)
                          AND COALESCE(p.EndedAtUtc, @EndUtc) > i.StartedAtUtc
                    ) THEN 1 ELSE 0 END AS MaintenanceRelated
             FROM DeviceIncidents i
@@ -681,7 +681,7 @@ public sealed class AvailabilityRepository
             LEFT JOIN PingLogs l ON l.DeviceId = i.DeviceId AND l.CheckedAt = i.StartedAtUtc
             LEFT JOIN NotificationOutbox n ON n.IncidentId = i.Id AND n.EventType = 'DeviceDown'
             WHERE i.StartedAtUtc < @EndUtc
-              AND COALESCE(i.RecoveredAtUtc, @EndUtc) > @StartUtc
+              AND COALESCE(i.EndedAtUtc, @EndUtc) > @StartUtc
               AND (@DeviceId IS NULL OR i.DeviceId = @DeviceId)
             ORDER BY i.StartedAtUtc DESC;
             """;
@@ -705,7 +705,7 @@ public sealed class AvailabilityRepository
                 GroupName = reader.GetString(4),
                 FirstFailureAtUtc = firstFailure,
                 ConfirmedDownAtUtc = confirmed,
-                RecoveredAtUtc = recovered,
+                EndedAtUtc = recovered,
                 DowntimeSeconds = Math.Max(0, (long)(effectiveEnd - firstFailure).TotalSeconds),
                 DetectionDelaySeconds = Math.Max(0, (long)(confirmed - firstFailure).TotalSeconds),
                 FailureCount = reader.GetInt32(8),
@@ -1375,10 +1375,10 @@ public sealed class AvailabilityRepository
         var stats = new Dictionary<int, IncidentStats>();
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT DeviceId, StartedAtUtc, RecoveredAtUtc, Status
+            SELECT DeviceId, StartedAtUtc, EndedAtUtc, Status
             FROM DeviceIncidents
             WHERE StartedAtUtc < @EndUtc
-              AND COALESCE(RecoveredAtUtc, @EndUtc) > @StartUtc;
+              AND COALESCE(EndedAtUtc, @EndUtc) > @StartUtc;
             """;
         AddParameter(command, "@StartUtc", ToStorageDate(startUtc));
         AddParameter(command, "@EndUtc", ToStorageDate(endUtc));

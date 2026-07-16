@@ -665,7 +665,7 @@ public sealed class DeviceRepository
         closeIncidents.CommandText = """
             UPDATE DeviceIncidents
             SET Status = 'Cancelled',
-                RecoveredAtUtc = @ClosedAtUtc,
+                EndedAtUtc = @ClosedAtUtc,
                 UpdatedAtUtc = @ClosedAtUtc
             WHERE DeviceId = @Id
               AND Status = 'Open';

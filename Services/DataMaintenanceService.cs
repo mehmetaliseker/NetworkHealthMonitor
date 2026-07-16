@@ -97,7 +97,7 @@ public sealed class DataMaintenanceService
                 connection,
                 transaction,
                 "DeviceIncidents",
-                "COALESCE(RecoveredAtUtc, StartedAtUtc)",
+                "COALESCE(EndedAtUtc, StartedAtUtc)",
                 DateTime.UtcNow.AddDays(-settings.IncidentRetentionDays));
         }
 

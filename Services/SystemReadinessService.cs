@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Reflection;
 using Microsoft.Data.Sqlite;
 using NetworkHealthMonitor.Data;
+using NetworkHealthMonitor.Infrastructure;
 using NetworkHealthMonitor.Models;
 
 namespace NetworkHealthMonitor.Services;
@@ -62,6 +63,13 @@ public sealed class SystemReadinessService
         diagnostics.Add(Diagnostic("Database file size", FormatBytes(GetFileSize(DatabasePaths.DatabaseFilePath))));
         diagnostics.Add(Diagnostic("Log directory size", FormatBytes(GetDirectorySize(DatabasePaths.LogDirectory))));
         diagnostics.Add(Diagnostic("Son backup", GetLastBackupText()));
+        var build = ApplicationBuildInfo.Current;
+        diagnostics.Add(Diagnostic("Product version", build.ProductVersion));
+        diagnostics.Add(Diagnostic("File version", build.FileVersion));
+        diagnostics.Add(Diagnostic("Build timestamp UTC", build.BuildTimestampUtc));
+        diagnostics.Add(Diagnostic("Git commit SHA", build.GitCommitSha));
+        diagnostics.Add(Diagnostic("Beklenen schema version", build.ExpectedSchemaVersion));
+        diagnostics.Add(Diagnostic("Aktif DB yolu", DatabasePaths.DatabaseFilePath));
         diagnostics.Add(Diagnostic("Uygulama surumu", GetUiVersion()));
         diagnostics.Add(Diagnostic("Worker surumu", heartbeat?.Version ?? "-"));
 

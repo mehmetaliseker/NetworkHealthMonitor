@@ -50,7 +50,6 @@ public sealed partial class MainViewModel
         await LoadGroupsAsync();
         await LoadSchedulePlansAsync();
         await LoadAvailabilityAsync();
-        await LoadDashboardAnalyticsAsync();
         await LoadMaintenanceWindowsAsync();
         await LoadMonitoringCalendarsAsync();
         await RefreshReadinessAsync();
@@ -170,7 +169,7 @@ public sealed partial class MainViewModel
         ReplaceCollection(AvailabilityItems, items);
         ApplyGroupAvailabilityToGroups();
         UpdateGroupAvailabilityRows();
-        await LoadDashboardAnalyticsAsync();
+        await TryLoadDashboardAnalyticsAsync();
         UpdateDashboard();
     }
 

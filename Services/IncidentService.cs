@@ -184,14 +184,14 @@ public sealed class IncidentService : IIncidentService
         close.CommandText = """
             UPDATE DeviceIncidents
             SET Status = 'Closed',
-                RecoveredAtUtc = @RecoveredAtUtc,
+                EndedAtUtc = @EndedAtUtc,
                 RecoverySuccessCount = @RecoverySuccessCount,
                 LastSuccessAtUtc = @LastSuccessAtUtc,
                 RecoveryNotificationCreatedAtUtc = @RecoveryNotificationCreatedAtUtc,
                 UpdatedAtUtc = @UpdatedAtUtc
             WHERE Id = @Id;
             """;
-        AddParameter(close, "@RecoveredAtUtc", ToStorageDate(log.CheckedAt.ToUniversalTime()));
+        AddParameter(close, "@EndedAtUtc", ToStorageDate(log.CheckedAt.ToUniversalTime()));
         AddParameter(close, "@RecoverySuccessCount", recoverySuccessCount);
         AddParameter(close, "@LastSuccessAtUtc", ToStorageDate(log.CheckedAt.ToUniversalTime()));
         AddParameter(close, "@RecoveryNotificationCreatedAtUtc", allowNotification ? ToStorageDate(nowUtc) : null);
@@ -232,7 +232,7 @@ public sealed class IncidentService : IIncidentService
         insert.Transaction = transaction;
         insert.CommandText = """
             INSERT INTO DeviceIncidents
-                (DeviceId, StartedAtUtc, RecoveredAtUtc, Status, InitialFailureCount,
+                (DeviceId, StartedAtUtc, EndedAtUtc, Status, InitialFailureCount,
                  CurrentFailureCount, RecoverySuccessCount, FirstFailureAtUtc, ConfirmedDownAtUtc,
                  DetectionDelaySeconds, LastFailureAtUtc, LastSuccessAtUtc,
                  DownNotificationCreatedAtUtc, RecoveryNotificationCreatedAtUtc, FlapCount,

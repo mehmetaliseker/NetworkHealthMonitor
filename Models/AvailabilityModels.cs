@@ -265,7 +265,7 @@ public sealed class AvailabilityIncidentReportItem
 
     public DateTime ConfirmedDownAtUtc { get; init; }
 
-    public DateTime? RecoveredAtUtc { get; init; }
+    public DateTime? EndedAtUtc { get; init; }
 
     public long DowntimeSeconds { get; init; }
 
