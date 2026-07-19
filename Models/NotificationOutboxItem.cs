@@ -12,9 +12,19 @@ public sealed class NotificationOutboxItem
 
     public long? IncidentId { get; set; }
 
+    public string Channel { get; set; } = NotificationChannels.Ntfy;
+
+    public string Recipient { get; set; } = string.Empty;
+
+    public string Subject { get; set; } = string.Empty;
+
+    public string Body { get; set; } = string.Empty;
+
     public string PayloadJson { get; set; } = string.Empty;
 
     public string DeduplicationKey { get; set; } = string.Empty;
+
+    public string IdempotencyKey { get; set; } = string.Empty;
 
     public string Status { get; set; } = "Pending";
 
@@ -51,4 +61,8 @@ public sealed class NotificationOutboxItem
     public string StatusText => UiDisplayTexts.OutboxStatus(Status);
 
     public string EventTypeText => UiDisplayTexts.OutboxEventType(EventType);
+
+    public string ChannelText => string.Equals(Channel, NotificationChannels.Email, StringComparison.OrdinalIgnoreCase)
+        ? "E-posta"
+        : "ntfy";
 }

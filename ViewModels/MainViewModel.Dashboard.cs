@@ -36,6 +36,7 @@ public sealed partial class MainViewModel
             .OrderBy(item => item.Availability30DaysPercent)
             .Take(10));
         UpdateTypeDistributionRows();
+        NotifyShellMetrics();
     }
 
     private void EnsureSummaryCards()

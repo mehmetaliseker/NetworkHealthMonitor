@@ -6,6 +6,7 @@ public sealed record DeviceCheckPolicy(
     int PingTimeoutMs,
     int FailureRetryIntervalSeconds,
     int FailureRetryLimit,
+    int OfflineRecheckIntervalSeconds,
     int FailureThreshold,
     string PolicySourceText)
 {
@@ -18,6 +19,8 @@ public sealed record DeviceCheckPolicy(
     public int FailureRetryIntervalSeconds { get; init; } = Math.Clamp(FailureRetryIntervalSeconds, AppSettings.MinFailureRetryIntervalSeconds, AppSettings.MaxFailureRetryIntervalSeconds);
 
     public int FailureRetryLimit { get; init; } = Math.Clamp(FailureRetryLimit, AppSettings.MinFailureRetryLimit, AppSettings.MaxFailureRetryLimit);
+
+    public int OfflineRecheckIntervalSeconds { get; init; } = Math.Clamp(OfflineRecheckIntervalSeconds, AppSettings.MinOfflineRecheckIntervalSeconds, AppSettings.MaxOfflineRecheckIntervalSeconds);
 
     public int FailureThreshold { get; init; } = Math.Clamp(FailureThreshold, AppSettings.MinFailureThreshold, AppSettings.MaxFailureThreshold);
 

@@ -10,6 +10,7 @@ public static class UiDisplayTexts
             "Processing" => "İşleniyor",
             "Sent" => "Gönderildi",
             "Failed" => "Başarısız",
+            "DeadLetter" => "Kalıcı hata",
             "Cancelled" => "İptal edildi",
             _ => string.IsNullOrWhiteSpace(status) ? "-" : status
         };
@@ -19,6 +20,8 @@ public static class UiDisplayTexts
     {
         return (eventType ?? string.Empty).Trim() switch
         {
+            "DeviceSuspectedOffline" => "İlk kesinti bildirimi",
+            "DeviceOfflineEscalated" => "Escalation bildirimi",
             "DeviceDown" => "Kesinti bildirimi",
             "DeviceRecovered" => "Düzelme bildirimi",
             "Test" => "Test bildirimi",

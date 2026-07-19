@@ -16,6 +16,8 @@ public sealed class WorkerHeartbeatSnapshot
 
     public DateTime? LastSchedulerCycleAtUtc { get; set; }
 
+    public DateTime? LastSchedulerPollAtUtc { get; set; }
+
     public DateTime? LastSuccessfulPingAtUtc { get; set; }
 
     public DateTime? LastNotificationDispatchAtUtc { get; set; }

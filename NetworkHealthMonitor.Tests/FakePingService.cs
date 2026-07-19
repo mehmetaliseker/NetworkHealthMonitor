@@ -6,9 +6,16 @@ namespace NetworkHealthMonitor.Tests;
 internal sealed class FakePingService : IPingService
 {
     private readonly Queue<bool> _results = new();
+    private readonly Func<DateTime> _nowProvider;
 
     public FakePingService(params bool[] results)
+        : this(() => DateTime.Now, results)
     {
+    }
+
+    public FakePingService(Func<DateTime> nowProvider, params bool[] results)
+    {
+        _nowProvider = nowProvider;
         foreach (var result in results)
         {
             _results.Enqueue(result);
@@ -25,9 +32,10 @@ internal sealed class FakePingService : IPingService
         PingCount++;
         PingedDeviceIds.Add(device.Id);
         var success = _results.Count == 0 || _results.Dequeue();
+        var checkedAt = _nowProvider();
         return Task.FromResult(success
-            ? new PingDeviceResult(device, true, 1, DateTime.Now, "Fake ping success", string.Empty)
-            : new PingDeviceResult(device, false, null, DateTime.Now, "Fake ping failure", "timeout"));
+            ? new PingDeviceResult(device, true, 1, checkedAt, "Fake ping success", string.Empty)
+            : new PingDeviceResult(device, false, null, checkedAt, "Fake ping failure", "timeout"));
     }
 
     public async Task<IReadOnlyList<PingDeviceResult>> PingManyAsync(

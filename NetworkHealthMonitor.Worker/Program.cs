@@ -10,6 +10,12 @@ if (options.HealthCheck)
     return;
 }
 
+if (options.DatabaseVerificationMode != DatabaseVerificationMode.None)
+{
+    Environment.ExitCode = await DatabaseVerificationCommand.RunAsync(options);
+    return;
+}
+
 if (options.RunOnce)
 {
     await using var scheduler = await WorkerComposition.CreateSchedulerAsync(options);

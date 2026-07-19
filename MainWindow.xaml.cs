@@ -138,11 +138,11 @@ public partial class MainWindow : Window
             }
             else
             {
-            WpfMessageBox.Show(
-                $"Uygulama başlatılamadı. Teknik ayrıntılar log dosyasına yazıldı:\n{AppErrorLogger.LogFilePath}",
-                "Başlatma hatası",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
+                WpfMessageBox.Show(
+                    $"Uygulama başlatılamadı. Teknik ayrıntılar log dosyasına yazıldı:\n{AppErrorLogger.LogFilePath}",
+                    "Başlatma hatası",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
                 WpfApplication.Current.Shutdown(1);
             }
         }

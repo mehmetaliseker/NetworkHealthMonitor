@@ -12,7 +12,8 @@ public sealed class DeviceRepository
         FailureRetryIntervalSeconds, FailureRetryLimit, FailureThreshold, Description, LastStatus,
         LastLatencyMs, LastCheckedAt, LastSuccessfulCheckAt, LastFailedCheckAt,
         ConsecutiveFailures, ConsecutiveSuccesses,
-        LastStableStatus, CreatedAt, UpdatedAt, TargetAvailabilityPercent
+        LastStableStatus, SuppressionMode, SuppressedFromUtc, SuppressedUntilUtc,
+        SuppressionReason, SuppressedBy, CreatedAt, UpdatedAt, TargetAvailabilityPercent
         """;
 
     private readonly SqliteConnectionFactory _connectionFactory;
@@ -68,6 +69,7 @@ public sealed class DeviceRepository
 
     public async Task<IReadOnlyList<Device>> GetAutoCheckCandidatesAsync()
     {
+        var nowUtc = ToStorageDate(DateTime.UtcNow);
         return await GetDevicesAsync($"""
             SELECT {DeviceSelectColumns}
             FROM Devices
@@ -75,6 +77,10 @@ public sealed class DeviceRepository
               AND IsEnabled = 1
               AND IsActive = 1
               AND AutoCheckEnabled = 1
+              AND NOT (
+                  SuppressionMode = 'PauseMonitoring'
+                  AND (SuppressedUntilUtc IS NULL OR SuppressedUntilUtc > '{nowUtc}')
+              )
             ORDER BY Name COLLATE NOCASE, IpAddress;
             """);
     }
@@ -110,6 +116,7 @@ public sealed class DeviceRepository
                  FailureRetryLimit, FailureThreshold, Description, LastStatus, LastLatencyMs,
                  LastCheckedAt, LastSuccessfulCheckAt, LastFailedCheckAt,
                  ConsecutiveFailures, ConsecutiveSuccesses, LastStableStatus,
+                 SuppressionMode, SuppressedFromUtc, SuppressedUntilUtc, SuppressionReason, SuppressedBy,
                  CreatedAt, UpdatedAt, TargetAvailabilityPercent)
             VALUES
                 (@Name, @IpAddress, @DeviceType, @Location, @GroupId, @GroupName, @IsCritical, @IsActive,
@@ -117,6 +124,7 @@ public sealed class DeviceRepository
                  @FailureRetryLimit, @FailureThreshold, @Description, @LastStatus, @LastLatencyMs,
                  @LastCheckedAt, @LastSuccessfulCheckAt, @LastFailedCheckAt,
                  @ConsecutiveFailures, @ConsecutiveSuccesses, @LastStableStatus,
+                 @SuppressionMode, @SuppressedFromUtc, @SuppressedUntilUtc, @SuppressionReason, @SuppressedBy,
                  @CreatedAt, @UpdatedAt, @TargetAvailabilityPercent);
             SELECT last_insert_rowid();
             """;
@@ -168,6 +176,11 @@ public sealed class DeviceRepository
                 ConsecutiveFailures = @ConsecutiveFailures,
                 ConsecutiveSuccesses = @ConsecutiveSuccesses,
                 LastStableStatus = @LastStableStatus,
+                SuppressionMode = @SuppressionMode,
+                SuppressedFromUtc = @SuppressedFromUtc,
+                SuppressedUntilUtc = @SuppressedUntilUtc,
+                SuppressionReason = @SuppressionReason,
+                SuppressedBy = @SuppressedBy,
                 CreatedAt = @CreatedAt,
                 UpdatedAt = @UpdatedAt,
                 TargetAvailabilityPercent = @TargetAvailabilityPercent
@@ -612,6 +625,209 @@ public sealed class DeviceRepository
             deviceIds,
             "UPDATE Devices SET CheckIntervalSeconds = @Value, UpdatedAt = @UpdatedAt WHERE Id = @Id AND IsDeleted = 0;",
             command => AddParameter(command, "@Value", normalized));
+    }
+
+    public async Task<int> BulkSetSuppressionAsync(
+        IEnumerable<int> deviceIds,
+        DeviceSuppressionMode mode,
+        DateTime? untilUtc,
+        string reason,
+        string suppressedBy,
+        DateTime nowUtc,
+        CancellationToken cancellationToken = default)
+    {
+        if (mode == DeviceSuppressionMode.None)
+        {
+            return await BulkClearSuppressionAsync(deviceIds, nowUtc, cancellationToken);
+        }
+
+        var ids = deviceIds.Where(id => id > 0).Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            return 0;
+        }
+
+        var affected = 0;
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
+        using var transaction = connection.BeginTransaction();
+        foreach (var id in ids)
+        {
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = """
+                UPDATE Devices
+                SET SuppressionMode = @SuppressionMode,
+                    SuppressedFromUtc = @SuppressedFromUtc,
+                    SuppressedUntilUtc = @SuppressedUntilUtc,
+                    SuppressionReason = @SuppressionReason,
+                    SuppressedBy = @SuppressedBy,
+                    UpdatedAt = @UpdatedAt
+                WHERE Id = @Id
+                  AND IsDeleted = 0;
+                """;
+            AddParameter(command, "@SuppressionMode", mode.ToStorageValue());
+            AddParameter(command, "@SuppressedFromUtc", ToStorageDate(nowUtc.ToUniversalTime()));
+            AddParameter(command, "@SuppressedUntilUtc", untilUtc.HasValue ? ToStorageDate(untilUtc.Value.ToUniversalTime()) : null);
+            AddParameter(command, "@SuppressionReason", reason.Trim());
+            AddParameter(command, "@SuppressedBy", string.IsNullOrWhiteSpace(suppressedBy) ? Environment.UserName : suppressedBy.Trim());
+            AddParameter(command, "@UpdatedAt", ToStorageDate(nowUtc.ToUniversalTime()));
+            AddParameter(command, "@Id", id);
+            affected += await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        transaction.Commit();
+        return affected;
+    }
+
+    public async Task<int> BulkClearSuppressionAsync(
+        IEnumerable<int> deviceIds,
+        DateTime nowUtc,
+        CancellationToken cancellationToken = default)
+    {
+        var ids = deviceIds.Where(id => id > 0).Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            return 0;
+        }
+
+        var affected = 0;
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
+        using var transaction = connection.BeginTransaction();
+        foreach (var id in ids)
+        {
+            await AddSuppressedDurationToOpenIncidentAsync(connection, transaction, id, nowUtc, cancellationToken);
+
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = """
+                UPDATE Devices
+                SET SuppressionMode = 'None',
+                    SuppressedFromUtc = NULL,
+                    SuppressedUntilUtc = NULL,
+                    SuppressionReason = '',
+                    SuppressedBy = '',
+                    UpdatedAt = @UpdatedAt
+                WHERE Id = @Id
+                  AND SuppressionMode <> 'None';
+                """;
+            AddParameter(command, "@UpdatedAt", ToStorageDate(nowUtc.ToUniversalTime()));
+            AddParameter(command, "@Id", id);
+            affected += await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        transaction.Commit();
+        return affected;
+    }
+
+    public async Task<int> ExpireSuppressionsAsync(DateTime nowUtc, CancellationToken cancellationToken = default)
+    {
+        var expiredIds = new List<int>();
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
+        using var transaction = connection.BeginTransaction();
+
+        await using (var select = connection.CreateCommand())
+        {
+            select.Transaction = transaction;
+            select.CommandText = """
+                SELECT Id
+                FROM Devices
+                WHERE SuppressionMode <> 'None'
+                  AND SuppressedUntilUtc IS NOT NULL
+                  AND SuppressedUntilUtc <= @NowUtc;
+                """;
+            AddParameter(select, "@NowUtc", ToStorageDate(nowUtc.ToUniversalTime()));
+            await using var reader = await select.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                expiredIds.Add(reader.GetInt32(0));
+            }
+        }
+
+        foreach (var id in expiredIds)
+        {
+            await AddSuppressedDurationToOpenIncidentAsync(connection, transaction, id, nowUtc, cancellationToken);
+        }
+
+        await using var update = connection.CreateCommand();
+        update.Transaction = transaction;
+        update.CommandText = """
+            UPDATE Devices
+            SET SuppressionMode = 'None',
+                SuppressedFromUtc = NULL,
+                SuppressedUntilUtc = NULL,
+                SuppressionReason = '',
+                SuppressedBy = '',
+                UpdatedAt = @UpdatedAt
+            WHERE SuppressionMode <> 'None'
+              AND SuppressedUntilUtc IS NOT NULL
+              AND SuppressedUntilUtc <= @NowUtc;
+            """;
+        AddParameter(update, "@UpdatedAt", ToStorageDate(nowUtc.ToUniversalTime()));
+        AddParameter(update, "@NowUtc", ToStorageDate(nowUtc.ToUniversalTime()));
+        var affected = await update.ExecuteNonQueryAsync(cancellationToken);
+        transaction.Commit();
+        return affected;
+    }
+
+    private static async Task AddSuppressedDurationToOpenIncidentAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        int deviceId,
+        DateTime endedAtUtc,
+        CancellationToken cancellationToken)
+    {
+        long? incidentId = null;
+        DateTime? incidentStartedAtUtc = null;
+        DateTime? suppressedFromUtc = null;
+
+        await using (var select = connection.CreateCommand())
+        {
+            select.Transaction = transaction;
+            select.CommandText = """
+                SELECT i.Id, i.StartedAtUtc, d.SuppressedFromUtc
+                FROM DeviceIncidents i
+                JOIN Devices d ON d.Id = i.DeviceId
+                WHERE i.DeviceId = @DeviceId
+                  AND i.Status = 'Open'
+                  AND d.SuppressionMode <> 'None'
+                LIMIT 1;
+                """;
+            AddParameter(select, "@DeviceId", deviceId);
+            await using var reader = await select.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                incidentId = reader.GetInt64(0);
+                incidentStartedAtUtc = FromStorageDate(reader.GetString(1)).ToUniversalTime();
+                suppressedFromUtc = reader.IsDBNull(2) ? null : FromStorageDate(reader.GetString(2)).ToUniversalTime();
+            }
+        }
+
+        if (!incidentId.HasValue || !incidentStartedAtUtc.HasValue)
+        {
+            return;
+        }
+
+        var effectiveStart = suppressedFromUtc.HasValue && suppressedFromUtc.Value > incidentStartedAtUtc.Value
+            ? suppressedFromUtc.Value
+            : incidentStartedAtUtc.Value;
+        var seconds = Math.Max(0, (long)(endedAtUtc.ToUniversalTime() - effectiveStart).TotalSeconds);
+        if (seconds <= 0)
+        {
+            return;
+        }
+
+        await using var update = connection.CreateCommand();
+        update.Transaction = transaction;
+        update.CommandText = """
+            UPDATE DeviceIncidents
+            SET SuppressedDurationSeconds = SuppressedDurationSeconds + @Seconds,
+                UpdatedAtUtc = @EndedAtUtc
+            WHERE Id = @Id;
+            """;
+        AddParameter(update, "@Seconds", seconds);
+        AddParameter(update, "@EndedAtUtc", ToStorageDate(endedAtUtc.ToUniversalTime()));
+        AddParameter(update, "@Id", incidentId.Value);
+        await update.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public async Task<bool> ExistsByIpAsync(string ipAddress, int? excludeDeviceId = null)
@@ -1094,9 +1310,14 @@ public sealed class DeviceRepository
             ConsecutiveFailures = reader.GetInt32(25),
             ConsecutiveSuccesses = reader.GetInt32(26),
             LastStableStatus = DeviceStatusExtensions.FromStorageValue(reader.GetString(27)),
-            CreatedAt = FromStorageDate(reader.GetString(28)),
-            UpdatedAt = FromStorageDate(reader.GetString(29)),
-            SlaTargetAvailabilityPercent = reader.IsDBNull(30) ? null : reader.GetDouble(30)
+            SuppressionMode = DeviceSuppressionModeExtensions.FromStorageValue(reader.GetString(28)),
+            SuppressedFromUtc = reader.IsDBNull(29) ? null : FromStorageDate(reader.GetString(29)),
+            SuppressedUntilUtc = reader.IsDBNull(30) ? null : FromStorageDate(reader.GetString(30)),
+            SuppressionReason = reader.GetString(31),
+            SuppressedBy = reader.GetString(32),
+            CreatedAt = FromStorageDate(reader.GetString(33)),
+            UpdatedAt = FromStorageDate(reader.GetString(34)),
+            SlaTargetAvailabilityPercent = reader.IsDBNull(35) ? null : reader.GetDouble(35)
         };
     }
 
@@ -1129,6 +1350,11 @@ public sealed class DeviceRepository
         AddParameter(command, "@ConsecutiveFailures", device.ConsecutiveFailures);
         AddParameter(command, "@ConsecutiveSuccesses", device.ConsecutiveSuccesses);
         AddParameter(command, "@LastStableStatus", device.LastStableStatus.ToStorageValue());
+        AddParameter(command, "@SuppressionMode", device.SuppressionMode.ToStorageValue());
+        AddParameter(command, "@SuppressedFromUtc", device.SuppressedFromUtc.HasValue ? ToStorageDate(device.SuppressedFromUtc.Value.ToUniversalTime()) : null);
+        AddParameter(command, "@SuppressedUntilUtc", device.SuppressedUntilUtc.HasValue ? ToStorageDate(device.SuppressedUntilUtc.Value.ToUniversalTime()) : null);
+        AddParameter(command, "@SuppressionReason", device.SuppressionReason.Trim());
+        AddParameter(command, "@SuppressedBy", device.SuppressedBy.Trim());
         AddParameter(command, "@CreatedAt", ToStorageDate(device.CreatedAt));
         AddParameter(command, "@UpdatedAt", ToStorageDate(device.UpdatedAt));
         AddParameter(command, "@TargetAvailabilityPercent", device.SlaTargetAvailabilityPercent);

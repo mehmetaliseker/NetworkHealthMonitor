@@ -26,7 +26,7 @@ public static class ApplicationBuildInfo
                 ? "unknown"
                 : File.GetLastWriteTimeUtc(location).ToString("O", CultureInfo.InvariantCulture),
             ExtractCommitSha(informationalVersion),
-            DatabaseMigrationRunner.DeviceIncidentsEndedAtUtcMigrationId);
+            SqliteConnectionFactory.ExtendedSchedulerSchemaMigrationId);
     }
 
     private static string ExtractCommitSha(string? informationalVersion)

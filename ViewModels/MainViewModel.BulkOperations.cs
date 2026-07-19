@@ -95,6 +95,75 @@ public sealed partial class MainViewModel
         }
     }
 
+    private async Task BulkSetSuppressionAsync(object? parameter, DeviceSuppressionMode mode)
+    {
+        var devices = GetSelectedDevices(parameter);
+        if (devices.Count == 0)
+        {
+            _dialogService.ShowWarning("Cihaz seçilmedi", "Toplu işlem için cihaz seçin.");
+            return;
+        }
+
+        var untilUtc = BulkSuppressionDurationHours <= 0
+            ? (DateTime?)null
+            : DateTime.UtcNow.AddHours(BulkSuppressionDurationHours);
+        var modeText = mode == DeviceSuppressionMode.PauseMonitoring
+            ? "izleme duraklatılacak"
+            : "bildirimler susturulacak";
+        var durationText = untilUtc.HasValue
+            ? $"{BulkSuppressionDurationHours} saat"
+            : "süresiz";
+        if (!_dialogService.Confirm("Seçili cihazlarda geçici mod uygulansın mı?", $"{devices.Count} cihaz için {modeText}. Süre: {durationText}."))
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var affected = await _deviceRepository.BulkSetSuppressionAsync(
+                devices.Select(device => device.Id),
+                mode,
+                untilUtc,
+                BulkSuppressionReason,
+                Environment.UserName,
+                DateTime.UtcNow);
+            await ReloadAllAsync();
+            StatusMessage = $"{affected} cihaz için {mode.ToDisplayName()} uygulandı.";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task BulkClearSuppressionAsync(object? parameter)
+    {
+        var devices = GetSelectedDevices(parameter);
+        if (devices.Count == 0)
+        {
+            _dialogService.ShowWarning("Cihaz seçilmedi", "Toplu işlem için cihaz seçin.");
+            return;
+        }
+
+        if (!_dialogService.Confirm("Geçici mod kaldırılsın mı?", $"{devices.Count} cihaz normal izlemeye dönecek."))
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var affected = await _deviceRepository.BulkClearSuppressionAsync(devices.Select(device => device.Id), DateTime.UtcNow);
+            await ReloadAllAsync();
+            StatusMessage = $"{affected} cihaz normal izlemeye alındı.";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     private async Task BulkDeactivateAsync(object? parameter)
     {
         var devices = GetSelectedDevices(parameter);

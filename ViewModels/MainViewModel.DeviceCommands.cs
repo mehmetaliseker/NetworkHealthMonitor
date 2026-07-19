@@ -121,8 +121,14 @@ public sealed partial class MainViewModel
         DeviceGroupFilter = AllGroupsText;
         CriticalFilter = AllCriticalText;
         DeletedDeviceFilter = ActiveDevicesText;
+        AutoCheckFilter = AllAutoCheckStatesText;
+        SuppressionFilter = AllSuppressionStatesText;
+        UptimeRangeFilter = AllUptimeRangesText;
+        LastCheckRangeFilter = AllLastCheckRangesText;
+        DeviceOnlyProblematic = false;
         OnPropertyChanged(nameof(ActiveDeviceFilterCount));
         OnPropertyChanged(nameof(ActiveDeviceFilterCountText));
+        OnPropertyChanged(nameof(ActiveDeviceFilterSummaryText));
         OnPropertyChanged(nameof(HasNoFilteredDevices));
     }
 

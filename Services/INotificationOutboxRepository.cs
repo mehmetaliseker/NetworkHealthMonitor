@@ -13,6 +13,11 @@ public interface INotificationOutboxRepository
         DateTime nowUtc,
         CancellationToken cancellationToken = default);
 
+    Task<long> AddPendingAsync(
+        NotificationOutboxCreateRequest request,
+        DateTime nowUtc,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<NotificationOutboxItem>> ClaimDueAsync(
         int maxItems,
         string lockOwner,
@@ -25,6 +30,8 @@ public interface INotificationOutboxRepository
     Task MarkRetryAsync(long id, int attemptCount, DateTime nextAttemptAtUtc, string safeError, CancellationToken cancellationToken = default);
 
     Task MarkFailedAsync(long id, int attemptCount, string safeError, CancellationToken cancellationToken = default);
+
+    Task MarkDeadLetterAsync(long id, int attemptCount, string safeError, CancellationToken cancellationToken = default);
 
     Task<int> CancelPendingForDeviceAsync(int deviceId, DateTime nowUtc, CancellationToken cancellationToken = default);
 

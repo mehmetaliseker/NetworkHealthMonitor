@@ -8,4 +8,6 @@ public interface IIncidentService
         IReadOnlyList<PingDeviceResult> results,
         IReadOnlyDictionary<int, PingLog> logsByDeviceId,
         CancellationToken cancellationToken = default);
+
+    Task EvaluateOpenIncidentsAsync(CancellationToken cancellationToken = default);
 }

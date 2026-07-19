@@ -119,6 +119,12 @@ public sealed partial class MainViewModel
             }
         }
 
+        if (!TryValidateEmailSettings(out var emailValidationMessage))
+        {
+            _dialogService.ShowWarning("E-posta ayarlari gecersiz", emailValidationMessage);
+            return;
+        }
+
         await _uiAutostartService.SetEnabledAsync(OpenUiOnWindowsLogin, ResolveCurrentExecutablePath());
         await _settingsService.SaveAsync(CreateSettingsFromCurrentValues());
 
@@ -267,10 +273,128 @@ public sealed partial class MainViewModel
                 NotificationCooldownMinutes = NotificationCooldownMinutes,
                 RequestTimeoutSeconds = NotificationRequestTimeoutSeconds,
                 MaxRetryCount = NotificationMaxRetryCount,
-                InitialRetryDelaySeconds = NotificationInitialRetryDelaySeconds
+                InitialRetryDelaySeconds = NotificationInitialRetryDelaySeconds,
+                EmailEnabled = EmailEnabled,
+                SmtpHost = SmtpHost,
+                SmtpPort = SmtpPort,
+                SmtpSecurity = SmtpSecurity,
+                AllowInsecureSmtp = AllowInsecureSmtp,
+                SmtpUsername = SmtpUsername,
+                SmtpPassword = SmtpPassword,
+                SenderEmail = SenderEmail,
+                SenderDisplayName = SenderDisplayName,
+                SmtpConnectionTimeoutSeconds = SmtpConnectionTimeoutSeconds,
+                EmailMaxRetryCount = EmailMaxRetryCount,
+                TestEmailRecipient = TestEmailRecipient,
+                EscalationThresholdHours = EmailEscalationThresholdHours,
+                NotifyOnDeviceEscalated = NotificationNotifyOnEscalated,
+                EmailNotifyOnDeviceRecovered = EmailNotifyOnRecovered,
+                InitialEmailRecipients = InitialEmailRecipients.Select(CloneRecipient).ToList(),
+                EscalationEmailRecipients = EscalationEmailRecipients.Select(CloneRecipient).ToList(),
+                EmailTemplates = new EmailTemplateSettings
+                {
+                    InitialOfflineSubject = InitialOfflineEmailSubjectTemplate,
+                    InitialOfflineBody = InitialOfflineEmailBodyTemplate,
+                    EscalationSubject = EscalationEmailSubjectTemplate,
+                    EscalationBody = EscalationEmailBodyTemplate,
+                    RecoveredSubject = RecoveredEmailSubjectTemplate,
+                    RecoveredBody = RecoveredEmailBodyTemplate,
+                    IsHtml = EmailTemplatesAreHtml
+                }
             },
             Theme = Theme
         };
+    }
+
+    private static EmailRecipient CloneRecipient(EmailRecipient recipient)
+    {
+        return new EmailRecipient
+        {
+            Email = recipient.Email.Trim(),
+            DisplayName = recipient.DisplayName.Trim()
+        };
+    }
+
+    private bool TryValidateEmailSettings(out string message)
+    {
+        message = string.Empty;
+
+        var renderer = new NetworkHealthMonitor.Services.NotificationTemplateRenderer();
+        var unknownPlaceholders = new[]
+            {
+                InitialOfflineEmailSubjectTemplate,
+                InitialOfflineEmailBodyTemplate,
+                EscalationEmailSubjectTemplate,
+                EscalationEmailBodyTemplate,
+                RecoveredEmailSubjectTemplate,
+                RecoveredEmailBodyTemplate
+            }
+            .SelectMany(renderer.FindUnknownPlaceholders)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (unknownPlaceholders.Count > 0)
+        {
+            message = "Bilinmeyen sablon degiskenleri: " + string.Join(", ", unknownPlaceholders.Select(item => "{" + item + "}"));
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(InitialOfflineEmailSubjectTemplate)
+            || string.IsNullOrWhiteSpace(EscalationEmailSubjectTemplate)
+            || string.IsNullOrWhiteSpace(RecoveredEmailSubjectTemplate))
+        {
+            message = "E-posta konu sablonlari bos birakilamaz.";
+            return false;
+        }
+
+        var invalidRecipients = InitialEmailRecipients
+            .Concat(EscalationEmailRecipients)
+            .Where(recipient => !string.IsNullOrWhiteSpace(recipient.Email) && !EmailAddressValidator.IsValid(recipient.Email))
+            .Select(recipient => recipient.Email)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (invalidRecipients.Count > 0)
+        {
+            message = "Gecersiz alici adresleri: " + string.Join(", ", invalidRecipients);
+            return false;
+        }
+
+        if (!EmailEnabled)
+        {
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(SmtpHost))
+        {
+            message = "SMTP sunucu adresi bos olamaz.";
+            return false;
+        }
+
+        if (!EmailAddressValidator.IsValid(SenderEmail))
+        {
+            message = "Gonderen e-posta adresi gecerli degil.";
+            return false;
+        }
+
+        if (InitialEmailRecipients.All(recipient => !EmailAddressValidator.IsValid(recipient.Email)))
+        {
+            message = "Ilk bildirim icin en az bir gecerli alici ekleyin.";
+            return false;
+        }
+
+        if (NotificationNotifyOnEscalated
+            && EscalationEmailRecipients.All(recipient => !EmailAddressValidator.IsValid(recipient.Email)))
+        {
+            message = "Escalation bildirimi icin en az bir gecerli alici ekleyin.";
+            return false;
+        }
+
+        if (SmtpSecurity == SmtpSecurityMode.None && !AllowInsecureSmtp)
+        {
+            message = "Guvenliksiz SMTP icin acik onay kutusunu isaretleyin.";
+            return false;
+        }
+
+        return true;
     }
 
     private static string ResolveCurrentExecutablePath()
@@ -354,6 +478,146 @@ public sealed partial class MainViewModel
         }
     }
 
+    private async Task TestSmtpConnectionAsync()
+    {
+        var settings = CreateSettingsFromCurrentValues();
+        IsBusy = true;
+        IsSendingTestEmail = true;
+        SmtpTestResult = "SMTP ayarlari dogrulaniyor...";
+        try
+        {
+            var result = await _emailSender.TestConnectionAsync(settings.Notifications);
+            SmtpTestResult = result.Success
+                ? "SMTP ayarlari temel dogrulamadan gecti. Gercek teslimat icin test e-postasi gonderin."
+                : result.SafeErrorMessage;
+        }
+        finally
+        {
+            IsSendingTestEmail = false;
+            IsBusy = false;
+        }
+    }
+
+    private async Task SendTestEmailAsync()
+    {
+        var settings = CreateSettingsFromCurrentValues();
+        settings.Notifications.EmailEnabled = true;
+        var recipient = new EmailRecipient { Email = TestEmailRecipient.Trim() };
+        if (!EmailAddressValidator.IsValid(recipient.Email))
+        {
+            _dialogService.ShowWarning("Gecersiz alici", "Test e-postasi icin gecerli bir alici adresi girin.");
+            return;
+        }
+
+        var context = new NotificationTemplateContext
+        {
+            DeviceName = "Ornek Kamera",
+            IpAddress = "192.0.2.10",
+            DeviceType = DeviceType.Camera.ToDisplayName(),
+            GroupName = "Ornek Grup",
+            Status = DeviceStatus.Offline.ToDisplayName(),
+            IncidentStartedAtUtc = DateTime.UtcNow.AddHours(-2),
+            LastSuccessfulCheckAtUtc = DateTime.UtcNow.AddHours(-3),
+            LastCheckAtUtc = DateTime.UtcNow,
+            OfflineDuration = TimeSpan.FromHours(2),
+            EscalationThreshold = TimeSpan.FromHours(settings.Notifications.EscalationThresholdHours)
+        };
+
+        IsBusy = true;
+        IsSendingTestEmail = true;
+        SmtpTestResult = "Test e-postasi gonderiliyor...";
+        try
+        {
+            var renderer = new NetworkHealthMonitor.Services.NotificationTemplateRenderer();
+            var subject = renderer.Render(settings.Notifications.EmailTemplates.InitialOfflineSubject, context);
+            var body = renderer.Render(settings.Notifications.EmailTemplates.InitialOfflineBody, context);
+            var result = await _emailSender.SendAsync(
+                settings.Notifications,
+                recipient,
+                subject,
+                body,
+                settings.Notifications.EmailTemplates.IsHtml);
+            SmtpTestResult = result.Success
+                ? "Test e-postasi basariyla gonderildi."
+                : result.SafeErrorMessage;
+
+            settings.Notifications.LastTestAtUtc = DateTime.UtcNow;
+            settings.Notifications.LastTestResult = SmtpTestResult;
+            await _settingsService.SaveAsync(settings);
+            ApplySettings(settings);
+        }
+        catch (Exception ex)
+        {
+            SmtpTestResult = ex.Message;
+        }
+        finally
+        {
+            IsSendingTestEmail = false;
+            IsBusy = false;
+        }
+    }
+
+    private void AddInitialEmailRecipient()
+    {
+        AddEmailRecipient(InitialEmailRecipients, NewInitialEmailAddress, value => NewInitialEmailAddress = value);
+    }
+
+    private void RemoveInitialEmailRecipient()
+    {
+        if (SelectedInitialEmailRecipient is not null)
+        {
+            InitialEmailRecipients.Remove(SelectedInitialEmailRecipient);
+            SelectedInitialEmailRecipient = null;
+        }
+    }
+
+    private void AddEscalationEmailRecipient()
+    {
+        AddEmailRecipient(EscalationEmailRecipients, NewEscalationEmailAddress, value => NewEscalationEmailAddress = value);
+    }
+
+    private void RemoveEscalationEmailRecipient()
+    {
+        if (SelectedEscalationEmailRecipient is not null)
+        {
+            EscalationEmailRecipients.Remove(SelectedEscalationEmailRecipient);
+            SelectedEscalationEmailRecipient = null;
+        }
+    }
+
+    private void AddEmailRecipient(
+        System.Collections.ObjectModel.ObservableCollection<EmailRecipient> target,
+        string email,
+        Action<string> resetInput)
+    {
+        if (!EmailAddressValidator.IsValid(email))
+        {
+            _dialogService.ShowWarning("Gecersiz e-posta", "Gecerli bir e-posta adresi girin.");
+            return;
+        }
+
+        var normalized = email.Trim().ToLowerInvariant();
+        if (target.Any(recipient => string.Equals(recipient.NormalizedEmail, normalized, StringComparison.OrdinalIgnoreCase)))
+        {
+            _dialogService.ShowWarning("Yinelenen e-posta", "Bu adres listede zaten var.");
+            return;
+        }
+
+        target.Add(new EmailRecipient { Email = email.Trim() });
+        resetInput(string.Empty);
+    }
+
+    private void ResetEmailTemplates()
+    {
+        InitialOfflineEmailSubjectTemplate = NotificationTemplateDefaults.InitialOfflineSubject;
+        InitialOfflineEmailBodyTemplate = NotificationTemplateDefaults.InitialOfflineBody;
+        EscalationEmailSubjectTemplate = NotificationTemplateDefaults.EscalationSubject;
+        EscalationEmailBodyTemplate = NotificationTemplateDefaults.EscalationBody;
+        RecoveredEmailSubjectTemplate = NotificationTemplateDefaults.RecoveredSubject;
+        RecoveredEmailBodyTemplate = NotificationTemplateDefaults.RecoveredBody;
+        EmailTemplatesAreHtml = false;
+    }
+
     private static void OpenLogFolder()
     {
         Directory.CreateDirectory(NetworkHealthMonitor.Data.DatabasePaths.LogDirectory);
@@ -421,6 +685,30 @@ public sealed partial class MainViewModel
         NotificationRequestTimeoutSeconds = settings.Notifications.RequestTimeoutSeconds;
         NotificationMaxRetryCount = settings.Notifications.MaxRetryCount;
         NotificationInitialRetryDelaySeconds = settings.Notifications.InitialRetryDelaySeconds;
+        EmailEnabled = settings.Notifications.EmailEnabled;
+        SmtpHost = settings.Notifications.SmtpHost;
+        SmtpPort = settings.Notifications.SmtpPort;
+        SmtpSecurity = settings.Notifications.SmtpSecurity;
+        AllowInsecureSmtp = settings.Notifications.AllowInsecureSmtp;
+        SmtpUsername = settings.Notifications.SmtpUsername;
+        SmtpPassword = settings.Notifications.SmtpPassword;
+        SenderEmail = settings.Notifications.SenderEmail;
+        SenderDisplayName = settings.Notifications.SenderDisplayName;
+        SmtpConnectionTimeoutSeconds = settings.Notifications.SmtpConnectionTimeoutSeconds;
+        EmailMaxRetryCount = settings.Notifications.EmailMaxRetryCount;
+        TestEmailRecipient = settings.Notifications.TestEmailRecipient;
+        EmailEscalationThresholdHours = settings.Notifications.EscalationThresholdHours;
+        NotificationNotifyOnEscalated = settings.Notifications.NotifyOnDeviceEscalated;
+        EmailNotifyOnRecovered = settings.Notifications.EmailNotifyOnDeviceRecovered;
+        ReplaceCollection(InitialEmailRecipients, settings.Notifications.InitialEmailRecipients.Select(CloneRecipient));
+        ReplaceCollection(EscalationEmailRecipients, settings.Notifications.EscalationEmailRecipients.Select(CloneRecipient));
+        InitialOfflineEmailSubjectTemplate = settings.Notifications.EmailTemplates.InitialOfflineSubject;
+        InitialOfflineEmailBodyTemplate = settings.Notifications.EmailTemplates.InitialOfflineBody;
+        EscalationEmailSubjectTemplate = settings.Notifications.EmailTemplates.EscalationSubject;
+        EscalationEmailBodyTemplate = settings.Notifications.EmailTemplates.EscalationBody;
+        RecoveredEmailSubjectTemplate = settings.Notifications.EmailTemplates.RecoveredSubject;
+        RecoveredEmailBodyTemplate = settings.Notifications.EmailTemplates.RecoveredBody;
+        EmailTemplatesAreHtml = settings.Notifications.EmailTemplates.IsHtml;
         NotificationLastTestResult = settings.Notifications.LastTestResult;
         NotificationLastSuccessfulAtText = settings.Notifications.LastSuccessfulNotificationAtUtc.HasValue
             ? settings.Notifications.LastSuccessfulNotificationAtUtc.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")

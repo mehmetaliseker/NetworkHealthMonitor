@@ -54,6 +54,7 @@ public sealed class SystemReadinessService
         diagnostics.Add(Diagnostic("Son zamanlayıcı hatası", heartbeat?.LastSchedulerException ?? string.Empty));
         diagnostics.Add(Diagnostic("Son ntfy hatası", heartbeat?.LastNtfyException ?? string.Empty));
         diagnostics.Add(Diagnostic("Ortalama zamanlayıcı döngüsü", heartbeat is null ? "-" : $"{heartbeat.AverageSchedulerCycleMs:0} ms"));
+        diagnostics.Add(Diagnostic("Son zamanlayıcı yoklaması", FormatDate(heartbeat?.LastSchedulerPollAtUtc)));
         diagnostics.Add(Diagnostic("Son zamanlayıcı döngüsü", FormatDate(heartbeat?.LastSchedulerCycleAtUtc)));
         diagnostics.Add(Diagnostic("Son otomatik kontrol", FormatDate(heartbeat?.LastSuccessfulPingAtUtc)));
         diagnostics.Add(Diagnostic("Son bildirim gönderimi", FormatDate(heartbeat?.LastNotificationDispatchAtUtc)));

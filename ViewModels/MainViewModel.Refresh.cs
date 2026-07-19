@@ -101,12 +101,14 @@ public sealed partial class MainViewModel
                 if (args.PropertyName == nameof(Device.IsSelected))
                 {
                     OnPropertyChanged(nameof(SelectedDeviceCountText));
+                    OnPropertyChanged(nameof(HasSelectedDevices));
                     RaiseCommandStates();
                 }
             };
         }
 
         ReplaceCollection(Devices, devices);
+        NotifyShellMetrics();
         ReplaceCollection(DeviceOptions, new[] { new SelectionOption<int?>(null, "Tüm cihazlar") }
             .Concat(devices
                 .OrderBy(device => device.Name)
@@ -252,6 +254,73 @@ public sealed partial class MainViewModel
         }
 
         if (CriticalFilter == NonCriticalOnlyText && device.IsCritical)
+        {
+            return false;
+        }
+
+        if (AutoCheckFilter == AutoCheckEnabledText && !device.AutoCheckEnabled)
+        {
+            return false;
+        }
+
+        if (AutoCheckFilter == AutoCheckDisabledText && device.AutoCheckEnabled)
+        {
+            return false;
+        }
+
+        if (SuppressionFilter == MutedOnlyText
+            && (!device.IsSuppressionActive || device.SuppressionMode != DeviceSuppressionMode.MuteNotifications))
+        {
+            return false;
+        }
+
+        if (SuppressionFilter == PausedOnlyText && !device.IsMonitoringPaused)
+        {
+            return false;
+        }
+
+        if (SuppressionFilter == NoSuppressionText && device.IsSuppressionActive)
+        {
+            return false;
+        }
+
+        if (DeviceOnlyProblematic && !device.IsProblematic && !device.IsSuppressionActive)
+        {
+            return false;
+        }
+
+        if (UptimeRangeFilter == UptimeUnder95Text
+            && (!device.Uptime30DaysPercent.HasValue || device.Uptime30DaysPercent.Value >= 95))
+        {
+            return false;
+        }
+
+        if (UptimeRangeFilter == UptimeUnder99Text
+            && (!device.Uptime30DaysPercent.HasValue || device.Uptime30DaysPercent.Value >= 99))
+        {
+            return false;
+        }
+
+        if (UptimeRangeFilter == UptimeUnknownText && device.Uptime30DaysPercent.HasValue)
+        {
+            return false;
+        }
+
+        var nowUtc = DateTime.UtcNow;
+        var lastCheckedAtUtc = device.LastCheckedAt?.ToUniversalTime();
+        if (LastCheckRangeFilter == LastCheck24HoursText
+            && (!lastCheckedAtUtc.HasValue || lastCheckedAtUtc.Value < nowUtc.AddHours(-24)))
+        {
+            return false;
+        }
+
+        if (LastCheckRangeFilter == LastCheck7DaysText
+            && (!lastCheckedAtUtc.HasValue || lastCheckedAtUtc.Value < nowUtc.AddDays(-7)))
+        {
+            return false;
+        }
+
+        if (LastCheckRangeFilter == LastCheckNeverText && lastCheckedAtUtc.HasValue)
         {
             return false;
         }
@@ -449,6 +518,13 @@ public sealed partial class MainViewModel
         ExportSettingsCommand?.NotifyCanExecuteChanged();
         ImportSettingsCommand?.NotifyCanExecuteChanged();
         SendTestNotificationCommand?.NotifyCanExecuteChanged();
+        SendTestEmailCommand?.NotifyCanExecuteChanged();
+        TestSmtpConnectionCommand?.NotifyCanExecuteChanged();
+        AddInitialEmailRecipientCommand?.NotifyCanExecuteChanged();
+        RemoveInitialEmailRecipientCommand?.NotifyCanExecuteChanged();
+        AddEscalationEmailRecipientCommand?.NotifyCanExecuteChanged();
+        RemoveEscalationEmailRecipientCommand?.NotifyCanExecuteChanged();
+        ResetEmailTemplatesCommand?.NotifyCanExecuteChanged();
     }
 }
 

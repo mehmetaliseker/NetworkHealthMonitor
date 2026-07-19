@@ -31,6 +31,19 @@ public sealed class NotificationOutboxRepository : INotificationOutboxRepository
         return Convert.ToInt64(result, CultureInfo.InvariantCulture);
     }
 
+    public async Task<long> AddPendingAsync(
+        NotificationOutboxCreateRequest request,
+        DateTime nowUtc,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = InsertSql + " SELECT last_insert_rowid();";
+        AddInsertParameters(command, request, nowUtc);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return Convert.ToInt64(result, CultureInfo.InvariantCulture);
+    }
+
     public static async Task<long> AddPendingAsync(
         SqliteConnection connection,
         SqliteTransaction transaction,
@@ -46,6 +59,21 @@ public sealed class NotificationOutboxRepository : INotificationOutboxRepository
         command.Transaction = transaction;
         command.CommandText = InsertSql + " SELECT last_insert_rowid();";
         AddInsertParameters(command, eventType, deviceId, incidentId, payloadJson, deduplicationKey, nowUtc);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return Convert.ToInt64(result, CultureInfo.InvariantCulture);
+    }
+
+    public static async Task<long> AddPendingAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        NotificationOutboxCreateRequest request,
+        DateTime nowUtc,
+        CancellationToken cancellationToken = default)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = InsertSql + " SELECT last_insert_rowid();";
+        AddInsertParameters(command, request, nowUtc);
         var result = await command.ExecuteScalarAsync(cancellationToken);
         return Convert.ToInt64(result, CultureInfo.InvariantCulture);
     }
@@ -80,7 +108,8 @@ public sealed class NotificationOutboxRepository : INotificationOutboxRepository
         await using var select = connection.CreateCommand();
         select.Transaction = transaction;
         select.CommandText = """
-            SELECT Id, EventType, DeviceId, '' AS DeviceName, IncidentId, PayloadJson, DeduplicationKey, Status,
+            SELECT Id, EventType, DeviceId, '' AS DeviceName, IncidentId, Channel, Recipient, Subject, Body,
+                   PayloadJson, DeduplicationKey, IdempotencyKey, Status,
                    AttemptCount, NextAttemptAtUtc, LockedAtUtc, LastAttemptAtUtc, LockedBy, LastError,
                    CreatedAtUtc, SentAtUtc, CancelledAtUtc
             FROM NotificationOutbox
@@ -191,6 +220,29 @@ public sealed class NotificationOutboxRepository : INotificationOutboxRepository
             cancellationToken);
     }
 
+    public async Task MarkDeadLetterAsync(long id, int attemptCount, string safeError, CancellationToken cancellationToken = default)
+    {
+        await ExecuteStatusUpdateAsync(
+            id,
+            """
+            UPDATE NotificationOutbox
+            SET Status = 'DeadLetter',
+                AttemptCount = @AttemptCount,
+                LastAttemptAtUtc = @LastAttemptAtUtc,
+                LockedAtUtc = NULL,
+                LockedBy = '',
+                LastError = @LastError
+            WHERE Id = @Id;
+            """,
+            command =>
+            {
+                AddParameter(command, "@AttemptCount", attemptCount);
+                AddParameter(command, "@LastAttemptAtUtc", ToStorageDate(DateTime.UtcNow));
+                AddParameter(command, "@LastError", LimitError(safeError));
+            },
+            cancellationToken);
+    }
+
     public async Task<int> CancelPendingForDeviceAsync(int deviceId, DateTime nowUtc, CancellationToken cancellationToken = default)
     {
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
@@ -203,8 +255,8 @@ public sealed class NotificationOutboxRepository : INotificationOutboxRepository
                 LockedBy = '',
                 LastError = 'Device was deleted before notification dispatch.'
             WHERE DeviceId = @DeviceId
-              AND Status IN ('Pending','Processing','Failed')
-              AND EventType IN ('DeviceDown','Test');
+              AND Status IN ('Pending','Processing','Failed','DeadLetter')
+              AND EventType IN ('DeviceDown','DeviceSuspectedOffline','DeviceOfflineEscalated','DeviceRecovered','Test');
             """;
         AddParameter(command, "@CancelledAtUtc", ToStorageDate(nowUtc));
         AddParameter(command, "@DeviceId", deviceId);
@@ -218,7 +270,7 @@ public sealed class NotificationOutboxRepository : INotificationOutboxRepository
         command.CommandText = """
             SELECT
                 SUM(CASE WHEN Status IN ('Pending','Processing') THEN 1 ELSE 0 END) AS PendingCount,
-                SUM(CASE WHEN Status = 'Failed' THEN 1 ELSE 0 END) AS FailedCount
+                SUM(CASE WHEN Status IN ('Failed','DeadLetter') THEN 1 ELSE 0 END) AS FailedCount
             FROM NotificationOutbox;
             """;
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -244,7 +296,8 @@ public sealed class NotificationOutboxRepository : INotificationOutboxRepository
         await using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT n.Id, n.EventType, n.DeviceId, COALESCE(d.Name, '') AS DeviceName, n.IncidentId,
-                   n.PayloadJson, n.DeduplicationKey, n.Status, n.AttemptCount, n.NextAttemptAtUtc,
+                   n.Channel, n.Recipient, n.Subject, n.Body,
+                   n.PayloadJson, n.DeduplicationKey, n.IdempotencyKey, n.Status, n.AttemptCount, n.NextAttemptAtUtc,
                    n.LockedAtUtc, n.LastAttemptAtUtc, n.LockedBy, n.LastError, n.CreatedAtUtc,
                    n.SentAtUtc, n.CancelledAtUtc
             FROM NotificationOutbox n
@@ -301,7 +354,7 @@ public sealed class NotificationOutboxRepository : INotificationOutboxRepository
                     LockedBy = '',
                     LastError = ''
                 WHERE Id = @Id
-                  AND Status = 'Failed';
+                  AND Status IN ('Failed','DeadLetter');
                 """;
             AddParameter(command, "@ResetAttemptCount", resetAttemptCount ? 1 : 0);
             AddParameter(command, "@NextAttemptAtUtc", ToStorageDate(nowUtc));
@@ -363,10 +416,12 @@ public sealed class NotificationOutboxRepository : INotificationOutboxRepository
 
     private const string InsertSql = """
         INSERT OR IGNORE INTO NotificationOutbox
-            (EventType, DeviceId, IncidentId, PayloadJson, DeduplicationKey, Status, AttemptCount,
+            (EventType, DeviceId, IncidentId, Channel, Recipient, Subject, Body, PayloadJson,
+             DeduplicationKey, IdempotencyKey, Status, AttemptCount,
              NextAttemptAtUtc, LockedAtUtc, LastAttemptAtUtc, LockedBy, LastError, CreatedAtUtc, SentAtUtc, CancelledAtUtc)
         VALUES
-            (@EventType, @DeviceId, @IncidentId, @PayloadJson, @DeduplicationKey, 'Pending', 0,
+            (@EventType, @DeviceId, @IncidentId, @Channel, @Recipient, @Subject, @Body, @PayloadJson,
+             @DeduplicationKey, @IdempotencyKey, 'Pending', 0,
              @NextAttemptAtUtc, NULL, NULL, '', '', @CreatedAtUtc, NULL, NULL);
         """;
 
@@ -379,11 +434,38 @@ public sealed class NotificationOutboxRepository : INotificationOutboxRepository
         string deduplicationKey,
         DateTime nowUtc)
     {
-        AddParameter(command, "@EventType", eventType);
-        AddParameter(command, "@DeviceId", deviceId);
-        AddParameter(command, "@IncidentId", incidentId);
-        AddParameter(command, "@PayloadJson", payloadJson);
-        AddParameter(command, "@DeduplicationKey", deduplicationKey);
+        AddInsertParameters(
+            command,
+            new NotificationOutboxCreateRequest
+            {
+                EventType = eventType,
+                DeviceId = deviceId,
+                IncidentId = incidentId,
+                Channel = NotificationChannels.Ntfy,
+                PayloadJson = payloadJson,
+                IdempotencyKey = deduplicationKey
+            },
+            nowUtc);
+    }
+
+    private static void AddInsertParameters(
+        SqliteCommand command,
+        NotificationOutboxCreateRequest request,
+        DateTime nowUtc)
+    {
+        var idempotencyKey = string.IsNullOrWhiteSpace(request.IdempotencyKey)
+            ? CreateFallbackIdempotencyKey(request)
+            : request.IdempotencyKey.Trim();
+        AddParameter(command, "@EventType", request.EventType.Trim());
+        AddParameter(command, "@DeviceId", request.DeviceId);
+        AddParameter(command, "@IncidentId", request.IncidentId);
+        AddParameter(command, "@Channel", string.IsNullOrWhiteSpace(request.Channel) ? NotificationChannels.Ntfy : request.Channel.Trim());
+        AddParameter(command, "@Recipient", request.Recipient.Trim());
+        AddParameter(command, "@Subject", request.Subject.Trim());
+        AddParameter(command, "@Body", request.Body);
+        AddParameter(command, "@PayloadJson", request.PayloadJson);
+        AddParameter(command, "@DeduplicationKey", idempotencyKey);
+        AddParameter(command, "@IdempotencyKey", idempotencyKey);
         AddParameter(command, "@NextAttemptAtUtc", ToStorageDate(nowUtc));
         AddParameter(command, "@CreatedAtUtc", ToStorageDate(nowUtc));
     }
@@ -397,19 +479,31 @@ public sealed class NotificationOutboxRepository : INotificationOutboxRepository
             DeviceId = reader.IsDBNull(2) ? null : reader.GetInt32(2),
             DeviceName = reader.GetString(3),
             IncidentId = reader.IsDBNull(4) ? null : reader.GetInt64(4),
-            PayloadJson = reader.GetString(5),
-            DeduplicationKey = reader.GetString(6),
-            Status = reader.GetString(7),
-            AttemptCount = reader.GetInt32(8),
-            NextAttemptAtUtc = FromStorageDate(reader.GetString(9)),
-            LockedAtUtc = reader.IsDBNull(10) ? null : FromStorageDate(reader.GetString(10)),
-            LastAttemptAtUtc = reader.IsDBNull(11) ? null : FromStorageDate(reader.GetString(11)),
-            LockedBy = reader.GetString(12),
-            LastError = reader.GetString(13),
-            CreatedAtUtc = FromStorageDate(reader.GetString(14)),
-            SentAtUtc = reader.IsDBNull(15) ? null : FromStorageDate(reader.GetString(15)),
-            CancelledAtUtc = reader.IsDBNull(16) ? null : FromStorageDate(reader.GetString(16))
+            Channel = reader.GetString(5),
+            Recipient = reader.GetString(6),
+            Subject = reader.GetString(7),
+            Body = reader.GetString(8),
+            PayloadJson = reader.GetString(9),
+            DeduplicationKey = reader.GetString(10),
+            IdempotencyKey = reader.GetString(11),
+            Status = reader.GetString(12),
+            AttemptCount = reader.GetInt32(13),
+            NextAttemptAtUtc = FromStorageDate(reader.GetString(14)),
+            LockedAtUtc = reader.IsDBNull(15) ? null : FromStorageDate(reader.GetString(15)),
+            LastAttemptAtUtc = reader.IsDBNull(16) ? null : FromStorageDate(reader.GetString(16)),
+            LockedBy = reader.GetString(17),
+            LastError = reader.GetString(18),
+            CreatedAtUtc = FromStorageDate(reader.GetString(19)),
+            SentAtUtc = reader.IsDBNull(20) ? null : FromStorageDate(reader.GetString(20)),
+            CancelledAtUtc = reader.IsDBNull(21) ? null : FromStorageDate(reader.GetString(21))
         };
+    }
+
+    private static string CreateFallbackIdempotencyKey(NotificationOutboxCreateRequest request)
+    {
+        return $"{request.EventType}:{request.Channel}:{request.DeviceId}:{request.IncidentId}:{request.Recipient}"
+            .Trim()
+            .ToLowerInvariant();
     }
 
     private static int ReadInt32(SqliteDataReader reader, int ordinal)

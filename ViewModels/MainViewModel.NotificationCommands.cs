@@ -23,10 +23,10 @@ public sealed partial class MainViewModel
 
     private async Task RetrySelectedOutboxAsync(object? parameter)
     {
-        var items = GetSelectedOutboxItems(parameter).Where(item => item.Status == "Failed").ToList();
+        var items = GetSelectedOutboxItems(parameter).Where(item => item.Status is "Failed" or "DeadLetter").ToList();
         if (items.Count == 0)
         {
-            _dialogService.ShowWarning("Kayıt seçilmedi", "Yeniden denenecek başarısız kayıt seçin.");
+            _dialogService.ShowWarning("Kayıt seçilmedi", "Yeniden denenecek başarısız veya kalıcı hata kaydı seçin.");
             return;
         }
 
@@ -53,7 +53,7 @@ public sealed partial class MainViewModel
 
     private async Task RetryOutboxAsync(NotificationOutboxItem? item)
     {
-        if (item is not { Status: "Failed" })
+        if (item is not { Status: "Failed" } and not { Status: "DeadLetter" })
         {
             return;
         }
@@ -100,6 +100,9 @@ public sealed partial class MainViewModel
             $"""
             Durum: {item.StatusText}
             Bildirim türü: {item.EventTypeText}
+            Kanal: {item.ChannelText}
+            Alici: {(string.IsNullOrWhiteSpace(item.Recipient) ? "-" : item.Recipient)}
+            Konu: {(string.IsNullOrWhiteSpace(item.Subject) ? "-" : item.Subject)}
             Cihaz: {(string.IsNullOrWhiteSpace(item.DeviceName) ? "-" : item.DeviceName)}
             Kesinti: {item.IncidentText}
             Oluşturulma: {item.CreatedAtText}
@@ -112,7 +115,7 @@ public sealed partial class MainViewModel
             {item.LastError}
 
             İçerik:
-            {item.PayloadJson}
+            {(string.IsNullOrWhiteSpace(item.Body) ? item.PayloadJson : item.Body)}
             """);
     }
 

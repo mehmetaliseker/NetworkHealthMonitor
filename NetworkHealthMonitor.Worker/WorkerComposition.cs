@@ -38,13 +38,19 @@ public static class WorkerComposition
 
         var outboxRepository = new NotificationOutboxRepository(connectionFactory);
         var alertPolicyService = new AlertPolicyService();
+        var incidentRepository = new DeviceOutageIncidentRepository(connectionFactory);
         var dispatcher = new NotificationDispatcherService(
             outboxRepository,
-            new NtfyNotificationClient(new DefaultHttpClientFactory(), new DpapiSecretProtector()),
+            new INotificationChannel[]
+            {
+                new NtfyNotificationChannel(new NtfyNotificationClient(new DefaultHttpClientFactory(), new DpapiSecretProtector())),
+                new EmailNotificationChannel(new SmtpEmailSender())
+            },
             settingsService,
             alertPolicyService,
             workerInstanceId,
-            heartbeatRepository);
+            heartbeatRepository,
+            incidentRepository);
 
         var scheduler = await CreateSchedulerAsync(options, connectionFactory, settingsService, heartbeatRepository, availabilityRepository, workerInstanceId);
         return new WorkerRuntime(workerInstanceId, scheduler, dispatcher, heartbeatRepository);
@@ -103,6 +109,7 @@ public static class WorkerComposition
             new SchedulerRuntimeOptions { PollIntervalOverride = options.PollIntervalOverride },
             heartbeatRepository,
             availabilityRepository,
+            incidentService,
             workerInstanceId));
     }
 }
