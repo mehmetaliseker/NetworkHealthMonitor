@@ -1,6 +1,7 @@
 param(
     [string]$ServiceName = "NetworkHealthMonitorWorker",
-    [switch]$PurgeData
+    [Alias("PurgeData")]
+    [switch]$RemoveData
 )
 
 $ErrorActionPreference = "Stop"
@@ -28,7 +29,7 @@ else {
     Write-Host "Servis bulunamadi: $ServiceName"
 }
 
-if ($PurgeData) {
+if ($RemoveData) {
     $programData = Join-Path $env:ProgramData "NetworkHealthMonitor"
     if (Test-Path $programData) {
         Remove-Item -LiteralPath $programData -Recurse -Force

@@ -20,10 +20,10 @@ public sealed class WorkerHeartbeatRepository
         command.CommandText = """
             INSERT INTO WorkerHeartbeat
                 (WorkerInstanceId, MachineName, ProcessId, Version, StartedAtUtc, LastSeenAtUtc,
-                 LastSchedulerCycleAtUtc, LastSuccessfulPingAtUtc, LastNotificationDispatchAtUtc, Status, LastError)
+                 LastSchedulerCycleAtUtc, LastSchedulerPollAtUtc, LastSuccessfulPingAtUtc, LastNotificationDispatchAtUtc, Status, LastError)
             VALUES
                 (@WorkerInstanceId, @MachineName, @ProcessId, @Version, @StartedAtUtc, @LastSeenAtUtc,
-                 @LastSchedulerCycleAtUtc, @LastSuccessfulPingAtUtc, @LastNotificationDispatchAtUtc, @Status, @LastError)
+                 @LastSchedulerCycleAtUtc, @LastSchedulerPollAtUtc, @LastSuccessfulPingAtUtc, @LastNotificationDispatchAtUtc, @Status, @LastError)
             ON CONFLICT(WorkerInstanceId) DO UPDATE SET
                 MachineName = excluded.MachineName,
                 ProcessId = excluded.ProcessId,
@@ -60,6 +60,11 @@ public sealed class WorkerHeartbeatRepository
         return UpdateDateColumnAsync(workerInstanceId, "LastSchedulerCycleAtUtc", whenUtc, cancellationToken);
     }
 
+    public Task MarkSchedulerPollAsync(string workerInstanceId, DateTime whenUtc, CancellationToken cancellationToken = default)
+    {
+        return UpdateDateColumnAsync(workerInstanceId, "LastSchedulerPollAtUtc", whenUtc, cancellationToken);
+    }
+
     public async Task MarkSchedulerCycleAsync(
         string workerInstanceId,
         DateTime whenUtc,
@@ -71,6 +76,7 @@ public sealed class WorkerHeartbeatRepository
         command.CommandText = """
             UPDATE WorkerHeartbeat
             SET LastSchedulerCycleAtUtc = @Value,
+                LastSchedulerPollAtUtc = @Value,
                 LastSeenAtUtc = @Value,
                 AverageSchedulerCycleMs = CASE
                     WHEN AverageSchedulerCycleMs <= 0 THEN @CycleMs
@@ -128,7 +134,7 @@ public sealed class WorkerHeartbeatRepository
         await using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT WorkerInstanceId, MachineName, ProcessId, Version, StartedAtUtc, LastSeenAtUtc,
-                   LastSchedulerCycleAtUtc, LastSuccessfulPingAtUtc, LastNotificationDispatchAtUtc, Status, LastError,
+                   LastSchedulerCycleAtUtc, LastSchedulerPollAtUtc, LastSuccessfulPingAtUtc, LastNotificationDispatchAtUtc, Status, LastError,
                    LastCriticalError, LastDatabaseLockedError, LastSchedulerException, LastNtfyException, AverageSchedulerCycleMs
             FROM WorkerHeartbeat
             ORDER BY LastSeenAtUtc DESC
@@ -149,15 +155,16 @@ public sealed class WorkerHeartbeatRepository
             StartedAtUtc = FromStorageDate(reader.GetString(4)),
             LastSeenAtUtc = FromStorageDate(reader.GetString(5)),
             LastSchedulerCycleAtUtc = reader.IsDBNull(6) ? null : FromStorageDate(reader.GetString(6)),
-            LastSuccessfulPingAtUtc = reader.IsDBNull(7) ? null : FromStorageDate(reader.GetString(7)),
-            LastNotificationDispatchAtUtc = reader.IsDBNull(8) ? null : FromStorageDate(reader.GetString(8)),
-            Status = reader.GetString(9),
-            LastError = reader.GetString(10),
-            LastCriticalError = reader.GetString(11),
-            LastDatabaseLockedError = reader.GetString(12),
-            LastSchedulerException = reader.GetString(13),
-            LastNtfyException = reader.GetString(14),
-            AverageSchedulerCycleMs = reader.GetDouble(15)
+            LastSchedulerPollAtUtc = reader.IsDBNull(7) ? null : FromStorageDate(reader.GetString(7)),
+            LastSuccessfulPingAtUtc = reader.IsDBNull(8) ? null : FromStorageDate(reader.GetString(8)),
+            LastNotificationDispatchAtUtc = reader.IsDBNull(9) ? null : FromStorageDate(reader.GetString(9)),
+            Status = reader.GetString(10),
+            LastError = reader.GetString(11),
+            LastCriticalError = reader.GetString(12),
+            LastDatabaseLockedError = reader.GetString(13),
+            LastSchedulerException = reader.GetString(14),
+            LastNtfyException = reader.GetString(15),
+            AverageSchedulerCycleMs = reader.GetDouble(16)
         };
     }
 
@@ -186,6 +193,7 @@ public sealed class WorkerHeartbeatRepository
         AddParameter(command, "@StartedAtUtc", ToStorageDate(heartbeat.StartedAtUtc));
         AddParameter(command, "@LastSeenAtUtc", ToStorageDate(heartbeat.LastSeenAtUtc));
         AddParameter(command, "@LastSchedulerCycleAtUtc", heartbeat.LastSchedulerCycleAtUtc.HasValue ? ToStorageDate(heartbeat.LastSchedulerCycleAtUtc.Value) : null);
+        AddParameter(command, "@LastSchedulerPollAtUtc", heartbeat.LastSchedulerPollAtUtc.HasValue ? ToStorageDate(heartbeat.LastSchedulerPollAtUtc.Value) : null);
         AddParameter(command, "@LastSuccessfulPingAtUtc", heartbeat.LastSuccessfulPingAtUtc.HasValue ? ToStorageDate(heartbeat.LastSuccessfulPingAtUtc.Value) : null);
         AddParameter(command, "@LastNotificationDispatchAtUtc", heartbeat.LastNotificationDispatchAtUtc.HasValue ? ToStorageDate(heartbeat.LastNotificationDispatchAtUtc.Value) : null);
         AddParameter(command, "@Status", heartbeat.Status);

@@ -17,7 +17,19 @@ public sealed partial class MainViewModel
         plan.Name = PlanFormName;
         plan.TargetType = PlanFormTargetType;
         plan.TargetValue = PlanFormTargetValue;
+        plan.ScheduleMode = PlanFormScheduleMode;
+        plan.IntervalValue = PlanFormFrequencyValue;
+        plan.IntervalUnit = ConvertFrequencyUnit(PlanFormFrequencyUnit);
         plan.IntervalMinutes = ConvertFrequencyToMinutes(PlanFormFrequencyValue, PlanFormFrequencyUnit);
+        plan.TimesPerDay = PlanFormTimesPerDay;
+        plan.DailyTimes = PlanFormDailyTimes;
+        plan.SelectedWeekDays = PlanFormSelectedWeekDays;
+        plan.TimeZoneId = TimeZoneInfo.Local.Id;
+        plan.FailureRetryEnabled = PlanFormFailureRetryEnabled;
+        plan.ConfirmationRetryCount = PlanFormConfirmationRetryCount;
+        plan.ConfirmationRetryIntervalSeconds = PlanFormConfirmationRetryIntervalSeconds;
+        plan.OfflineRecheckIntervalSeconds = ConvertOfflineRecheckToSeconds(PlanFormOfflineRecheckIntervalValue, PlanFormOfflineRecheckIntervalUnit);
+        plan.MissedRunPolicy = PlanFormMissedRunPolicy;
         plan.TimeoutMs = PlanFormTimeoutMs;
         plan.MaxParallelism = PlanFormMaxParallelism;
         plan.FailureThreshold = PlanFormFailureThreshold;
@@ -56,7 +68,18 @@ public sealed partial class MainViewModel
         PlanFormTargetType = plan.TargetType;
         UpdatePlanTargetOptions();
         PlanFormTargetValue = plan.TargetValue;
+        PlanFormScheduleMode = plan.ScheduleMode;
         ApplyFrequency(plan.IntervalMinutes);
+        PlanFormFrequencyValue = plan.IntervalValue;
+        PlanFormFrequencyUnit = plan.IntervalUnit.ToDisplayName();
+        PlanFormTimesPerDay = plan.TimesPerDay <= 0 ? 4 : plan.TimesPerDay;
+        PlanFormDailyTimes = plan.DailyTimes;
+        PlanFormSelectedWeekDays = plan.SelectedWeekDays;
+        PlanFormFailureRetryEnabled = plan.FailureRetryEnabled;
+        PlanFormConfirmationRetryCount = plan.ConfirmationRetryCount;
+        PlanFormConfirmationRetryIntervalSeconds = plan.ConfirmationRetryIntervalSeconds;
+        ApplyOfflineRecheckInterval(plan.OfflineRecheckIntervalSeconds);
+        PlanFormMissedRunPolicy = plan.MissedRunPolicy;
         PlanFormTimeoutMs = plan.TimeoutMs;
         PlanFormMaxParallelism = plan.MaxParallelism;
         PlanFormFailureThreshold = plan.FailureThreshold;
@@ -72,14 +95,25 @@ public sealed partial class MainViewModel
         PlanFormName = string.Empty;
         PlanFormTargetType = SchedulePlanTargetType.AllDevices;
         PlanFormTargetValue = string.Empty;
+        PlanFormScheduleMode = ScheduleMode.FixedInterval;
         PlanFormFrequencyValue = AppSettings.DefaultSchedulePlanIntervalMinutes;
         PlanFormFrequencyUnit = "Dakika";
+        PlanFormTimesPerDay = 4;
+        PlanFormDailyTimes = "08:00;12:00;16:00;20:00";
+        PlanFormSelectedWeekDays = "Monday,Tuesday,Wednesday,Thursday,Friday";
+        PlanFormFailureRetryEnabled = true;
+        PlanFormConfirmationRetryCount = AppSettings.DefaultFailureRetryLimitValue;
+        PlanFormConfirmationRetryIntervalSeconds = AppSettings.DefaultFailureRetryIntervalSecondsValue;
+        PlanFormOfflineRecheckIntervalValue = 20;
+        PlanFormOfflineRecheckIntervalUnit = "Dakika";
+        PlanFormMissedRunPolicy = MissedRunPolicy.SingleCatchUp;
         PlanFormTimeoutMs = PingTimeoutMs;
         PlanFormMaxParallelism = Math.Min(MaxParallelPings, AppSettings.DefaultSchedulePlanMaxParallelism);
         PlanFormFailureThreshold = DefaultFailureThreshold;
         PlanFormIsActive = true;
         PlanFormDescription = string.Empty;
         UpdatePlanTargetOptions();
+        UpdatePlanPreview();
         OnPropertyChanged(nameof(PlanFormTitle));
         OnPropertyChanged(nameof(PlanFormActionText));
     }
@@ -277,9 +311,34 @@ public sealed partial class MainViewModel
         return unit switch
         {
             "Saat" => normalized * 60,
-            "Gün" => normalized * 24 * 60,
+            "Gun" => normalized * 24 * 60,
+            "Hafta" => normalized * 7 * 24 * 60,
             _ => normalized
         };
+    }
+
+    private static ScheduleIntervalUnit ConvertFrequencyUnit(string unit)
+    {
+        return unit switch
+        {
+            "Saat" => ScheduleIntervalUnit.Hours,
+            "Gun" => ScheduleIntervalUnit.Days,
+            "Hafta" => ScheduleIntervalUnit.Weeks,
+            _ => ScheduleIntervalUnit.Minutes
+        };
+    }
+
+    private static int ConvertOfflineRecheckToSeconds(int value, string unit)
+    {
+        var normalized = Math.Max(1, value);
+        var seconds = unit switch
+        {
+            "Saat" => normalized * 60 * 60,
+            "Gun" => normalized * 24 * 60 * 60,
+            "Hafta" => normalized * 7 * 24 * 60 * 60,
+            _ => normalized * 60
+        };
+        return Math.Clamp(seconds, AppSettings.MinOfflineRecheckIntervalSeconds, AppSettings.MaxOfflineRecheckIntervalSeconds);
     }
 
     private void ApplyFrequency(int intervalMinutes)
@@ -287,7 +346,7 @@ public sealed partial class MainViewModel
         if (intervalMinutes % (24 * 60) == 0)
         {
             PlanFormFrequencyValue = Math.Max(1, intervalMinutes / (24 * 60));
-            PlanFormFrequencyUnit = "Gün";
+            PlanFormFrequencyUnit = "Gun";
             return;
         }
 
@@ -300,6 +359,80 @@ public sealed partial class MainViewModel
 
         PlanFormFrequencyValue = Math.Max(1, intervalMinutes);
         PlanFormFrequencyUnit = "Dakika";
+    }
+
+    private void ApplyOfflineRecheckInterval(int seconds)
+    {
+        if (seconds % (7 * 24 * 60 * 60) == 0)
+        {
+            PlanFormOfflineRecheckIntervalValue = Math.Max(1, seconds / (7 * 24 * 60 * 60));
+            PlanFormOfflineRecheckIntervalUnit = "Hafta";
+            return;
+        }
+
+        if (seconds % (24 * 60 * 60) == 0)
+        {
+            PlanFormOfflineRecheckIntervalValue = Math.Max(1, seconds / (24 * 60 * 60));
+            PlanFormOfflineRecheckIntervalUnit = "Gun";
+            return;
+        }
+
+        if (seconds % (60 * 60) == 0)
+        {
+            PlanFormOfflineRecheckIntervalValue = Math.Max(1, seconds / (60 * 60));
+            PlanFormOfflineRecheckIntervalUnit = "Saat";
+            return;
+        }
+
+        PlanFormOfflineRecheckIntervalValue = Math.Max(1, seconds / 60);
+        PlanFormOfflineRecheckIntervalUnit = "Dakika";
+    }
+
+    private void UpdatePlanPreview()
+    {
+        var plan = new SchedulePlan
+        {
+            Name = PlanFormName,
+            TargetType = PlanFormTargetType,
+            TargetValue = PlanFormTargetValue,
+            ScheduleMode = PlanFormScheduleMode,
+            IntervalValue = PlanFormFrequencyValue,
+            IntervalUnit = ConvertFrequencyUnit(PlanFormFrequencyUnit),
+            IntervalMinutes = ConvertFrequencyToMinutes(PlanFormFrequencyValue, PlanFormFrequencyUnit),
+            TimesPerDay = PlanFormTimesPerDay,
+            DailyTimes = PlanFormDailyTimes,
+            SelectedWeekDays = PlanFormSelectedWeekDays,
+            TimeZoneId = TimeZoneInfo.Local.Id,
+            FailureRetryEnabled = PlanFormFailureRetryEnabled,
+            ConfirmationRetryCount = PlanFormConfirmationRetryCount,
+            ConfirmationRetryIntervalSeconds = PlanFormConfirmationRetryIntervalSeconds,
+            OfflineRecheckIntervalSeconds = ConvertOfflineRecheckToSeconds(PlanFormOfflineRecheckIntervalValue, PlanFormOfflineRecheckIntervalUnit),
+            MissedRunPolicy = PlanFormMissedRunPolicy,
+            TimeoutMs = PlanFormTimeoutMs,
+            MaxParallelism = PlanFormMaxParallelism,
+            FailureThreshold = PlanFormFailureThreshold,
+            IsActive = PlanFormIsActive
+        };
+
+        var timing = new ScheduleTimingService();
+        var validation = timing.Validate(plan);
+        if (!validation.Success)
+        {
+            PlanFormPreviewText = validation.Message;
+            return;
+        }
+
+        var nextRuns = timing.GetNextOccurrences(plan, DateTime.UtcNow, 5)
+            .Select(value => value.ToLocalTime().ToString("dd.MM.yyyy HH:mm"))
+            .ToList();
+        PlanFormPreviewText =
+            $"Plan kaynağı: {PlanFormTargetType.ToDisplayName()}\n" +
+            $"Saat dilimi: {TimeZoneInfo.Local.DisplayName}\n" +
+            $"Normal kontrol: {plan.ScheduleSummaryText}\n" +
+            $"Erişilemeyen cihaz kontrolü: {plan.OfflineRecheckIntervalText}\n" +
+            $"Hızlı retry: {plan.RetrySummaryText}\n" +
+            $"Kaçırılmış kontroller: {plan.MissedRunPolicyText}\n" +
+            $"Sonraki 5 kontrol:\n- {string.Join("\n- ", nextRuns)}";
     }
 }
 

@@ -8,6 +8,10 @@ namespace NetworkHealthMonitor.Data;
 
 public sealed class SqliteConnectionFactory : IDatabaseInitializer
 {
+    public const string CoreServerSchemaMigrationId = "2026071501-core-server-schema";
+    public const string NotificationEmailSuppressionSchemaMigrationId = "2026071901-notification-email-suppression";
+    public const string ExtendedSchedulerSchemaMigrationId = "2026071902-extended-scheduler";
+
     private readonly string _connectionString;
     private readonly IDatabaseMigrationRunner _migrationRunner;
 
@@ -48,6 +52,11 @@ public sealed class SqliteConnectionFactory : IDatabaseInitializer
             AppErrorLogger.LogInfo($"Legacy data migration skipped: {migrationResult.Message}");
         }
 
+        if (await NeedsAutomaticMigrationBackupAsync(cancellationToken))
+        {
+            CreateAutomaticMigrationBackupIfNeeded();
+        }
+
         await using var connection = await CreateOpenConnectionAsync();
         await ExecuteAsync(connection, "PRAGMA journal_mode = WAL;");
         await ExecuteAsync(connection, "PRAGMA synchronous = NORMAL;");
@@ -65,12 +74,103 @@ public sealed class SqliteConnectionFactory : IDatabaseInitializer
         await CreateWorkerHeartbeatAsync(connection);
         await CreateAvailabilitySchemaAsync(connection);
         await CreateAppSettingsAsync(connection);
-        await RecordMigrationAsync(connection, "2026071501-core-server-schema");
+        await RecordMigrationAsync(connection, CoreServerSchemaMigrationId);
         await _migrationRunner.ApplyMigrationsAsync(connection, cancellationToken);
         await CreateIndexesAsync(connection);
         await MigrateLegacyGroupNamesAsync(connection);
+        await RecordMigrationAsync(connection, NotificationEmailSuppressionSchemaMigrationId);
+        await RecordMigrationAsync(connection, ExtendedSchedulerSchemaMigrationId);
         await DatabaseSchemaContract.VerifyAsync(connection, cancellationToken);
         LogInitializationMetadata();
+    }
+
+    private static void CreateAutomaticMigrationBackupIfNeeded()
+    {
+        try
+        {
+            if (!File.Exists(DatabasePaths.DatabaseFilePath))
+            {
+                return;
+            }
+
+            Directory.CreateDirectory(DatabasePaths.BackupDirectory);
+            var backupPrefix = $"network_health_monitor-before-migration-{DateTime.UtcNow:yyyyMMdd-HHmmss}";
+            var backupPath = Path.Combine(DatabasePaths.BackupDirectory, backupPrefix + ".db");
+            for (var suffix = 1; File.Exists(backupPath); suffix++)
+            {
+                backupPath = Path.Combine(DatabasePaths.BackupDirectory, $"{backupPrefix}-{suffix}.db");
+            }
+
+            File.Copy(DatabasePaths.DatabaseFilePath, backupPath, overwrite: false);
+            AppErrorLogger.LogInfo($"Database migration backup created. BackupPath={backupPath}; DatabasePath={DatabasePaths.DatabaseFilePath}");
+        }
+        catch (Exception ex)
+        {
+            AppErrorLogger.Log(ex, $"Database migration backup failed. DatabasePath={DatabasePaths.DatabaseFilePath}");
+            throw;
+        }
+    }
+
+    private static async Task<bool> NeedsAutomaticMigrationBackupAsync(CancellationToken cancellationToken)
+    {
+        if (!File.Exists(DatabasePaths.DatabaseFilePath))
+        {
+            return false;
+        }
+
+        try
+        {
+            var connectionString = new SqliteConnectionStringBuilder
+            {
+                DataSource = DatabasePaths.DatabaseFilePath,
+                Mode = SqliteOpenMode.ReadOnly,
+                Pooling = false
+            }.ToString();
+
+            await using var connection = new SqliteConnection(connectionString);
+            await connection.OpenAsync(cancellationToken);
+
+            if (!await TableExistsAsync(connection, "SchemaMigrations", cancellationToken))
+            {
+                return true;
+            }
+
+            var appliedMigrations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT Version FROM SchemaMigrations;";
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                appliedMigrations.Add(reader.GetString(0));
+            }
+
+            return !appliedMigrations.Contains(CoreServerSchemaMigrationId)
+                || !appliedMigrations.Contains(DatabaseMigrationRunner.DeviceIncidentsEndedAtUtcMigrationId)
+                || !appliedMigrations.Contains(NotificationEmailSuppressionSchemaMigrationId)
+                || !appliedMigrations.Contains(ExtendedSchedulerSchemaMigrationId);
+        }
+        catch (Exception ex)
+        {
+            AppErrorLogger.Log(ex, $"Database migration backup inspection failed. DatabasePath={DatabasePaths.DatabaseFilePath}");
+            return true;
+        }
+    }
+
+    private static async Task<bool> TableExistsAsync(
+        SqliteConnection connection,
+        string tableName,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT COUNT(1)
+            FROM sqlite_master
+            WHERE type = 'table'
+              AND name = @TableName;
+            """;
+        command.Parameters.AddWithValue("@TableName", tableName);
+        var count = Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
+        return count > 0;
     }
 
     public async Task VerifySchemaAsync(CancellationToken cancellationToken = default)
@@ -149,8 +249,20 @@ public sealed class SqliteConnectionFactory : IDatabaseInitializer
         await command.ExecuteNonQueryAsync();
     }
 
+    private static async Task<bool> IsMigrationRecordedAsync(SqliteConnection connection, string version)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(1) FROM SchemaMigrations WHERE Version = @Version;";
+        command.Parameters.AddWithValue("@Version", version);
+        var result = await command.ExecuteScalarAsync();
+        return Convert.ToInt32(result, CultureInfo.InvariantCulture) > 0;
+    }
+
     private static async Task CreateSchedulePlansAsync(SqliteConnection connection)
     {
+        var extendedSchedulerAlreadyApplied = await IsMigrationRecordedAsync(connection, ExtendedSchedulerSchemaMigrationId);
+        var now = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
+        var localTimeZoneId = TimeZoneInfo.Local.Id.Replace("'", "''", StringComparison.Ordinal);
         await ExecuteAsync(connection, $"""
             CREATE TABLE IF NOT EXISTS SchedulePlans (
                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -158,6 +270,18 @@ public sealed class SqliteConnectionFactory : IDatabaseInitializer
                 TargetType TEXT NOT NULL,
                 TargetValue TEXT NOT NULL DEFAULT '',
                 IntervalMinutes INTEGER NOT NULL DEFAULT {AppSettings.DefaultSchedulePlanIntervalMinutes},
+                ScheduleMode TEXT NOT NULL DEFAULT 'FixedInterval',
+                IntervalValue INTEGER NOT NULL DEFAULT {AppSettings.DefaultSchedulePlanIntervalMinutes},
+                IntervalUnit TEXT NOT NULL DEFAULT 'Minutes',
+                TimesPerDay INTEGER NOT NULL DEFAULT 0,
+                DailyTimes TEXT NOT NULL DEFAULT '',
+                SelectedWeekDays TEXT NOT NULL DEFAULT '',
+                TimeZoneId TEXT NOT NULL DEFAULT '{localTimeZoneId}',
+                FailureRetryEnabled INTEGER NOT NULL DEFAULT 1,
+                ConfirmationRetryCount INTEGER NOT NULL DEFAULT {AppSettings.DefaultFailureRetryLimitValue},
+                ConfirmationRetryIntervalSeconds INTEGER NOT NULL DEFAULT {AppSettings.DefaultFailureRetryIntervalSecondsValue},
+                OfflineRecheckIntervalSeconds INTEGER NOT NULL DEFAULT {AppSettings.DefaultOfflineRecheckIntervalSeconds},
+                MissedRunPolicy TEXT NOT NULL DEFAULT 'SingleCatchUp',
                 TimeoutMs INTEGER NOT NULL DEFAULT {AppSettings.DefaultPingTimeoutMs},
                 MaxParallelism INTEGER NOT NULL DEFAULT {AppSettings.DefaultSchedulePlanMaxParallelism},
                 FailureThreshold INTEGER NOT NULL DEFAULT {AppSettings.DefaultFailureThresholdValue},
@@ -173,6 +297,18 @@ public sealed class SqliteConnectionFactory : IDatabaseInitializer
 
         await EnsureColumnAsync(connection, "SchedulePlans", "TargetValue", "TEXT NOT NULL DEFAULT ''");
         await EnsureColumnAsync(connection, "SchedulePlans", "IntervalMinutes", $"INTEGER NOT NULL DEFAULT {AppSettings.DefaultSchedulePlanIntervalMinutes}");
+        await EnsureColumnAsync(connection, "SchedulePlans", "ScheduleMode", "TEXT NOT NULL DEFAULT 'FixedInterval'");
+        await EnsureColumnAsync(connection, "SchedulePlans", "IntervalValue", $"INTEGER NOT NULL DEFAULT {AppSettings.DefaultSchedulePlanIntervalMinutes}");
+        await EnsureColumnAsync(connection, "SchedulePlans", "IntervalUnit", "TEXT NOT NULL DEFAULT 'Minutes'");
+        await EnsureColumnAsync(connection, "SchedulePlans", "TimesPerDay", "INTEGER NOT NULL DEFAULT 0");
+        await EnsureColumnAsync(connection, "SchedulePlans", "DailyTimes", "TEXT NOT NULL DEFAULT ''");
+        await EnsureColumnAsync(connection, "SchedulePlans", "SelectedWeekDays", "TEXT NOT NULL DEFAULT ''");
+        await EnsureColumnAsync(connection, "SchedulePlans", "TimeZoneId", $"TEXT NOT NULL DEFAULT '{localTimeZoneId}'");
+        await EnsureColumnAsync(connection, "SchedulePlans", "FailureRetryEnabled", "INTEGER NOT NULL DEFAULT 1");
+        await EnsureColumnAsync(connection, "SchedulePlans", "ConfirmationRetryCount", $"INTEGER NOT NULL DEFAULT {AppSettings.DefaultFailureRetryLimitValue}");
+        await EnsureColumnAsync(connection, "SchedulePlans", "ConfirmationRetryIntervalSeconds", $"INTEGER NOT NULL DEFAULT {AppSettings.DefaultFailureRetryIntervalSecondsValue}");
+        await EnsureColumnAsync(connection, "SchedulePlans", "OfflineRecheckIntervalSeconds", $"INTEGER NOT NULL DEFAULT {AppSettings.DefaultOfflineRecheckIntervalSeconds}");
+        await EnsureColumnAsync(connection, "SchedulePlans", "MissedRunPolicy", "TEXT NOT NULL DEFAULT 'SingleCatchUp'");
         await EnsureColumnAsync(connection, "SchedulePlans", "TimeoutMs", $"INTEGER NOT NULL DEFAULT {AppSettings.DefaultPingTimeoutMs}");
         await EnsureColumnAsync(connection, "SchedulePlans", "MaxParallelism", $"INTEGER NOT NULL DEFAULT {AppSettings.DefaultSchedulePlanMaxParallelism}");
         await EnsureColumnAsync(connection, "SchedulePlans", "FailureThreshold", $"INTEGER NOT NULL DEFAULT {AppSettings.DefaultFailureThresholdValue}");
@@ -181,8 +317,35 @@ public sealed class SqliteConnectionFactory : IDatabaseInitializer
         await EnsureColumnAsync(connection, "SchedulePlans", "LastRunAt", "TEXT NULL");
         await EnsureColumnAsync(connection, "SchedulePlans", "NextRunAt", "TEXT NULL");
         await EnsureColumnAsync(connection, "SchedulePlans", "LastStatus", "TEXT NOT NULL DEFAULT ''");
-        await EnsureColumnAsync(connection, "SchedulePlans", "CreatedAt", $"TEXT NOT NULL DEFAULT '{DateTime.Now:O}'");
-        await EnsureColumnAsync(connection, "SchedulePlans", "UpdatedAt", $"TEXT NOT NULL DEFAULT '{DateTime.Now:O}'");
+        await EnsureColumnAsync(connection, "SchedulePlans", "CreatedAt", $"TEXT NOT NULL DEFAULT '{now}'");
+        await EnsureColumnAsync(connection, "SchedulePlans", "UpdatedAt", $"TEXT NOT NULL DEFAULT '{now}'");
+
+        if (!extendedSchedulerAlreadyApplied)
+        {
+            await ExecuteAsync(connection, """
+                UPDATE SchedulePlans
+                SET ScheduleMode = 'FixedInterval',
+                    IntervalUnit = 'Minutes',
+                    IntervalValue = CASE WHEN IntervalMinutes < 1 THEN 1 ELSE IntervalMinutes END,
+                    FailureRetryEnabled = 1,
+                    ConfirmationRetryCount = CASE WHEN ConfirmationRetryCount < 0 THEN 0 ELSE ConfirmationRetryCount END,
+                    ConfirmationRetryIntervalSeconds = CASE
+                        WHEN ConfirmationRetryIntervalSeconds < 10 THEN 60
+                        ELSE ConfirmationRetryIntervalSeconds
+                    END,
+                    OfflineRecheckIntervalSeconds = CASE
+                        WHEN OfflineRecheckIntervalSeconds < 60 THEN 1200
+                        ELSE OfflineRecheckIntervalSeconds
+                    END,
+                    MissedRunPolicy = CASE
+                        WHEN TRIM(MissedRunPolicy) = '' THEN 'SingleCatchUp'
+                        ELSE MissedRunPolicy
+                    END
+                WHERE ScheduleMode IS NULL
+                   OR TRIM(ScheduleMode) = ''
+                   OR ScheduleMode = 'FixedInterval';
+                """);
+        }
     }
 
     private static async Task CreateDeviceGroupsAsync(SqliteConnection connection)
@@ -250,6 +413,11 @@ public sealed class SqliteConnectionFactory : IDatabaseInitializer
                 ConsecutiveFailures INTEGER NOT NULL DEFAULT 0,
                 ConsecutiveSuccesses INTEGER NOT NULL DEFAULT 0,
                 LastStableStatus TEXT NOT NULL DEFAULT 'Unknown',
+                SuppressionMode TEXT NOT NULL DEFAULT 'None',
+                SuppressedFromUtc TEXT NULL,
+                SuppressedUntilUtc TEXT NULL,
+                SuppressionReason TEXT NOT NULL DEFAULT '',
+                SuppressedBy TEXT NOT NULL DEFAULT '',
                 TargetAvailabilityPercent REAL NULL,
                 CreatedAt TEXT NOT NULL,
                 UpdatedAt TEXT NOT NULL
@@ -280,6 +448,11 @@ public sealed class SqliteConnectionFactory : IDatabaseInitializer
         await EnsureColumnAsync(connection, "Devices", "ConsecutiveFailures", "INTEGER NOT NULL DEFAULT 0");
         await EnsureColumnAsync(connection, "Devices", "ConsecutiveSuccesses", "INTEGER NOT NULL DEFAULT 0");
         await EnsureColumnAsync(connection, "Devices", "LastStableStatus", "TEXT NOT NULL DEFAULT 'Unknown'");
+        await EnsureColumnAsync(connection, "Devices", "SuppressionMode", "TEXT NOT NULL DEFAULT 'None'");
+        await EnsureColumnAsync(connection, "Devices", "SuppressedFromUtc", "TEXT NULL");
+        await EnsureColumnAsync(connection, "Devices", "SuppressedUntilUtc", "TEXT NULL");
+        await EnsureColumnAsync(connection, "Devices", "SuppressionReason", "TEXT NOT NULL DEFAULT ''");
+        await EnsureColumnAsync(connection, "Devices", "SuppressedBy", "TEXT NOT NULL DEFAULT ''");
         await EnsureColumnAsync(connection, "Devices", "TargetAvailabilityPercent", "REAL NULL");
         await EnsureColumnAsync(connection, "Devices", "CreatedAt", $"TEXT NOT NULL DEFAULT '{DateTime.Now:O}'");
         await EnsureColumnAsync(connection, "Devices", "UpdatedAt", $"TEXT NOT NULL DEFAULT '{DateTime.Now:O}'");
@@ -386,9 +559,16 @@ public sealed class SqliteConnectionFactory : IDatabaseInitializer
                 ConfirmedDownAtUtc TEXT NULL,
                 DetectionDelaySeconds INTEGER NOT NULL DEFAULT 0,
                 LastFailureAtUtc TEXT NULL,
+                LastObservedAtUtc TEXT NULL,
                 LastSuccessAtUtc TEXT NULL,
+                LastSuccessfulCheckAtUtc TEXT NULL,
                 DownNotificationCreatedAtUtc TEXT NULL,
+                InitialNotificationSentAtUtc TEXT NULL,
+                EscalationNotificationSentAtUtc TEXT NULL,
                 RecoveryNotificationCreatedAtUtc TEXT NULL,
+                ResolvedAtUtc TEXT NULL,
+                CurrentState TEXT NOT NULL DEFAULT 'Open',
+                SuppressedDurationSeconds INTEGER NOT NULL DEFAULT 0,
                 FlapCount INTEGER NOT NULL DEFAULT 0,
                 CreatedAtUtc TEXT NOT NULL,
                 UpdatedAtUtc TEXT NOT NULL,
@@ -400,6 +580,13 @@ public sealed class SqliteConnectionFactory : IDatabaseInitializer
         await EnsureColumnAsync(connection, "DeviceIncidents", "FirstFailureAtUtc", "TEXT NULL");
         await EnsureColumnAsync(connection, "DeviceIncidents", "ConfirmedDownAtUtc", "TEXT NULL");
         await EnsureColumnAsync(connection, "DeviceIncidents", "DetectionDelaySeconds", "INTEGER NOT NULL DEFAULT 0");
+        await EnsureColumnAsync(connection, "DeviceIncidents", "LastObservedAtUtc", "TEXT NULL");
+        await EnsureColumnAsync(connection, "DeviceIncidents", "LastSuccessfulCheckAtUtc", "TEXT NULL");
+        await EnsureColumnAsync(connection, "DeviceIncidents", "InitialNotificationSentAtUtc", "TEXT NULL");
+        await EnsureColumnAsync(connection, "DeviceIncidents", "EscalationNotificationSentAtUtc", "TEXT NULL");
+        await EnsureColumnAsync(connection, "DeviceIncidents", "ResolvedAtUtc", "TEXT NULL");
+        await EnsureColumnAsync(connection, "DeviceIncidents", "CurrentState", "TEXT NOT NULL DEFAULT 'Open'");
+        await EnsureColumnAsync(connection, "DeviceIncidents", "SuppressedDurationSeconds", "INTEGER NOT NULL DEFAULT 0");
     }
 
     private static async Task CreateNotificationOutboxAsync(SqliteConnection connection)
@@ -410,8 +597,13 @@ public sealed class SqliteConnectionFactory : IDatabaseInitializer
                 EventType TEXT NOT NULL,
                 DeviceId INTEGER NULL,
                 IncidentId INTEGER NULL,
+                Channel TEXT NOT NULL DEFAULT 'Ntfy',
+                Recipient TEXT NOT NULL DEFAULT '',
+                Subject TEXT NOT NULL DEFAULT '',
+                Body TEXT NOT NULL DEFAULT '',
                 PayloadJson TEXT NOT NULL,
                 DeduplicationKey TEXT NOT NULL,
+                IdempotencyKey TEXT NOT NULL DEFAULT '',
                 Status TEXT NOT NULL,
                 AttemptCount INTEGER NOT NULL DEFAULT 0,
                 NextAttemptAtUtc TEXT NOT NULL,
@@ -427,6 +619,16 @@ public sealed class SqliteConnectionFactory : IDatabaseInitializer
             """);
 
         await EnsureColumnAsync(connection, "NotificationOutbox", "LastAttemptAtUtc", "TEXT NULL");
+        await EnsureColumnAsync(connection, "NotificationOutbox", "Channel", "TEXT NOT NULL DEFAULT 'Ntfy'");
+        await EnsureColumnAsync(connection, "NotificationOutbox", "Recipient", "TEXT NOT NULL DEFAULT ''");
+        await EnsureColumnAsync(connection, "NotificationOutbox", "Subject", "TEXT NOT NULL DEFAULT ''");
+        await EnsureColumnAsync(connection, "NotificationOutbox", "Body", "TEXT NOT NULL DEFAULT ''");
+        await EnsureColumnAsync(connection, "NotificationOutbox", "IdempotencyKey", "TEXT NOT NULL DEFAULT ''");
+        await ExecuteAsync(connection, """
+            UPDATE NotificationOutbox
+            SET IdempotencyKey = DeduplicationKey
+            WHERE IdempotencyKey = '';
+            """);
     }
 
     private static async Task CreateCsvImportAuditsAsync(SqliteConnection connection)
@@ -464,6 +666,7 @@ public sealed class SqliteConnectionFactory : IDatabaseInitializer
                 StartedAtUtc TEXT NOT NULL,
                 LastSeenAtUtc TEXT NOT NULL,
                 LastSchedulerCycleAtUtc TEXT NULL,
+                LastSchedulerPollAtUtc TEXT NULL,
                 LastSuccessfulPingAtUtc TEXT NULL,
                 LastNotificationDispatchAtUtc TEXT NULL,
                 Status TEXT NOT NULL,
@@ -476,6 +679,7 @@ public sealed class SqliteConnectionFactory : IDatabaseInitializer
             );
             """);
         await EnsureColumnAsync(connection, "WorkerHeartbeat", "LastCriticalError", "TEXT NOT NULL DEFAULT ''");
+        await EnsureColumnAsync(connection, "WorkerHeartbeat", "LastSchedulerPollAtUtc", "TEXT NULL");
         await EnsureColumnAsync(connection, "WorkerHeartbeat", "LastDatabaseLockedError", "TEXT NOT NULL DEFAULT ''");
         await EnsureColumnAsync(connection, "WorkerHeartbeat", "LastSchedulerException", "TEXT NOT NULL DEFAULT ''");
         await EnsureColumnAsync(connection, "WorkerHeartbeat", "LastNtfyException", "TEXT NOT NULL DEFAULT ''");
@@ -641,6 +845,7 @@ public sealed class SqliteConnectionFactory : IDatabaseInitializer
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_Devices_AutoCheck ON Devices(IsDeleted, IsEnabled, IsActive, AutoCheckEnabled, LastCheckedAt);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_Devices_AutoCheck_Status ON Devices(IsDeleted, IsEnabled, IsActive, AutoCheckEnabled, LastStatus, LastCheckedAt);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_Devices_DefaultSchedulePlanId ON Devices(DefaultSchedulePlanId);");
+        await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_Devices_Suppression ON Devices(SuppressionMode, SuppressedUntilUtc);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_PingLogs_DeviceId ON PingLogs(DeviceId);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_PingLogs_CheckedAt ON PingLogs(CheckedAt DESC);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_PingLogs_IsReachable ON PingLogs(IsReachable);");
@@ -664,6 +869,7 @@ public sealed class SqliteConnectionFactory : IDatabaseInitializer
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_SchedulePlans_IsActive ON SchedulePlans(IsActive);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_SchedulePlans_IsActive_Target ON SchedulePlans(IsActive, TargetType, TargetValue);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_SchedulePlans_IsActive_NextRunAt ON SchedulePlans(IsActive, NextRunAt);");
+        await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_SchedulePlans_Mode_Target ON SchedulePlans(ScheduleMode, TargetType, TargetValue);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_DeviceIncidents_DeviceId ON DeviceIncidents(DeviceId);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_DeviceIncidents_Status ON DeviceIncidents(Status);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_DeviceIncidents_StartedAtUtc ON DeviceIncidents(StartedAtUtc);");
@@ -671,7 +877,9 @@ public sealed class SqliteConnectionFactory : IDatabaseInitializer
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_DeviceIncidents_DeviceId_Status ON DeviceIncidents(DeviceId, Status);");
         await ExecuteAsync(connection, "CREATE UNIQUE INDEX IF NOT EXISTS UX_DeviceIncidents_Open_Device ON DeviceIncidents(DeviceId) WHERE Status = 'Open';");
         await ExecuteAsync(connection, "CREATE UNIQUE INDEX IF NOT EXISTS UX_NotificationOutbox_DeduplicationKey ON NotificationOutbox(DeduplicationKey);");
+        await ExecuteAsync(connection, "CREATE UNIQUE INDEX IF NOT EXISTS UX_NotificationOutbox_IdempotencyKey ON NotificationOutbox(IdempotencyKey);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_NotificationOutbox_Status_NextAttempt ON NotificationOutbox(Status, NextAttemptAtUtc);");
+        await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_NotificationOutbox_Channel_Status ON NotificationOutbox(Channel, Status, NextAttemptAtUtc);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_NotificationOutbox_DeviceId ON NotificationOutbox(DeviceId);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_NotificationOutbox_IncidentId ON NotificationOutbox(IncidentId);");
         await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS IX_CsvImportAudits_ImportedAtUtc ON CsvImportAudits(ImportedAtUtc DESC);");

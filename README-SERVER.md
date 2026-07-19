@@ -29,6 +29,14 @@ Worker service kurulumu:
 powershell -ExecutionPolicy Bypass -File .\scripts\install-service.ps1
 ```
 
+Kurulum scripti servisi `Automatic (Delayed Start)` olarak ayarlar. Recovery politikasi ilk hata icin 1 dakika, ikinci hata icin 5 dakika, sonraki hatalar icin 15 dakika sonra yeniden baslatmadir. Worker UI acilmadan ve kullanici oturumu acilmadan calismaya devam eder.
+
+UI farkli bir Windows kullanicisiyle calisacaksa bu kullaniciyi acikca verin. Script `C:\ProgramData\NetworkHealthMonitor` ACL'ini SYSTEM, Administrators ve verilen UI kullanicisiyle sinirlar:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install-service.ps1 -UiUser "DOMAIN\kullanici"
+```
+
 Worker service yonetimi:
 
 ```powershell
@@ -58,6 +66,7 @@ C:\ProgramData\NetworkHealthMonitor\backups
 ```
 
 Eski `%LocalAppData%\NetworkHealthMonitor` ve eski ProgramData kok veritabani ilk acilista kopyalanir, silinmez.
+SMTP parolasi ve ntfy token `settings.json` icinde DPAPI LocalMachine ile korunmus `dpapi:` degeri olarak saklanir. Dosya ACL'i service kurulum scriptiyle sinirlandirilmalidir; kurulum farkli admin hesabi ile yapildiysa UI kullanicisini `-UiUser` ile belirtin.
 
 ## Ilk cihaz ve plan
 1. UI > Cihazlar > Yeni Cihaz.
@@ -70,10 +79,18 @@ Eski `%LocalAppData%\NetworkHealthMonitor` ve eski ProgramData kok veritabani il
 .\scripts\health-check.ps1
 ```
 
+Ornek 1.1.0 plani:
+- Normal kontrol: gunde 4 kez, esit dagitilmis.
+- Hizli dogrulama: ilk hata sonrasi 3 yeniden deneme, 60 saniye aralik.
+- Erisilemeyen cihaz kontrolu: 20 dakikada bir.
+- Cihaz tekrar erisilebilir olunca normal plana doner.
+
+Sabit aralik modu 1 dakika ile 365 gun arasinda deger kabul eder. Gunluk saat listeleri en fazla 48 saat destekler. Haftalik planlarda en az bir gun ve bir saat secilmelidir.
+
 ## ntfy bildirimleri
 Telefonda ntfy uygulamasinda guvenli ve tahmin edilmesi zor bir topic'e abone olun. Gelistirme icin `https://ntfy.sh` kullanilabilir; uretimde kendi topic'inizi ve gerekirse access token kullanin.
 
-UI > Ayarlar > Bildirimler:
+UI > Ayarlar > ntfy:
 - ntfy etkin
 - Sunucu URL'si
 - Konu
@@ -92,6 +109,44 @@ Self-hosted ntfy icin BaseUrl ornegi:
 ```text
 https://ntfy.example.com
 ```
+
+## SMTP ve e-posta bildirimleri
+UI > Ayarlar > E-posta / SMTP:
+- E-posta bildirimlerini etkinlestirin.
+- SMTP sunucu, port ve guvenlik turunu secin: STARTTLS, SSL/TLS veya yalnizca bilincli olarak guvensiz baglanti.
+- Kullanici adi, parola, gonderen adresi/adini girin.
+- Timeout ve retry sayisini ayarlayin.
+- Once "Baglantiyi test et", ardindan "Test e-postasi gonder" kullanin.
+
+Kayitli parola UI'da maskeli gosterilir. Parola alanini bos birakarak kaydederseniz mevcut secret korunur. SMTP gecici olarak ulasilamazsa ayarlar kaybedilmez; outbox kayitlari retry veya DeadLetter durumuna gecer.
+
+## E-posta alicilari
+UI > Ayarlar > E-posta Alicilari:
+- Ilk cevrimdisi bildirim alicilari ve uzun sure cevrimdisi kalma alicilari ayridir.
+- Her adres tek tek dogrulanir.
+- Ayni adres ayni listede iki kez kaydedilmez.
+- Liste degisikliklerini Worker bir sonraki ayar okumasinda kullanir; servis yeniden baslatma zorunlu degildir.
+
+Escalation suresi UI > Ayarlar > E-posta / SMTP veya Bildirim ayarlarindan toplam saat olarak girilir. Varsayilan 48 saattir; minimum 1 saat, maksimum 8760 saattir.
+
+## E-posta sablonlari
+UI > Ayarlar > Bildirim Sablonlari:
+- Ilk cevrimdisi, escalation ve cihaz duzeldi sablonlari ayridir.
+- Konu bos birakilamaz.
+- Bilinen placeholder'lar ekranda listelenir ve onizleme gercekci ornek cihaz verisiyle uretilir.
+- Bilinmeyen placeholder varsa kaydetmeden once uyari verilir.
+- "Varsayilana dondur" secenegi profesyonel Turkce sablonlari geri yukler.
+
+Desteklenen placeholder'lar: `{DeviceName}`, `{IpAddress}`, `{DeviceType}`, `{GroupName}`, `{Status}`, `{IncidentStartedAt}`, `{LastSuccessfulCheckAt}`, `{LastCheckAt}`, `{OfflineDuration}`, `{EscalationThreshold}`, `{ApplicationName}`.
+
+## Susturma ve izlemeyi durdurma
+UI > Cihazlar ekraninda tek cihaz veya toplu secim icin iki farkli mod vardir:
+- Bildirimleri sustur: ping ve loglar devam eder; e-posta ve ntfy gonderilmez.
+- Izlemeyi gecici durdur: otomatik ping, uptime basarisiz kaydi ve bildirimler secilen sure boyunca durur.
+
+Sure secenekleri 30 dakika, 1 saat, 4 saat, 8 saat, 1 gun, 2 gun, 1 hafta, ozel tarih/saat veya suresizdir. Neden alaninda bakim, cihaz degisimi, hat problemi, gecici kullanim disi, planli calisma veya diger secilebilir.
+
+Izleme durdurulan sure escalation hesabina dahil edilmez. Bildirimleri susturma sureleri de escalation zamanini ileri tasir; susturma biter bitmez gecmis sure nedeniyle duplicate escalation uretilmez.
 
 ## Cihaz silme ve geri yukleme
 Silme soft-delete yapar: `IsDeleted=1`, `IsEnabled=0`, `IsActive=0`, `AutoCheckEnabled=0` olur ve `DeletedAtUtc` yazilir. Cihaz otomatik kontrollerden cikar; gecmis ping loglari, outage ve incident kayitlari korunur.
@@ -203,6 +258,59 @@ UI > Cihazlar:
 
 UI > Bakim:
 - Maintenance window olusturma, duzenleme, iptal ve bitirme desteklenir.
+
+## Final kabul dogrulamasi
+Release paketi self-contained gelir; temiz Windows bilgisayarda `sqlite3`, .NET SDK, Visual Studio veya kaynak kod gerekmez.
+
+Worker veritabani dogrulama komutlari:
+
+```powershell
+.\worker\NetworkHealthMonitor.Worker.exe --database-integrity-check
+.\worker\NetworkHealthMonitor.Worker.exe --database-summary
+.\worker\NetworkHealthMonitor.Worker.exe --migration-status
+.\worker\NetworkHealthMonitor.Worker.exe --verify-database
+```
+
+JSON ve insan tarafindan okunabilir rapor uretmek icin:
+
+```powershell
+.\worker\NetworkHealthMonitor.Worker.exe --verify-database `
+  --database-report-json .\release\verification\database-verify.json `
+  --database-report-text .\release\verification\database-verify.txt
+```
+
+Final build scriptinin bekledigi kanit dosyalari ve ureten scriptler:
+
+```text
+release\verification\windows-service-acceptance.json
+  scripts\windows-service-acceptance-test.ps1
+
+release\verification\migration-acceptance.json
+  scripts\migration-acceptance-test.ps1
+
+release\verification\notification-acceptance.json
+  scripts\notification-acceptance-test.ps1
+
+release\verification\ui-acceptance.json
+  scripts\ui-acceptance-test.ps1
+
+release\verification\soak-test.json
+  scripts\soak-test.ps1
+
+release\verification\upgrade-rollback-acceptance.json
+  scripts\upgrade-rollback-acceptance-test.ps1
+```
+
+Migration kabul testi ornegi:
+
+```powershell
+.\scripts\migration-acceptance-test.ps1 `
+  -OldDatabasePath C:\Temp\old\network_health_monitor.db `
+  -OldSettingsPath C:\Temp\old\settings.json `
+  -WorkerPath .\worker\NetworkHealthMonitor.Worker.exe
+```
+
+Manuel kanit gerektiren scriptler varsayilan olarak `NOT TESTED` uretir. Gercek reboot, gercek SMTP/ntfy alimi, UI ekran olceklendirme testi, 8 saat soak ve upgrade/rollback kanitlari olmadan final release paketi uretilmez.
 - Hedef tipi cihaz, grup veya tum cihazlar olabilir. Bakim sureleri plansiz downtime'a eklenmez.
 - Bildirim bastirma ve ping islemlerine devam etme bayraklari kaydedilir.
 
@@ -290,6 +398,10 @@ UI Ayarlar ekranindan "Log klasorunu ac" komutu da kullanilabilir.
 - Ping gelmiyor: Windows Firewall ICMP Echo kuralini kontrol edin.
 - Worker calisiyor ama ping atmiyor: plan aktif mi, `NextRunAtUtc` zamani gelmis mi, cihaz silinmis/pasif mi kontrol edin.
 - SQLite locked: UI ve Worker kisa transaction/WAL kullanir; uzun sureli antivirus veya backup kilitlerini kontrol edin.
-- Bildirim gelmiyor: topic, BaseUrl, token, outbox pending/failed sayilari ve `health-check.ps1` ciktisini kontrol edin.
+- SMTP kimlik dogrulama hatasi: kullanici adi, uygulama parolasi, TLS turu ve gonderen adresinin sunucu tarafindan yetkili oldugunu kontrol edin.
+- SMTP timeout: sunucu/port/firewall, STARTTLS gereksinimi ve timeout suresini kontrol edin.
+- E-posta gonderilmiyor: E-posta etkin mi, alici listesi bos mu, sender adresi gecerli mi ve Bildirimler ekraninda Failed/DeadLetter kaydi var mi kontrol edin.
+- ntfy gonderilmiyor: topic, BaseUrl, token, outbox pending/failed sayilari ve `health-check.ps1` ciktisini kontrol edin.
 - Script health-check: PowerShell artik `Microsoft.Data.Sqlite.dll` icin `Add-Type` kullanmaz; publish Worker exe `--health-check` komutunu calistirir ve hata kodunu tasir.
 - `no such column` veya `no such table`: UI ve Worker'i kapatip `.\scripts\health-check.ps1` calistirin. Hata devam ederse `C:\ProgramData\NetworkHealthMonitor\logs` altindaki son logda DB yolu, migration kimligi ve eksik tablo/sutun bilgisi yer alir.
+- Service kurulamazsa: PowerShell'i yonetici olarak actiginizi ve ZIP'i kalici/yazilabilir bir klasore cikardiginizi dogrulayin.

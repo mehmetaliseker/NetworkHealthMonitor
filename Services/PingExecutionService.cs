@@ -61,6 +61,7 @@ public sealed class PingExecutionService : IPingExecutionService
     {
         var candidates = devices
             .Where(device => device.Id > 0 && device.IsActive && device.IsEnabled && !device.IsDeleted)
+            .Where(device => triggerType != PingTriggerType.Scheduled || !device.IsMonitoringPaused)
             .DistinctBy(device => device.Id)
             .ToList();
 
@@ -89,7 +90,9 @@ public sealed class PingExecutionService : IPingExecutionService
         foreach (var lease in acquired)
         {
             var activeDevice = await _deviceRepository.GetActiveByIdAsync(lease.Device.Id);
-            if (activeDevice is null || !activeDevice.AutoCheckEnabled && triggerType == PingTriggerType.Scheduled)
+            if (activeDevice is null
+                || !activeDevice.AutoCheckEnabled && triggerType == PingTriggerType.Scheduled
+                || activeDevice.IsMonitoringPaused && triggerType == PingTriggerType.Scheduled)
             {
                 skipped++;
                 continue;

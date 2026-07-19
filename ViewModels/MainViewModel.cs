@@ -16,9 +16,20 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private const string SectionGroups = "Cihaz Grupları";
     private const string SectionSchedules = "Kontrol Planları";
     private const string SectionAvailability = "Kesintiler";
+    private const string SectionEvents = "Olaylar";
+    private const string SectionReports = "Raporlar / Uptime";
     private const string SectionLogs = "Ping Kayıtları";
     private const string SectionNotifications = "Bildirimler";
     private const string SectionSettings = "Ayarlar";
+    private const string SettingsGeneral = "Genel";
+    private const string SettingsPingRetry = "Ping ve Retry";
+    private const string SettingsNtfy = "ntfy";
+    private const string SettingsEmailSmtp = "E-posta / SMTP";
+    private const string SettingsRecipients = "E-posta Alıcıları";
+    private const string SettingsTemplates = "Bildirim Şablonları";
+    private const string SettingsRetention = "Veri Saklama";
+    private const string SettingsAdvanced = "Gelişmiş";
+    private const string SettingsReadiness = "Sistem Durumu";
     private const string AllDeviceTypesText = "Tüm tipler";
     private const string AllStatusesText = "Tüm durumlar";
     private const string AllGroupsText = "Tüm gruplar";
@@ -29,6 +40,21 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private const string ActiveDevicesText = "Etkin kayıtlar";
     private const string DeletedDevicesText = "Silinen cihazlar";
     private const string AllDeletionStatesText = "Tüm kayıtlar";
+    private const string AllAutoCheckStatesText = "Tüm otomatik kontrol durumları";
+    private const string AutoCheckEnabledText = "Otomatik kontrol açık";
+    private const string AutoCheckDisabledText = "Otomatik kontrol kapalı";
+    private const string AllSuppressionStatesText = "Tüm pasiflik durumları";
+    private const string MutedOnlyText = "Bildirimleri susturulan";
+    private const string PausedOnlyText = "İzleme duraklatılan";
+    private const string NoSuppressionText = "Pasifliği olmayan";
+    private const string AllUptimeRangesText = "Tüm uptime değerleri";
+    private const string UptimeUnder95Text = "%95 altı";
+    private const string UptimeUnder99Text = "%99 altı";
+    private const string UptimeUnknownText = "Uptime verisi yok";
+    private const string AllLastCheckRangesText = "Tüm son kontrol zamanları";
+    private const string LastCheck24HoursText = "Son 24 saat";
+    private const string LastCheck7DaysText = "Son 7 gün";
+    private const string LastCheckNeverText = "Kontrol edilmedi";
     private const string AllOutboxStatusesText = "Tüm durumlar";
     private const string AllOutboxEventTypesText = "Tüm bildirimler";
 
@@ -53,6 +79,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly IWindowsServiceStatusService _windowsServiceStatusService;
     private readonly INotificationPublisher _notificationPublisher;
     private readonly INtfyNotificationClient _ntfyNotificationClient;
+    private readonly IEmailSender _emailSender;
     private readonly INotificationOutboxRepository _notificationOutboxRepository;
     private readonly WorkerHeartbeatRepository _workerHeartbeatRepository;
     private readonly IUiAutostartService _uiAutostartService;
@@ -61,7 +88,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private bool _isInitialized;
     private bool _isBusy;
     private bool _isPinging;
+    private bool _isNavigationCollapsed;
     private string _currentSection = SectionDashboard;
+    private string _currentSettingsSection = SettingsGeneral;
     private string _statusMessage = "Başlatılıyor...";
     private Device? _selectedDevice;
     private DeviceGroup? _selectedGroup;
@@ -74,6 +103,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private string _deviceGroupFilter = AllGroupsText;
     private string _criticalFilter = AllCriticalText;
     private string _deletedDeviceFilter = ActiveDevicesText;
+    private string _autoCheckFilter = AllAutoCheckStatesText;
+    private string _suppressionFilter = AllSuppressionStatesText;
+    private string _uptimeRangeFilter = AllUptimeRangesText;
+    private string _lastCheckRangeFilter = AllLastCheckRangesText;
+    private bool _deviceOnlyProblematic;
     private string _logDeviceNameFilter = string.Empty;
     private string _logIpAddressFilter = string.Empty;
     private string _logDeviceTypeFilter = AllDeviceTypesText;
@@ -112,8 +146,19 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private string _planFormName = string.Empty;
     private SchedulePlanTargetType _planFormTargetType = SchedulePlanTargetType.AllDevices;
     private string _planFormTargetValue = string.Empty;
+    private ScheduleMode _planFormScheduleMode = ScheduleMode.FixedInterval;
     private int _planFormFrequencyValue = AppSettings.DefaultSchedulePlanIntervalMinutes;
     private string _planFormFrequencyUnit = "Dakika";
+    private int _planFormTimesPerDay = 4;
+    private string _planFormDailyTimes = "08:00;12:00;16:00;20:00";
+    private string _planFormSelectedWeekDays = "Monday,Tuesday,Wednesday,Thursday,Friday";
+    private bool _planFormFailureRetryEnabled = true;
+    private int _planFormConfirmationRetryCount = AppSettings.DefaultFailureRetryLimitValue;
+    private int _planFormConfirmationRetryIntervalSeconds = AppSettings.DefaultFailureRetryIntervalSecondsValue;
+    private int _planFormOfflineRecheckIntervalValue = 20;
+    private string _planFormOfflineRecheckIntervalUnit = "Dakika";
+    private MissedRunPolicy _planFormMissedRunPolicy = MissedRunPolicy.SingleCatchUp;
+    private string _planFormPreviewText = string.Empty;
     private int _planFormTimeoutMs = AppSettings.DefaultPingTimeoutMs;
     private int _planFormMaxParallelism = AppSettings.DefaultSchedulePlanMaxParallelism;
     private int _planFormFailureThreshold = AppSettings.DefaultFailureThresholdValue;
@@ -151,6 +196,34 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private int _notificationRequestTimeoutSeconds = 10;
     private int _notificationMaxRetryCount = 5;
     private int _notificationInitialRetryDelaySeconds = 30;
+    private bool _emailEnabled;
+    private string _smtpHost = string.Empty;
+    private int _smtpPort = 587;
+    private SmtpSecurityMode _smtpSecurity = SmtpSecurityMode.StartTls;
+    private bool _allowInsecureSmtp;
+    private string _smtpUsername = string.Empty;
+    private string _smtpPassword = string.Empty;
+    private string _senderEmail = string.Empty;
+    private string _senderDisplayName = "NetworkHealthMonitor";
+    private int _smtpConnectionTimeoutSeconds = 30;
+    private int _emailMaxRetryCount = 5;
+    private string _testEmailRecipient = string.Empty;
+    private int _emailEscalationThresholdHours = NotificationSettings.DefaultEscalationThresholdHours;
+    private bool _notificationNotifyOnEscalated = true;
+    private bool _emailNotifyOnRecovered;
+    private string _newInitialEmailAddress = string.Empty;
+    private string _newEscalationEmailAddress = string.Empty;
+    private EmailRecipient? _selectedInitialEmailRecipient;
+    private EmailRecipient? _selectedEscalationEmailRecipient;
+    private string _initialOfflineEmailSubjectTemplate = NotificationTemplateDefaults.InitialOfflineSubject;
+    private string _initialOfflineEmailBodyTemplate = NotificationTemplateDefaults.InitialOfflineBody;
+    private string _escalationEmailSubjectTemplate = NotificationTemplateDefaults.EscalationSubject;
+    private string _escalationEmailBodyTemplate = NotificationTemplateDefaults.EscalationBody;
+    private string _recoveredEmailSubjectTemplate = NotificationTemplateDefaults.RecoveredSubject;
+    private string _recoveredEmailBodyTemplate = NotificationTemplateDefaults.RecoveredBody;
+    private bool _emailTemplatesAreHtml;
+    private bool _isSendingTestEmail;
+    private string _smtpTestResult = string.Empty;
     private string _notificationLastTestResult = string.Empty;
     private string _notificationLastTestTechnicalDetail = string.Empty;
     private bool _notificationShowTechnicalDetail;
@@ -176,6 +249,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private DateTime? _outboxEndDate;
     private int? _bulkTargetGroupId;
     private int _bulkCheckIntervalSeconds;
+    private int _bulkSuppressionDurationHours = 24;
+    private string _bulkSuppressionReason = string.Empty;
     private bool _selectAllVisibleDevices;
     private CsvImportMode _csvImportMode = CsvImportMode.AddOnly;
     private CsvImportScope _csvImportScope = CsvImportScope.AllActiveDevices;
@@ -216,7 +291,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         INtfyNotificationClient? ntfyNotificationClient = null,
         INotificationOutboxRepository? notificationOutboxRepository = null,
         WorkerHeartbeatRepository? workerHeartbeatRepository = null,
-        IUiAutostartService? uiAutostartService = null)
+        IUiAutostartService? uiAutostartService = null,
+        IEmailSender? emailSender = null)
     {
         _deviceRepository = deviceRepository;
         _deviceGroupRepository = deviceGroupRepository;
@@ -240,6 +316,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _notificationOutboxRepository = notificationOutboxRepository ?? new NotificationOutboxRepository(deviceRepository.ConnectionFactory);
         _notificationPublisher = notificationPublisher ?? new NotificationPublisher(_notificationOutboxRepository);
         _ntfyNotificationClient = ntfyNotificationClient ?? new NtfyNotificationClient(new DefaultHttpClientFactory(), new DpapiSecretProtector());
+        _emailSender = emailSender ?? new SmtpEmailSender();
         _workerHeartbeatRepository = workerHeartbeatRepository ?? new WorkerHeartbeatRepository(deviceRepository.ConnectionFactory);
         _uiAutostartService = uiAutostartService ?? new WindowsStartupShortcutService();
         _maintenanceWindowRepository = new MaintenanceWindowRepository(deviceRepository.ConnectionFactory);
@@ -264,6 +341,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         });
         CriticalFilterOptions = new ObservableCollection<string>(new[] { AllCriticalText, CriticalOnlyText, NonCriticalOnlyText });
         DeviceDeletedFilterOptions = new ObservableCollection<string>(new[] { ActiveDevicesText, DeletedDevicesText, AllDeletionStatesText });
+        AutoCheckFilterOptions = new ObservableCollection<string>(new[] { AllAutoCheckStatesText, AutoCheckEnabledText, AutoCheckDisabledText });
+        SuppressionFilterOptions = new ObservableCollection<string>(new[] { AllSuppressionStatesText, MutedOnlyText, PausedOnlyText, NoSuppressionText });
+        UptimeRangeFilterOptions = new ObservableCollection<string>(new[] { AllUptimeRangesText, UptimeUnder95Text, UptimeUnder99Text, UptimeUnknownText });
+        LastCheckRangeFilterOptions = new ObservableCollection<string>(new[] { AllLastCheckRangesText, LastCheck24HoursText, LastCheck7DaysText, LastCheckNeverText });
         TriggerFilterOptions = new ObservableCollection<string>(new[]
         {
             AllTriggersText,
@@ -275,8 +356,20 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         });
         PlanTargetTypeOptions = new ObservableCollection<SelectionOption<SchedulePlanTargetType>>(
             Enum.GetValues<SchedulePlanTargetType>().Select(type => new SelectionOption<SchedulePlanTargetType>(type, type.ToDisplayName())));
-        FrequencyUnitOptions = new ObservableCollection<string>(new[] { "Dakika", "Saat", "Gün" });
+        ScheduleModeOptions = new ObservableCollection<SelectionOption<ScheduleMode>>(
+            Enum.GetValues<ScheduleMode>().Select(mode => new SelectionOption<ScheduleMode>(mode, mode.ToDisplayName())));
+        ScheduleIntervalUnitOptions = new ObservableCollection<SelectionOption<ScheduleIntervalUnit>>(
+            Enum.GetValues<ScheduleIntervalUnit>().Select(unit => new SelectionOption<ScheduleIntervalUnit>(unit, unit.ToDisplayName())));
+        MissedRunPolicyOptions = new ObservableCollection<SelectionOption<MissedRunPolicy>>(
+            Enum.GetValues<MissedRunPolicy>().Select(policy => new SelectionOption<MissedRunPolicy>(policy, policy.ToDisplayName())));
+        FrequencyUnitOptions = new ObservableCollection<string>(new[] { "Dakika", "Saat", "Gun", "Hafta" });
         ThemeOptions = new ObservableCollection<string>(new[] { "Açık", "Koyu" });
+        SmtpSecurityOptions = new ObservableCollection<SelectionOption<SmtpSecurityMode>>(new[]
+        {
+            new SelectionOption<SmtpSecurityMode>(SmtpSecurityMode.StartTls, "STARTTLS"),
+            new SelectionOption<SmtpSecurityMode>(SmtpSecurityMode.SslTls, "SSL/TLS"),
+            new SelectionOption<SmtpSecurityMode>(SmtpSecurityMode.None, "Güvenliksiz")
+        });
         DeviceTypePolicies = new ObservableCollection<DeviceTypePolicy>(DeviceTypePolicy.CreateDefaults());
         CsvImportModeOptions = new ObservableCollection<SelectionOption<CsvImportMode>>(new[]
         {
@@ -296,12 +389,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             new SelectionOption<string>("Processing", "İşleniyor"),
             new SelectionOption<string>("Sent", "Gönderildi"),
             new SelectionOption<string>("Failed", "Başarısız"),
+            new SelectionOption<string>("DeadLetter", "Kalıcı hata"),
             new SelectionOption<string>("Cancelled", "İptal edildi")
         });
         OutboxEventTypeOptions = new ObservableCollection<SelectionOption<string>>(new[]
         {
             new SelectionOption<string>(AllOutboxEventTypesText, AllOutboxEventTypesText),
-            new SelectionOption<string>("DeviceDown", "Kesinti bildirimi"),
+            new SelectionOption<string>(NotificationEventTypes.DeviceSuspectedOffline, "İlk kesinti bildirimi"),
+            new SelectionOption<string>(NotificationEventTypes.DeviceOfflineEscalated, "Escalation bildirimi"),
+            new SelectionOption<string>("DeviceDown", "Eski kesinti bildirimi"),
             new SelectionOption<string>("DeviceRecovered", "Düzelme bildirimi"),
             new SelectionOption<string>("Test", "Test bildirimi")
         });
@@ -337,13 +433,25 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         });
         NavigateGroupsCommand = new RelayCommand(() => CurrentSection = SectionGroups);
         NavigateSchedulesCommand = new RelayCommand(() => CurrentSection = SectionSchedules);
-        NavigateAvailabilityCommand = new RelayCommand(() => CurrentSection = SectionAvailability);
+        NavigateAvailabilityCommand = new RelayCommand(() => CurrentSection = SectionReports);
+        NavigateEventsCommand = new RelayCommand(() => CurrentSection = SectionEvents);
+        NavigateReportsCommand = new RelayCommand(() => CurrentSection = SectionReports);
         NavigateMaintenanceCommand = new RelayCommand(() => CurrentSection = SectionMaintenance);
         NavigateCalendarsCommand = new RelayCommand(() => CurrentSection = SectionCalendars);
         NavigateReadinessCommand = new RelayCommand(() => CurrentSection = SectionReadiness);
         NavigateLogsCommand = new RelayCommand(() => CurrentSection = SectionLogs);
         NavigateNotificationsCommand = new RelayCommand(() => CurrentSection = SectionNotifications);
         NavigateSettingsCommand = new RelayCommand(() => CurrentSection = SectionSettings);
+        ToggleNavigationCommand = new RelayCommand(() => IsNavigationCollapsed = !IsNavigationCollapsed);
+        NavigateSettingsGeneralCommand = new RelayCommand(() => NavigateSettingsSubsection(SettingsGeneral));
+        NavigateSettingsPingRetryCommand = new RelayCommand(() => NavigateSettingsSubsection(SettingsPingRetry));
+        NavigateSettingsNtfyCommand = new RelayCommand(() => NavigateSettingsSubsection(SettingsNtfy));
+        NavigateSettingsEmailSmtpCommand = new RelayCommand(() => NavigateSettingsSubsection(SettingsEmailSmtp));
+        NavigateSettingsRecipientsCommand = new RelayCommand(() => NavigateSettingsSubsection(SettingsRecipients));
+        NavigateSettingsTemplatesCommand = new RelayCommand(() => NavigateSettingsSubsection(SettingsTemplates));
+        NavigateSettingsRetentionCommand = new RelayCommand(() => NavigateSettingsSubsection(SettingsRetention));
+        NavigateSettingsAdvancedCommand = new RelayCommand(() => NavigateSettingsSubsection(SettingsAdvanced));
+        NavigateSettingsReadinessCommand = new RelayCommand(() => NavigateSettingsSubsection(SettingsReadiness));
         CloseDeviceFormCommand = new RelayCommand(() =>
         {
             ClearDeviceForm();
@@ -370,6 +478,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         DisableAutoCheckSelectedCommand = new AsyncRelayCommand<object>(parameter => BulkSetAutoCheckAsync(parameter, false), CanUseSelectedDevices);
         AssignSelectedDevicesToGroupCommand = new AsyncRelayCommand<object>(BulkAssignGroupAsync, CanUseSelectedDevices);
         ApplySelectedCheckIntervalCommand = new AsyncRelayCommand<object>(BulkApplyCheckIntervalAsync, CanUseSelectedDevices);
+        MuteNotificationsSelectedCommand = new AsyncRelayCommand<object>(parameter => BulkSetSuppressionAsync(parameter, DeviceSuppressionMode.MuteNotifications), CanUseSelectedDevices);
+        PauseMonitoringSelectedCommand = new AsyncRelayCommand<object>(parameter => BulkSetSuppressionAsync(parameter, DeviceSuppressionMode.PauseMonitoring), CanUseSelectedDevices);
+        ClearSuppressionSelectedCommand = new AsyncRelayCommand<object>(BulkClearSuppressionAsync, CanUseSelectedDevices);
         DeactivateSelectedDevicesCommand = new AsyncRelayCommand<object>(BulkDeactivateAsync, CanUseSelectedDevices);
         DeleteSelectedDevicesBulkCommand = new AsyncRelayCommand<object>(BulkDeleteAsync, CanUseSelectedDevices);
         RestoreSelectedDevicesBulkCommand = new AsyncRelayCommand<object>(BulkRestoreAsync, parameter => !IsBusy && GetSelectedDevices(parameter).Any(device => device.IsDeleted));
@@ -416,8 +527,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         ApplyCsvImportCommand = new AsyncRelayCommand(ApplyCsvImportAsync, () => !IsBusy && CsvImportCanApply);
         CreateCsvTemplateCommand = new AsyncRelayCommand(CreateCsvTemplateAsync, () => !IsBusy);
         RefreshOutboxCommand = new AsyncRelayCommand(LoadOutboxAsync, () => !IsBusy);
-        RetrySelectedOutboxCommand = new AsyncRelayCommand<object>(RetrySelectedOutboxAsync, parameter => !IsBusy && GetSelectedOutboxItems(parameter).Any(item => item.Status == "Failed"));
-        RetryOutboxCommand = new AsyncRelayCommand<NotificationOutboxItem>(item => RetryOutboxAsync(item), item => item?.Status == "Failed" && !IsBusy);
+        RetrySelectedOutboxCommand = new AsyncRelayCommand<object>(RetrySelectedOutboxAsync, parameter => !IsBusy && GetSelectedOutboxItems(parameter).Any(item => item.Status is "Failed" or "DeadLetter"));
+        RetryOutboxCommand = new AsyncRelayCommand<NotificationOutboxItem>(item => RetryOutboxAsync(item), item => item is { Status: "Failed" or "DeadLetter" } && !IsBusy);
         CancelPendingOutboxCommand = new AsyncRelayCommand<NotificationOutboxItem>(item => CancelPendingOutboxAsync(item), item => item?.Status == "Pending" && !IsBusy);
         ShowOutboxDetailCommand = new RelayCommand<NotificationOutboxItem>(ShowOutboxDetail, item => item is not null);
         SaveSettingsCommand = new AsyncRelayCommand(SaveSettingsAsync, () => !IsBusy);
@@ -430,11 +541,23 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         SendTestNotificationCommand = new AsyncRelayCommand(
             SendTestNotificationAsync,
             () => !IsBusy && !IsSendingTestNotification && CanSendTestNotification);
+        SendTestEmailCommand = new AsyncRelayCommand(
+            SendTestEmailAsync,
+            () => !IsBusy && !IsSendingTestEmail && CanSendTestEmail);
+        TestSmtpConnectionCommand = new AsyncRelayCommand(
+            TestSmtpConnectionAsync,
+            () => !IsBusy && !IsSendingTestEmail && !string.IsNullOrWhiteSpace(SmtpHost));
+        AddInitialEmailRecipientCommand = new RelayCommand(AddInitialEmailRecipient, () => !IsBusy);
+        RemoveInitialEmailRecipientCommand = new RelayCommand(RemoveInitialEmailRecipient, () => SelectedInitialEmailRecipient is not null && !IsBusy);
+        AddEscalationEmailRecipientCommand = new RelayCommand(AddEscalationEmailRecipient, () => !IsBusy);
+        RemoveEscalationEmailRecipientCommand = new RelayCommand(RemoveEscalationEmailRecipient, () => SelectedEscalationEmailRecipient is not null && !IsBusy);
+        ResetEmailTemplatesCommand = new RelayCommand(ResetEmailTemplates, () => !IsBusy);
         OpenLogFolderCommand = new RelayCommand(OpenLogFolder);
 
         _schedulerService.StatusChanged += SchedulerStatusChanged;
         EnsureSummaryCards();
         UpdatePlanTargetOptions();
+        UpdatePlanPreview();
     }
 
     public ObservableCollection<Device> Devices { get; } = new();
@@ -489,6 +612,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public ObservableCollection<string> DeviceDeletedFilterOptions { get; }
 
+    public ObservableCollection<string> AutoCheckFilterOptions { get; }
+
+    public ObservableCollection<string> SuppressionFilterOptions { get; }
+
+    public ObservableCollection<string> UptimeRangeFilterOptions { get; }
+
+    public ObservableCollection<string> LastCheckRangeFilterOptions { get; }
+
     public ObservableCollection<string> TriggerFilterOptions { get; }
 
     public ObservableCollection<SelectionOption<int?>> DeviceGroupOptions { get; } = new();
@@ -501,11 +632,23 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public ObservableCollection<SelectionOption<string>> PlanTargetOptions { get; } = new();
 
+    public ObservableCollection<SelectionOption<ScheduleMode>> ScheduleModeOptions { get; }
+
+    public ObservableCollection<SelectionOption<ScheduleIntervalUnit>> ScheduleIntervalUnitOptions { get; }
+
+    public ObservableCollection<SelectionOption<MissedRunPolicy>> MissedRunPolicyOptions { get; }
+
     public ObservableCollection<string> FrequencyUnitOptions { get; }
 
     public ObservableCollection<string> ThemeOptions { get; }
 
+    public ObservableCollection<SelectionOption<SmtpSecurityMode>> SmtpSecurityOptions { get; }
+
     public ObservableCollection<DeviceTypePolicy> DeviceTypePolicies { get; }
+
+    public ObservableCollection<EmailRecipient> InitialEmailRecipients { get; } = new();
+
+    public ObservableCollection<EmailRecipient> EscalationEmailRecipients { get; } = new();
 
     public ObservableCollection<SelectionOption<CsvImportMode>> CsvImportModeOptions { get; }
 
@@ -527,9 +670,21 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public RelayCommand NavigateGroupsCommand { get; }
     public RelayCommand NavigateSchedulesCommand { get; }
     public RelayCommand NavigateAvailabilityCommand { get; }
+    public RelayCommand NavigateEventsCommand { get; }
+    public RelayCommand NavigateReportsCommand { get; }
     public RelayCommand NavigateLogsCommand { get; }
     public RelayCommand NavigateNotificationsCommand { get; }
     public RelayCommand NavigateSettingsCommand { get; }
+    public RelayCommand ToggleNavigationCommand { get; }
+    public RelayCommand NavigateSettingsGeneralCommand { get; }
+    public RelayCommand NavigateSettingsPingRetryCommand { get; }
+    public RelayCommand NavigateSettingsNtfyCommand { get; }
+    public RelayCommand NavigateSettingsEmailSmtpCommand { get; }
+    public RelayCommand NavigateSettingsRecipientsCommand { get; }
+    public RelayCommand NavigateSettingsTemplatesCommand { get; }
+    public RelayCommand NavigateSettingsRetentionCommand { get; }
+    public RelayCommand NavigateSettingsAdvancedCommand { get; }
+    public RelayCommand NavigateSettingsReadinessCommand { get; }
     public RelayCommand CloseDeviceFormCommand { get; }
     public RelayCommand ClearDeviceFiltersCommand { get; }
     public AsyncRelayCommand SaveDeviceCommand { get; }
@@ -550,6 +705,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public AsyncRelayCommand<object> DisableAutoCheckSelectedCommand { get; }
     public AsyncRelayCommand<object> AssignSelectedDevicesToGroupCommand { get; }
     public AsyncRelayCommand<object> ApplySelectedCheckIntervalCommand { get; }
+    public AsyncRelayCommand<object> MuteNotificationsSelectedCommand { get; }
+    public AsyncRelayCommand<object> PauseMonitoringSelectedCommand { get; }
+    public AsyncRelayCommand<object> ClearSuppressionSelectedCommand { get; }
     public AsyncRelayCommand<object> DeactivateSelectedDevicesCommand { get; }
     public AsyncRelayCommand<object> DeleteSelectedDevicesBulkCommand { get; }
     public AsyncRelayCommand<object> RestoreSelectedDevicesBulkCommand { get; }
@@ -594,6 +752,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public AsyncRelayCommand ExportSettingsCommand { get; }
     public AsyncRelayCommand ImportSettingsCommand { get; }
     public AsyncRelayCommand SendTestNotificationCommand { get; }
+    public AsyncRelayCommand SendTestEmailCommand { get; }
+    public AsyncRelayCommand TestSmtpConnectionCommand { get; }
+    public RelayCommand AddInitialEmailRecipientCommand { get; }
+    public RelayCommand RemoveInitialEmailRecipientCommand { get; }
+    public RelayCommand AddEscalationEmailRecipientCommand { get; }
+    public RelayCommand RemoveEscalationEmailRecipientCommand { get; }
+    public RelayCommand ResetEmailTemplatesCommand { get; }
     public RelayCommand OpenLogFolderCommand { get; }
 
     public string CurrentSection
@@ -612,6 +777,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 OnPropertyChanged(nameof(IsGroupsSection));
                 OnPropertyChanged(nameof(IsSchedulesSection));
                 OnPropertyChanged(nameof(IsAvailabilitySection));
+                OnPropertyChanged(nameof(IsEventsSection));
+                OnPropertyChanged(nameof(IsReportsSection));
                 OnPropertyChanged(nameof(IsMaintenanceSection));
                 OnPropertyChanged(nameof(IsCalendarsSection));
                 OnPropertyChanged(nameof(IsReadinessSection));
@@ -623,6 +790,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 OnPropertyChanged(nameof(IsSchedulesNavSelected));
                 OnPropertyChanged(nameof(IsLogsNavSelected));
                 OnPropertyChanged(nameof(IsAvailabilityNavSelected));
+                OnPropertyChanged(nameof(IsEventsNavSelected));
+                OnPropertyChanged(nameof(IsReportsNavSelected));
                 OnPropertyChanged(nameof(IsNotificationsNavSelected));
                 OnPropertyChanged(nameof(IsSettingsNavSelected));
                 OnPropertyChanged(nameof(IsReadinessNavSelected));
@@ -632,6 +801,40 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             }
         }
     }
+
+    public string CurrentSettingsSection
+    {
+        get => _currentSettingsSection;
+        set
+        {
+            if (SetProperty(ref _currentSettingsSection, string.IsNullOrWhiteSpace(value) ? SettingsGeneral : value))
+            {
+                OnPropertyChanged(nameof(IsSettingsGeneralSection));
+                OnPropertyChanged(nameof(IsSettingsPingRetrySection));
+                OnPropertyChanged(nameof(IsSettingsNtfySection));
+                OnPropertyChanged(nameof(IsSettingsEmailSmtpSection));
+                OnPropertyChanged(nameof(IsSettingsRecipientsSection));
+                OnPropertyChanged(nameof(IsSettingsTemplatesSection));
+                OnPropertyChanged(nameof(IsSettingsRetentionSection));
+                OnPropertyChanged(nameof(IsSettingsAdvancedSection));
+                OnPropertyChanged(nameof(IsSettingsReadinessSection));
+            }
+        }
+    }
+
+    public bool IsNavigationCollapsed
+    {
+        get => _isNavigationCollapsed;
+        set
+        {
+            if (SetProperty(ref _isNavigationCollapsed, value))
+            {
+                OnPropertyChanged(nameof(NavigationToggleText));
+            }
+        }
+    }
+
+    public string NavigationToggleText => IsNavigationCollapsed ? "Menüyü genişlet" : "Menüyü daralt";
 
     public string SectionTitle => CurrentSection switch
     {
@@ -646,13 +849,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         SectionDeviceEdit => "Cihaz bilgilerini girin veya güncelleyin.",
         SectionGroups => "Kullanıcı tanımlı grupları yönetin ve grup bazlı kontrol çalıştırın.",
         SectionSchedules => "Cihaz, tip, grup veya kritik cihaz bazlı otomatik kontrol planları oluşturun.",
-        SectionAvailability => "Açık ve kapanan kesintileri, erişilebilirlik metriklerini inceleyin.",
+        SectionAvailability => "Erişilebilirlik metriklerini ve kesinti sürelerini inceleyin.",
+        SectionEvents => "Açık ve kapanan kesinti olaylarını, bildirim durumlarıyla birlikte izleyin.",
+        SectionReports => "Uptime, kapsama ve erişilebilirlik raporlarını tarih aralığına göre inceleyin.",
         SectionMaintenance => "Planlı bakım pencerelerini ve hedeflerini yönetin.",
         SectionCalendars => "İzleme takvimleri, gün/saat kuralları ve cihaz/grup atamalarını yönetin.",
         SectionReadiness => "İzleme servisi, heartbeat, bildirim kuyruğu ve sistem kontrollerini doğrulayın.",
         SectionLogs => "Ping geçmişini filtreleyin, temizleyin ve CSV olarak dışa aktarın.",
-        SectionSettings => "Genel uygulama davranışlarını ve veri bakımını yönetin.",
-        SectionNotifications => "ntfy bağlantı ayarlarını yönetin ve bildirim kuyruğunu izleyin.",
+        SectionSettings => "Genel, ping, ntfy, e-posta, alıcılar, şablonlar ve veri saklama ayarlarını yönetin.",
+        SectionNotifications => "Kanal ve alıcı bazlı bildirim kuyruğunu, hataları ve tekrar denemeleri izleyin.",
         _ => string.Empty
     };
 
@@ -663,6 +868,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public bool IsGroupsSection => CurrentSection == SectionGroups;
     public bool IsSchedulesSection => CurrentSection == SectionSchedules;
     public bool IsAvailabilitySection => CurrentSection == SectionAvailability;
+    public bool IsEventsSection => CurrentSection == SectionEvents;
+    public bool IsReportsSection => CurrentSection == SectionReports || CurrentSection == SectionAvailability;
     public bool IsLogsSection => CurrentSection == SectionLogs;
     public bool IsNotificationsSection => CurrentSection == SectionNotifications;
     public bool IsSettingsSection => CurrentSection == SectionSettings;
@@ -670,13 +877,31 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public bool IsDevicesNavSelected => IsDeviceWorkspaceVisible;
     public bool IsSchedulesNavSelected => IsSchedulesSection;
     public bool IsLogsNavSelected => IsLogsSection;
-    public bool IsAvailabilityNavSelected => IsAvailabilitySection;
+    public bool IsAvailabilityNavSelected => IsReportsSection;
+    public bool IsEventsNavSelected => IsEventsSection;
+    public bool IsReportsNavSelected => IsReportsSection;
     public bool IsNotificationsNavSelected => IsNotificationsSection;
     public bool IsSettingsNavSelected => IsSettingsSection;
     public bool IsReadinessNavSelected => IsReadinessSection;
     public bool IsGroupsNavSelected => IsGroupsSection;
     public bool IsMaintenanceNavSelected => IsMaintenanceSection;
     public bool IsCalendarsNavSelected => IsCalendarsSection;
+
+    public bool IsSettingsGeneralSection => CurrentSettingsSection == SettingsGeneral;
+    public bool IsSettingsPingRetrySection => CurrentSettingsSection == SettingsPingRetry;
+    public bool IsSettingsNtfySection => CurrentSettingsSection == SettingsNtfy;
+    public bool IsSettingsEmailSmtpSection => CurrentSettingsSection == SettingsEmailSmtp;
+    public bool IsSettingsRecipientsSection => CurrentSettingsSection == SettingsRecipients;
+    public bool IsSettingsTemplatesSection => CurrentSettingsSection == SettingsTemplates;
+    public bool IsSettingsRetentionSection => CurrentSettingsSection == SettingsRetention;
+    public bool IsSettingsAdvancedSection => CurrentSettingsSection == SettingsAdvanced;
+    public bool IsSettingsReadinessSection => CurrentSettingsSection == SettingsReadiness;
+
+    private void NavigateSettingsSubsection(string subsection)
+    {
+        CurrentSettingsSection = subsection;
+        CurrentSection = SectionSettings;
+    }
 
     public bool IsBusy
     {
@@ -822,6 +1047,71 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 DevicesView.Refresh();
                 NotifyDeviceFilterState();
                 RaiseCommandStates();
+            }
+        }
+    }
+
+    public string AutoCheckFilter
+    {
+        get => _autoCheckFilter;
+        set
+        {
+            if (SetProperty(ref _autoCheckFilter, value ?? AllAutoCheckStatesText))
+            {
+                DevicesView.Refresh();
+                NotifyDeviceFilterState();
+            }
+        }
+    }
+
+    public string SuppressionFilter
+    {
+        get => _suppressionFilter;
+        set
+        {
+            if (SetProperty(ref _suppressionFilter, value ?? AllSuppressionStatesText))
+            {
+                DevicesView.Refresh();
+                NotifyDeviceFilterState();
+            }
+        }
+    }
+
+    public string UptimeRangeFilter
+    {
+        get => _uptimeRangeFilter;
+        set
+        {
+            if (SetProperty(ref _uptimeRangeFilter, value ?? AllUptimeRangesText))
+            {
+                DevicesView.Refresh();
+                NotifyDeviceFilterState();
+            }
+        }
+    }
+
+    public string LastCheckRangeFilter
+    {
+        get => _lastCheckRangeFilter;
+        set
+        {
+            if (SetProperty(ref _lastCheckRangeFilter, value ?? AllLastCheckRangesText))
+            {
+                DevicesView.Refresh();
+                NotifyDeviceFilterState();
+            }
+        }
+    }
+
+    public bool DeviceOnlyProblematic
+    {
+        get => _deviceOnlyProblematic;
+        set
+        {
+            if (SetProperty(ref _deviceOnlyProblematic, value))
+            {
+                DevicesView.Refresh();
+                NotifyDeviceFilterState();
             }
         }
     }
@@ -1198,16 +1488,154 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         set => SetProperty(ref _planFormTargetValue, value ?? string.Empty);
     }
 
+    public ScheduleMode PlanFormScheduleMode
+    {
+        get => _planFormScheduleMode;
+        set
+        {
+            if (SetProperty(ref _planFormScheduleMode, value))
+            {
+                UpdatePlanPreview();
+            }
+        }
+    }
+
     public int PlanFormFrequencyValue
     {
         get => _planFormFrequencyValue;
-        set => SetProperty(ref _planFormFrequencyValue, Math.Max(1, value));
+        set
+        {
+            if (SetProperty(ref _planFormFrequencyValue, Math.Max(1, value)))
+            {
+                UpdatePlanPreview();
+            }
+        }
     }
 
     public string PlanFormFrequencyUnit
     {
         get => _planFormFrequencyUnit;
-        set => SetProperty(ref _planFormFrequencyUnit, value ?? "Dakika");
+        set
+        {
+            if (SetProperty(ref _planFormFrequencyUnit, value ?? "Dakika"))
+            {
+                UpdatePlanPreview();
+            }
+        }
+    }
+
+    public int PlanFormTimesPerDay
+    {
+        get => _planFormTimesPerDay;
+        set
+        {
+            if (SetProperty(ref _planFormTimesPerDay, Math.Clamp(value, 1, 48)))
+            {
+                UpdatePlanPreview();
+            }
+        }
+    }
+
+    public string PlanFormDailyTimes
+    {
+        get => _planFormDailyTimes;
+        set
+        {
+            if (SetProperty(ref _planFormDailyTimes, value ?? string.Empty))
+            {
+                UpdatePlanPreview();
+            }
+        }
+    }
+
+    public string PlanFormSelectedWeekDays
+    {
+        get => _planFormSelectedWeekDays;
+        set
+        {
+            if (SetProperty(ref _planFormSelectedWeekDays, value ?? string.Empty))
+            {
+                UpdatePlanPreview();
+            }
+        }
+    }
+
+    public bool PlanFormFailureRetryEnabled
+    {
+        get => _planFormFailureRetryEnabled;
+        set
+        {
+            if (SetProperty(ref _planFormFailureRetryEnabled, value))
+            {
+                UpdatePlanPreview();
+            }
+        }
+    }
+
+    public int PlanFormConfirmationRetryCount
+    {
+        get => _planFormConfirmationRetryCount;
+        set
+        {
+            if (SetProperty(ref _planFormConfirmationRetryCount, Math.Clamp(value, AppSettings.MinConfirmationRetryCount, AppSettings.MaxConfirmationRetryCount)))
+            {
+                UpdatePlanPreview();
+            }
+        }
+    }
+
+    public int PlanFormConfirmationRetryIntervalSeconds
+    {
+        get => _planFormConfirmationRetryIntervalSeconds;
+        set
+        {
+            if (SetProperty(ref _planFormConfirmationRetryIntervalSeconds, Math.Clamp(value, AppSettings.MinConfirmationRetryIntervalSeconds, AppSettings.MaxConfirmationRetryIntervalSeconds)))
+            {
+                UpdatePlanPreview();
+            }
+        }
+    }
+
+    public int PlanFormOfflineRecheckIntervalValue
+    {
+        get => _planFormOfflineRecheckIntervalValue;
+        set
+        {
+            if (SetProperty(ref _planFormOfflineRecheckIntervalValue, Math.Max(1, value)))
+            {
+                UpdatePlanPreview();
+            }
+        }
+    }
+
+    public string PlanFormOfflineRecheckIntervalUnit
+    {
+        get => _planFormOfflineRecheckIntervalUnit;
+        set
+        {
+            if (SetProperty(ref _planFormOfflineRecheckIntervalUnit, value ?? "Dakika"))
+            {
+                UpdatePlanPreview();
+            }
+        }
+    }
+
+    public MissedRunPolicy PlanFormMissedRunPolicy
+    {
+        get => _planFormMissedRunPolicy;
+        set
+        {
+            if (SetProperty(ref _planFormMissedRunPolicy, value))
+            {
+                UpdatePlanPreview();
+            }
+        }
+    }
+
+    public string PlanFormPreviewText
+    {
+        get => _planFormPreviewText;
+        set => SetProperty(ref _planFormPreviewText, value ?? string.Empty);
     }
 
     public int PlanFormTimeoutMs
@@ -1426,6 +1854,260 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         set => SetProperty(ref _notificationInitialRetryDelaySeconds, Math.Clamp(value, 1, 3600));
     }
 
+    public bool EmailEnabled
+    {
+        get => _emailEnabled;
+        set => SetProperty(ref _emailEnabled, value);
+    }
+
+    public string SmtpHost
+    {
+        get => _smtpHost;
+        set
+        {
+            if (SetProperty(ref _smtpHost, value ?? string.Empty))
+            {
+                OnPropertyChanged(nameof(CanSendTestEmail));
+                RaiseCommandStates();
+            }
+        }
+    }
+
+    public int SmtpPort
+    {
+        get => _smtpPort;
+        set => SetProperty(ref _smtpPort, Math.Clamp(value, 1, 65535));
+    }
+
+    public SmtpSecurityMode SmtpSecurity
+    {
+        get => _smtpSecurity;
+        set => SetProperty(ref _smtpSecurity, value);
+    }
+
+    public bool AllowInsecureSmtp
+    {
+        get => _allowInsecureSmtp;
+        set => SetProperty(ref _allowInsecureSmtp, value);
+    }
+
+    public string SmtpUsername
+    {
+        get => _smtpUsername;
+        set => SetProperty(ref _smtpUsername, value ?? string.Empty);
+    }
+
+    public string SmtpPassword
+    {
+        get => _smtpPassword;
+        set => SetProperty(ref _smtpPassword, value ?? string.Empty);
+    }
+
+    public string SenderEmail
+    {
+        get => _senderEmail;
+        set
+        {
+            if (SetProperty(ref _senderEmail, value ?? string.Empty))
+            {
+                OnPropertyChanged(nameof(CanSendTestEmail));
+                RaiseCommandStates();
+            }
+        }
+    }
+
+    public string SenderDisplayName
+    {
+        get => _senderDisplayName;
+        set => SetProperty(ref _senderDisplayName, value ?? string.Empty);
+    }
+
+    public int SmtpConnectionTimeoutSeconds
+    {
+        get => _smtpConnectionTimeoutSeconds;
+        set => SetProperty(ref _smtpConnectionTimeoutSeconds, Math.Clamp(value, 1, 300));
+    }
+
+    public int EmailMaxRetryCount
+    {
+        get => _emailMaxRetryCount;
+        set => SetProperty(ref _emailMaxRetryCount, Math.Clamp(value, 0, 20));
+    }
+
+    public string TestEmailRecipient
+    {
+        get => _testEmailRecipient;
+        set
+        {
+            if (SetProperty(ref _testEmailRecipient, value ?? string.Empty))
+            {
+                OnPropertyChanged(nameof(CanSendTestEmail));
+                RaiseCommandStates();
+            }
+        }
+    }
+
+    public int EmailEscalationThresholdHours
+    {
+        get => _emailEscalationThresholdHours;
+        set => SetProperty(
+            ref _emailEscalationThresholdHours,
+            Math.Clamp(value, NotificationSettings.MinEscalationThresholdHours, NotificationSettings.MaxEscalationThresholdHours));
+    }
+
+    public bool NotificationNotifyOnEscalated
+    {
+        get => _notificationNotifyOnEscalated;
+        set => SetProperty(ref _notificationNotifyOnEscalated, value);
+    }
+
+    public bool EmailNotifyOnRecovered
+    {
+        get => _emailNotifyOnRecovered;
+        set => SetProperty(ref _emailNotifyOnRecovered, value);
+    }
+
+    public string NewInitialEmailAddress
+    {
+        get => _newInitialEmailAddress;
+        set => SetProperty(ref _newInitialEmailAddress, value ?? string.Empty);
+    }
+
+    public string NewEscalationEmailAddress
+    {
+        get => _newEscalationEmailAddress;
+        set => SetProperty(ref _newEscalationEmailAddress, value ?? string.Empty);
+    }
+
+    public EmailRecipient? SelectedInitialEmailRecipient
+    {
+        get => _selectedInitialEmailRecipient;
+        set
+        {
+            if (SetProperty(ref _selectedInitialEmailRecipient, value))
+            {
+                RemoveInitialEmailRecipientCommand?.NotifyCanExecuteChanged();
+            }
+        }
+    }
+
+    public EmailRecipient? SelectedEscalationEmailRecipient
+    {
+        get => _selectedEscalationEmailRecipient;
+        set
+        {
+            if (SetProperty(ref _selectedEscalationEmailRecipient, value))
+            {
+                RemoveEscalationEmailRecipientCommand?.NotifyCanExecuteChanged();
+            }
+        }
+    }
+
+    public string InitialOfflineEmailSubjectTemplate
+    {
+        get => _initialOfflineEmailSubjectTemplate;
+        set
+        {
+            if (SetProperty(ref _initialOfflineEmailSubjectTemplate, value ?? string.Empty))
+            {
+                RaiseEmailTemplatePreviewProperties();
+            }
+        }
+    }
+
+    public string InitialOfflineEmailBodyTemplate
+    {
+        get => _initialOfflineEmailBodyTemplate;
+        set
+        {
+            if (SetProperty(ref _initialOfflineEmailBodyTemplate, value ?? string.Empty))
+            {
+                RaiseEmailTemplatePreviewProperties();
+            }
+        }
+    }
+
+    public string EscalationEmailSubjectTemplate
+    {
+        get => _escalationEmailSubjectTemplate;
+        set
+        {
+            if (SetProperty(ref _escalationEmailSubjectTemplate, value ?? string.Empty))
+            {
+                RaiseEmailTemplatePreviewProperties();
+            }
+        }
+    }
+
+    public string EscalationEmailBodyTemplate
+    {
+        get => _escalationEmailBodyTemplate;
+        set
+        {
+            if (SetProperty(ref _escalationEmailBodyTemplate, value ?? string.Empty))
+            {
+                RaiseEmailTemplatePreviewProperties();
+            }
+        }
+    }
+
+    public string RecoveredEmailSubjectTemplate
+    {
+        get => _recoveredEmailSubjectTemplate;
+        set
+        {
+            if (SetProperty(ref _recoveredEmailSubjectTemplate, value ?? string.Empty))
+            {
+                RaiseEmailTemplatePreviewProperties();
+            }
+        }
+    }
+
+    public string RecoveredEmailBodyTemplate
+    {
+        get => _recoveredEmailBodyTemplate;
+        set
+        {
+            if (SetProperty(ref _recoveredEmailBodyTemplate, value ?? string.Empty))
+            {
+                RaiseEmailTemplatePreviewProperties();
+            }
+        }
+    }
+
+    public bool EmailTemplatesAreHtml
+    {
+        get => _emailTemplatesAreHtml;
+        set => SetProperty(ref _emailTemplatesAreHtml, value);
+    }
+
+    public bool IsSendingTestEmail
+    {
+        get => _isSendingTestEmail;
+        private set
+        {
+            if (SetProperty(ref _isSendingTestEmail, value))
+            {
+                RaiseCommandStates();
+            }
+        }
+    }
+
+    public string SmtpTestResult
+    {
+        get => _smtpTestResult;
+        private set => SetProperty(ref _smtpTestResult, value ?? string.Empty);
+    }
+
+    public string AvailableEmailTemplatePlaceholdersText =>
+        string.Join(", ", NotificationTemplatePlaceholders.All.Select(item => "{" + item + "}"));
+
+    public string InitialEmailPreviewText => RenderPreview(InitialOfflineEmailSubjectTemplate, InitialOfflineEmailBodyTemplate);
+
+    public string EscalationEmailPreviewText => RenderPreview(EscalationEmailSubjectTemplate, EscalationEmailBodyTemplate);
+
+    public string EmailTemplateValidationText => BuildTemplateValidationText();
+
     public string NotificationLastTestResult
     {
         get => _notificationLastTestResult;
@@ -1461,6 +2143,82 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         && !string.IsNullOrWhiteSpace(NotificationTopic)
         && NtfyPublishRequestFactory.IsTopicValid(NotificationTopic);
 
+    public bool CanSendTestEmail =>
+        !string.IsNullOrWhiteSpace(SmtpHost)
+        && EmailAddressValidator.IsValid(SenderEmail)
+        && EmailAddressValidator.IsValid(TestEmailRecipient);
+
+    private void RaiseEmailTemplatePreviewProperties()
+    {
+        OnPropertyChanged(nameof(InitialEmailPreviewText));
+        OnPropertyChanged(nameof(EscalationEmailPreviewText));
+        OnPropertyChanged(nameof(EmailTemplateValidationText));
+    }
+
+    private string RenderPreview(string subjectTemplate, string bodyTemplate)
+    {
+        var renderer = new NotificationTemplateRenderer();
+        try
+        {
+            var subject = renderer.Render(subjectTemplate, CreateSampleTemplateContext()).Trim();
+            var body = renderer.Render(bodyTemplate, CreateSampleTemplateContext()).Trim();
+            return $"Konu: {subject}{Environment.NewLine}{Environment.NewLine}{body}";
+        }
+        catch (Exception ex)
+        {
+            return "Onizleme olusturulamadi: " + ex.Message;
+        }
+    }
+
+    private string BuildTemplateValidationText()
+    {
+        var renderer = new NotificationTemplateRenderer();
+        var unknown = new[]
+            {
+                InitialOfflineEmailSubjectTemplate,
+                InitialOfflineEmailBodyTemplate,
+                EscalationEmailSubjectTemplate,
+                EscalationEmailBodyTemplate,
+                RecoveredEmailSubjectTemplate,
+                RecoveredEmailBodyTemplate
+            }
+            .SelectMany(renderer.FindUnknownPlaceholders)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(item => item, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (unknown.Count > 0)
+        {
+            return "Bilinmeyen degisken: " + string.Join(", ", unknown.Select(item => "{" + item + "}"));
+        }
+
+        if (string.IsNullOrWhiteSpace(InitialOfflineEmailSubjectTemplate)
+            || string.IsNullOrWhiteSpace(EscalationEmailSubjectTemplate)
+            || string.IsNullOrWhiteSpace(RecoveredEmailSubjectTemplate))
+        {
+            return "E-posta konu sablonlari bos birakilamaz.";
+        }
+
+        return "Sablonlar gecerli.";
+    }
+
+    private static NotificationTemplateContext CreateSampleTemplateContext()
+    {
+        return new NotificationTemplateContext
+        {
+            DeviceName = "Ornek Kamera",
+            IpAddress = "192.0.2.10",
+            DeviceType = DeviceType.Camera.ToDisplayName(),
+            GroupName = "Merkez",
+            Status = DeviceStatus.Offline.ToDisplayName(),
+            IncidentStartedAtUtc = DateTime.UtcNow.AddHours(-2),
+            LastSuccessfulCheckAtUtc = DateTime.UtcNow.AddHours(-3),
+            LastCheckAtUtc = DateTime.UtcNow,
+            OfflineDuration = TimeSpan.FromHours(2),
+            EscalationThreshold = TimeSpan.FromHours(NotificationSettings.DefaultEscalationThresholdHours)
+        };
+    }
+
     public bool IsDeviceFormVisible
     {
         get => _isDeviceFormVisible;
@@ -1494,12 +2252,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public bool ShowDeviceFormPane => IsDeviceWorkspaceVisible && IsDeviceFormVisible;
 
-    public string DeviceWorkspaceColumns => IsCompactLayout || !IsDeviceFormVisible ? "*" : "*,380";
+    public string DeviceWorkspaceColumns => IsCompactLayout || !IsDeviceFormVisible ? "*" : "*,560";
 
     private void NotifyDeviceFilterState()
     {
         OnPropertyChanged(nameof(ActiveDeviceFilterCount));
         OnPropertyChanged(nameof(ActiveDeviceFilterCountText));
+        OnPropertyChanged(nameof(ActiveDeviceFilterSummaryText));
         OnPropertyChanged(nameof(HasNoFilteredDevices));
     }
 
@@ -1538,6 +2297,31 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 count++;
             }
 
+            if (AutoCheckFilter != AllAutoCheckStatesText)
+            {
+                count++;
+            }
+
+            if (SuppressionFilter != AllSuppressionStatesText)
+            {
+                count++;
+            }
+
+            if (UptimeRangeFilter != AllUptimeRangesText)
+            {
+                count++;
+            }
+
+            if (LastCheckRangeFilter != AllLastCheckRangesText)
+            {
+                count++;
+            }
+
+            if (DeviceOnlyProblematic)
+            {
+                count++;
+            }
+
             return count;
         }
     }
@@ -1547,7 +2331,77 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             ? "Filtre yok"
             : $"{ActiveDeviceFilterCount} aktif filtre";
 
+    public string ActiveDeviceFilterSummaryText
+    {
+        get
+        {
+            var filters = new List<string>();
+            if (!string.IsNullOrWhiteSpace(DeviceSearchText))
+            {
+                filters.Add($"Arama: {DeviceSearchText}");
+            }
+
+            AddIfActive(filters, DeviceTypeFilter, AllDeviceTypesText);
+            AddIfActive(filters, DeviceStatusFilter, AllStatusesText);
+            AddIfActive(filters, DeviceGroupFilter, AllGroupsText);
+            AddIfActive(filters, CriticalFilter, AllCriticalText);
+            AddIfActive(filters, DeletedDeviceFilter, ActiveDevicesText);
+            AddIfActive(filters, AutoCheckFilter, AllAutoCheckStatesText);
+            AddIfActive(filters, SuppressionFilter, AllSuppressionStatesText);
+            AddIfActive(filters, UptimeRangeFilter, AllUptimeRangesText);
+            AddIfActive(filters, LastCheckRangeFilter, AllLastCheckRangesText);
+
+            if (DeviceOnlyProblematic)
+            {
+                filters.Add("Yalnızca sorunlu cihazlar");
+            }
+
+            return filters.Count == 0 ? "Filtre yok" : string.Join(" · ", filters);
+        }
+    }
+
+    private static void AddIfActive(List<string> filters, string value, string defaultValue)
+    {
+        if (!string.Equals(value, defaultValue, StringComparison.Ordinal))
+        {
+            filters.Add(value);
+        }
+    }
+
     public bool HasNoFilteredDevices => DevicesView is { IsEmpty: true };
+
+    public int ActiveDeviceCount => Devices.Count(device => !device.IsDeleted && device.IsEnabled && device.IsActive);
+
+    public int UnavailableDeviceCount => Devices.Count(device => !device.IsDeleted && device.LastStatus == DeviceStatus.Offline);
+
+    public int MutedDeviceCount => Devices.Count(device =>
+        !device.IsDeleted
+        && device.IsSuppressionActive
+        && device.SuppressionMode == DeviceSuppressionMode.MuteNotifications);
+
+    public int PausedDeviceCount => Devices.Count(device => !device.IsDeleted && device.IsMonitoringPaused);
+
+    public int UnknownDeviceCount => Devices.Count(device => !device.IsDeleted && device.LastStatus == DeviceStatus.Unknown);
+
+    public int PendingOrFailedNotificationCount => PendingNotificationCount + FailedNotificationCount;
+
+    public bool HasSelectedDevices => Devices.Any(device => device.IsSelected);
+
+    public bool IsWorkerServiceStopped =>
+        WorkerHealthText.Contains("çalışmıyor", StringComparison.OrdinalIgnoreCase)
+        || WorkerHealthText.Contains("durdu", StringComparison.OrdinalIgnoreCase)
+        || WorkerHealthText.Contains("bulunamadı", StringComparison.OrdinalIgnoreCase)
+        || WorkerHealthText.Contains("yanıt vermiyor", StringComparison.OrdinalIgnoreCase);
+
+    private void NotifyShellMetrics()
+    {
+        OnPropertyChanged(nameof(ActiveDeviceCount));
+        OnPropertyChanged(nameof(UnavailableDeviceCount));
+        OnPropertyChanged(nameof(MutedDeviceCount));
+        OnPropertyChanged(nameof(PausedDeviceCount));
+        OnPropertyChanged(nameof(UnknownDeviceCount));
+        OnPropertyChanged(nameof(HasSelectedDevices));
+    }
 
     public string NotificationLastSuccessfulAtText
     {
@@ -1564,7 +2418,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public string WorkerHealthText
     {
         get => _workerHealthText;
-        private set => SetProperty(ref _workerHealthText, value ?? "Bilinmiyor");
+        private set
+        {
+            if (SetProperty(ref _workerHealthText, value ?? "Bilinmiyor"))
+            {
+                OnPropertyChanged(nameof(IsWorkerServiceStopped));
+            }
+        }
     }
 
     public string WorkerVersionText
@@ -1606,13 +2466,25 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public int PendingNotificationCount
     {
         get => _pendingNotificationCount;
-        private set => SetProperty(ref _pendingNotificationCount, value);
+        private set
+        {
+            if (SetProperty(ref _pendingNotificationCount, value))
+            {
+                OnPropertyChanged(nameof(PendingOrFailedNotificationCount));
+            }
+        }
     }
 
     public int FailedNotificationCount
     {
         get => _failedNotificationCount;
-        private set => SetProperty(ref _failedNotificationCount, value);
+        private set
+        {
+            if (SetProperty(ref _failedNotificationCount, value))
+            {
+                OnPropertyChanged(nameof(PendingOrFailedNotificationCount));
+            }
+        }
     }
 
     public int? BulkTargetGroupId
@@ -1669,7 +2541,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         set => SetProperty(ref _downtimeStartPolicy, value);
     }
 
-    public string SelectedDeviceCountText => $"{Devices.Count(device => device.IsSelected)} secili";
+    public string SelectedDeviceCountText => $"{Devices.Count(device => device.IsSelected)} seçili";
 
     public int BulkCheckIntervalSeconds
     {
@@ -1677,6 +2549,18 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         set => SetProperty(
             ref _bulkCheckIntervalSeconds,
             value <= 0 ? 0 : Math.Clamp(value, AppSettings.MinDeviceCheckIntervalSeconds, AppSettings.MaxDeviceCheckIntervalSeconds));
+    }
+
+    public int BulkSuppressionDurationHours
+    {
+        get => _bulkSuppressionDurationHours;
+        set => SetProperty(ref _bulkSuppressionDurationHours, Math.Clamp(value, 0, NotificationSettings.MaxEscalationThresholdHours));
+    }
+
+    public string BulkSuppressionReason
+    {
+        get => _bulkSuppressionReason;
+        set => SetProperty(ref _bulkSuppressionReason, value ?? string.Empty);
     }
 
     public bool IsSchedulerRunning

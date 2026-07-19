@@ -34,6 +34,11 @@ public sealed class Device : ObservableObject
     private int _consecutiveFailures;
     private int _consecutiveSuccesses;
     private DeviceStatus _lastStableStatus = DeviceStatus.Unknown;
+    private DeviceSuppressionMode _suppressionMode = DeviceSuppressionMode.None;
+    private DateTime? _suppressedFromUtc;
+    private DateTime? _suppressedUntilUtc;
+    private string _suppressionReason = string.Empty;
+    private string _suppressedBy = string.Empty;
     private DateTime _createdAt = DateTime.Now;
     private DateTime _updatedAt = DateTime.Now;
     private double? _uptime24HoursPercent;
@@ -387,6 +392,95 @@ public sealed class Device : ObservableObject
         }
     }
 
+    public DeviceSuppressionMode SuppressionMode
+    {
+        get => _suppressionMode;
+        set
+        {
+            if (SetProperty(ref _suppressionMode, value))
+            {
+                OnPropertyChanged(nameof(IsSuppressionActive));
+                OnPropertyChanged(nameof(IsSuppressed));
+                OnPropertyChanged(nameof(IsMonitoringPaused));
+                OnPropertyChanged(nameof(SuppressionText));
+                OnPropertyChanged(nameof(LastStatusText));
+                OnPropertyChanged(nameof(HealthHintText));
+            }
+        }
+    }
+
+    public DateTime? SuppressedFromUtc
+    {
+        get => _suppressedFromUtc;
+        set
+        {
+            if (SetProperty(ref _suppressedFromUtc, value))
+            {
+                OnPropertyChanged(nameof(SuppressionText));
+            }
+        }
+    }
+
+    public DateTime? SuppressedUntilUtc
+    {
+        get => _suppressedUntilUtc;
+        set
+        {
+            if (SetProperty(ref _suppressedUntilUtc, value))
+            {
+                OnPropertyChanged(nameof(IsSuppressionActive));
+                OnPropertyChanged(nameof(IsSuppressed));
+                OnPropertyChanged(nameof(IsMonitoringPaused));
+                OnPropertyChanged(nameof(SuppressionText));
+                OnPropertyChanged(nameof(LastStatusText));
+                OnPropertyChanged(nameof(HealthHintText));
+            }
+        }
+    }
+
+    public string SuppressionReason
+    {
+        get => _suppressionReason;
+        set
+        {
+            if (SetProperty(ref _suppressionReason, value ?? string.Empty))
+            {
+                OnPropertyChanged(nameof(SuppressionText));
+            }
+        }
+    }
+
+    public string SuppressedBy
+    {
+        get => _suppressedBy;
+        set => SetProperty(ref _suppressedBy, value ?? string.Empty);
+    }
+
+    public bool IsSuppressionActive =>
+        SuppressionMode != DeviceSuppressionMode.None
+        && (!SuppressedUntilUtc.HasValue || SuppressedUntilUtc.Value.ToUniversalTime() > DateTime.UtcNow);
+
+    public bool IsSuppressed => IsSuppressionActive;
+
+    public bool IsMonitoringPaused => IsSuppressionActive && SuppressionMode == DeviceSuppressionMode.PauseMonitoring;
+
+    public string SuppressionText
+    {
+        get
+        {
+            if (!IsSuppressionActive)
+            {
+                return "-";
+            }
+
+            var until = SuppressedUntilUtc.HasValue
+                ? SuppressedUntilUtc.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss", CultureInfo.CurrentCulture)
+                : "Suresiz";
+            var reason = string.IsNullOrWhiteSpace(SuppressionReason) ? string.Empty : $" - {SuppressionReason}";
+            return $"{SuppressionMode.ToDisplayName()} / {until}{reason}";
+        }
+    }
+
     public bool IsProblematic => LastStatus.IsProblematic() || (FailureRetryLimit > 0 && ConsecutiveFailures >= FailureRetryLimit);
 
     public string ConsecutiveFailuresText => ConsecutiveFailures.ToString(CultureInfo.CurrentCulture);
@@ -491,10 +585,13 @@ public sealed class Device : ObservableObject
 
     public string DeviceTypeText => DeviceType.ToDisplayName();
 
-    public string LastStatusText => LastStatus.ToDisplayName();
+    public string LastStatusText => IsMonitoringPaused
+        ? DeviceSuppressionMode.PauseMonitoring.ToDisplayName()
+        : LastStatus.ToDisplayName();
 
     public string HealthHintText => LastStatus switch
     {
+        _ when IsMonitoringPaused => "Otomatik izleme duraklatıldı; planlı kontroller bu cihazı atlar.",
         DeviceStatus.Online => "Son kontrolde ping yanıtı alındı.",
         DeviceStatus.Warning => "Tekil veya erken hata var; cihaz kesin sorunlu kabul edilmedi.",
         DeviceStatus.UnderWatch => "Hızlı tekrar denemeleri sonucunda takipte.",

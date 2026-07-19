@@ -15,8 +15,9 @@ public sealed class DeviceCheckPolicyService : IDeviceCheckPolicyService
         var autoCheckEnabled = ResolveAutoCheckEnabled(device, group, typePolicy, settings, out var autoSource);
         var normalIntervalSeconds = ResolveNormalIntervalSeconds(device, group, typePolicy, schedulePlan, settings, out var intervalSource);
         var pingTimeoutMs = ResolvePingTimeoutMs(device, group, typePolicy, schedulePlan, settings, options, out var timeoutSource);
-        var retryIntervalSeconds = ResolveRetryIntervalSeconds(device, group, typePolicy, settings, out var retryIntervalSource);
-        var retryLimit = ResolveRetryLimit(device, group, typePolicy, settings, out var retryLimitSource);
+        var retryIntervalSeconds = ResolveRetryIntervalSeconds(device, group, typePolicy, schedulePlan, settings, out var retryIntervalSource);
+        var retryLimit = ResolveRetryLimit(device, group, typePolicy, schedulePlan, settings, out var retryLimitSource);
+        var offlineRecheckIntervalSeconds = ResolveOfflineRecheckIntervalSeconds(device, group, typePolicy, schedulePlan, out var offlineRecheckSource);
         var failureThreshold = ResolveFailureThreshold(device, group, typePolicy, schedulePlan, settings, options, out var thresholdSource);
 
         return new DeviceCheckPolicy(
@@ -25,8 +26,9 @@ public sealed class DeviceCheckPolicyService : IDeviceCheckPolicyService
             pingTimeoutMs,
             retryIntervalSeconds,
             retryLimit,
+            offlineRecheckIntervalSeconds,
             failureThreshold,
-            $"Otomatik: {autoSource}, Aralık: {intervalSource}, Zaman aşımı: {timeoutSource}, Yeniden deneme: {retryIntervalSource}/{retryLimitSource}, Eşik: {thresholdSource}");
+            $"Otomatik: {autoSource}, Aralik: {intervalSource}, Zaman asimi: {timeoutSource}, Hizli retry: {retryIntervalSource}/{retryLimitSource}, Erisilemeyen kontrol: {offlineRecheckSource}, Esik: {thresholdSource}");
     }
 
     public bool IsDue(Device device, DeviceCheckPolicy policy, DateTime now)
@@ -48,17 +50,25 @@ public sealed class DeviceCheckPolicyService : IDeviceCheckPolicyService
             return null;
         }
 
-        var intervalSeconds = ShouldUseFailureRetry(device, policy)
+        var intervalSeconds = ShouldUseConfirmationRetry(device, policy)
             ? policy.FailureRetryIntervalSeconds
-            : policy.NormalIntervalSeconds;
+            : ShouldUseOfflineRecheck(device, policy)
+                ? policy.OfflineRecheckIntervalSeconds
+                : policy.NormalIntervalSeconds;
 
         return lastCheckAt.Value.AddSeconds(intervalSeconds);
     }
 
-    private static bool ShouldUseFailureRetry(Device device, DeviceCheckPolicy policy)
+    private static bool ShouldUseConfirmationRetry(Device device, DeviceCheckPolicy policy)
     {
         return policy.HasFailureRetryRemaining(device.ConsecutiveFailures)
             && device.LastStatus.IsFailureObservation();
+    }
+
+    private static bool ShouldUseOfflineRecheck(Device device, DeviceCheckPolicy policy)
+    {
+        return device.LastStatus == DeviceStatus.Offline
+            || device.ConsecutiveFailures >= policy.OfflineFailureCount && device.LastStatus.IsFailureObservation();
     }
 
     private static bool ResolveAutoCheckEnabled(
@@ -70,7 +80,7 @@ public sealed class DeviceCheckPolicyService : IDeviceCheckPolicyService
     {
         if (!device.AutoCheckEnabled)
         {
-            source = "Cihaz özel";
+            source = "Cihaz ozel";
             return false;
         }
 
@@ -100,7 +110,7 @@ public sealed class DeviceCheckPolicyService : IDeviceCheckPolicyService
     {
         if (device.CheckIntervalSeconds > 0)
         {
-            source = "Cihaz özel";
+            source = "Cihaz ozel";
             return device.CheckIntervalSeconds;
         }
 
@@ -119,7 +129,7 @@ public sealed class DeviceCheckPolicyService : IDeviceCheckPolicyService
         if (schedulePlan is not null)
         {
             source = "Plan";
-            return Math.Max(1, schedulePlan.IntervalMinutes) * 60;
+            return ScheduleTimingService.GetLegacyIntervalMinutes(schedulePlan) * 60;
         }
 
         source = "Global";
@@ -137,7 +147,7 @@ public sealed class DeviceCheckPolicyService : IDeviceCheckPolicyService
     {
         if (device.PingTimeoutMs is > 0)
         {
-            source = "Cihaz özel";
+            source = "Cihaz ozel";
             return device.PingTimeoutMs.Value;
         }
 
@@ -167,12 +177,13 @@ public sealed class DeviceCheckPolicyService : IDeviceCheckPolicyService
         Device device,
         DeviceGroup? group,
         DeviceTypePolicy? typePolicy,
+        SchedulePlan? schedulePlan,
         AppSettings settings,
         out string source)
     {
         if (device.FailureRetryIntervalSeconds > 0)
         {
-            source = "Cihaz özel";
+            source = "Cihaz ozel";
             return device.FailureRetryIntervalSeconds;
         }
 
@@ -188,6 +199,14 @@ public sealed class DeviceCheckPolicyService : IDeviceCheckPolicyService
             return typePolicy.DefaultFailureRetryIntervalSeconds.Value;
         }
 
+        if (schedulePlan is not null)
+        {
+            source = "Plan";
+            return schedulePlan.FailureRetryEnabled
+                ? schedulePlan.ConfirmationRetryIntervalSeconds
+                : AppSettings.MinConfirmationRetryIntervalSeconds;
+        }
+
         source = "Global";
         return settings.DefaultFailureRetryIntervalSeconds;
     }
@@ -196,12 +215,13 @@ public sealed class DeviceCheckPolicyService : IDeviceCheckPolicyService
         Device device,
         DeviceGroup? group,
         DeviceTypePolicy? typePolicy,
+        SchedulePlan? schedulePlan,
         AppSettings settings,
         out string source)
     {
         if (device.FailureRetryLimit > 0)
         {
-            source = "Cihaz özel";
+            source = "Cihaz ozel";
             return device.FailureRetryLimit;
         }
 
@@ -217,8 +237,49 @@ public sealed class DeviceCheckPolicyService : IDeviceCheckPolicyService
             return typePolicy.DefaultFailureRetryLimit.Value;
         }
 
+        if (schedulePlan is not null)
+        {
+            source = "Plan";
+            return schedulePlan.FailureRetryEnabled ? schedulePlan.ConfirmationRetryCount : 0;
+        }
+
         source = "Global";
         return settings.DefaultFailureRetryLimit;
+    }
+
+    private static int ResolveOfflineRecheckIntervalSeconds(
+        Device device,
+        DeviceGroup? group,
+        DeviceTypePolicy? typePolicy,
+        SchedulePlan? schedulePlan,
+        out string source)
+    {
+        if (device.FailureRetryIntervalSeconds > 0)
+        {
+            source = "Cihaz ozel";
+            return device.FailureRetryIntervalSeconds;
+        }
+
+        if (group?.DefaultFailureRetryIntervalSeconds is > 0)
+        {
+            source = "Grup";
+            return group.DefaultFailureRetryIntervalSeconds.Value;
+        }
+
+        if (typePolicy?.DefaultFailureRetryIntervalSeconds is > 0)
+        {
+            source = "Tip";
+            return typePolicy.DefaultFailureRetryIntervalSeconds.Value;
+        }
+
+        if (schedulePlan is not null)
+        {
+            source = "Plan";
+            return schedulePlan.OfflineRecheckIntervalSeconds;
+        }
+
+        source = "Global";
+        return AppSettings.DefaultOfflineRecheckIntervalSeconds;
     }
 
     private static int ResolveFailureThreshold(
@@ -232,7 +293,7 @@ public sealed class DeviceCheckPolicyService : IDeviceCheckPolicyService
     {
         if (device.FailureThreshold > 0)
         {
-            source = "Cihaz özel";
+            source = "Cihaz ozel";
             return device.FailureThreshold;
         }
 

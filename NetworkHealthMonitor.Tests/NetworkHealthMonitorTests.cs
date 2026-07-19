@@ -319,15 +319,18 @@ public sealed class NetworkHealthMonitorTests
         await using var store = await TestStore.CreateAsync();
         var repository = new NotificationOutboxRepository(store.ConnectionFactory);
         var failedId = await repository.AddPendingAsync("Test", null, null, "{}", "failed-" + Guid.NewGuid(), DateTime.UtcNow);
+        var deadLetterId = await repository.AddPendingAsync("Test", null, null, "{}", "dead-" + Guid.NewGuid(), DateTime.UtcNow);
         var sentId = await repository.AddPendingAsync("Test", null, null, "{}", "sent-" + Guid.NewGuid(), DateTime.UtcNow);
         await repository.MarkFailedAsync(failedId, 3, "401 Unauthorized");
+        await repository.MarkDeadLetterAsync(deadLetterId, 6, "Permanent failure");
         await repository.MarkSentAsync(sentId, DateTime.UtcNow);
 
-        var affected = await repository.RetryFailedAsync(new[] { failedId, sentId }, DateTime.UtcNow);
+        var affected = await repository.RetryFailedAsync(new[] { failedId, deadLetterId, sentId }, DateTime.UtcNow);
 
-        Assert.Equal(1, affected);
+        Assert.Equal(2, affected);
         var items = await repository.GetFilteredAsync(null, null, null, null, null, 10);
         Assert.Contains(items, item => item.Id == failedId && item.Status == "Pending" && item.AttemptCount == 0 && item.LockedAtUtc is null && item.LockedBy == "");
+        Assert.Contains(items, item => item.Id == deadLetterId && item.Status == "Pending" && item.AttemptCount == 0 && item.LockedAtUtc is null && item.LockedBy == "");
         Assert.Contains(items, item => item.Id == sentId && item.Status == "Sent");
     }
 
@@ -521,7 +524,12 @@ public sealed class NetworkHealthMonitorTests
         await AssertColumnExistsAsync(store, "PingLogs", "PlanId");
         await AssertColumnExistsAsync(store, "PingLogs", "WorkerInstanceId");
         await AssertColumnExistsAsync(store, "DeviceIncidents", "EndedAtUtc");
+        await AssertColumnExistsAsync(store, "DeviceIncidents", "EscalationNotificationSentAtUtc");
+        await AssertColumnExistsAsync(store, "NotificationOutbox", "IdempotencyKey");
+        await AssertColumnExistsAsync(store, "NotificationOutbox", "Channel");
+        await AssertColumnExistsAsync(store, "Devices", "SuppressionMode");
         await AssertMigrationRecordedAsync(store, DatabaseMigrationRunner.DeviceIncidentsEndedAtUtcMigrationId);
+        await AssertMigrationRecordedAsync(store, SqliteConnectionFactory.NotificationEmailSuppressionSchemaMigrationId);
 
         var availability = new AvailabilityRepository(store.ConnectionFactory);
         Assert.Empty(await new DeviceRepository(store.ConnectionFactory).GetAllAsync(includeDeleted: true));
@@ -557,6 +565,7 @@ public sealed class NetworkHealthMonitorTests
             Assert.Equal("2026-07-15T13:00:00.0000000Z", endedAt);
             await AssertColumnExistsAsync(factory, "DeviceIncidents", "EndedAtUtc");
             await AssertMigrationRecordedAsync(factory, DatabaseMigrationRunner.DeviceIncidentsEndedAtUtcMigrationId);
+            await AssertMigrationRecordedAsync(factory, SqliteConnectionFactory.NotificationEmailSuppressionSchemaMigrationId);
             Assert.Single(await new AvailabilityRepository(factory).GetIncidentRankingAsync(DateTime.UtcNow.AddDays(-30), DateTime.UtcNow, 10));
         }
         finally
@@ -633,6 +642,7 @@ public sealed class NetworkHealthMonitorTests
 
             await first.VerifySchemaAsync();
             Assert.Equal(1, await CountMigrationAsync(first, DatabaseMigrationRunner.DeviceIncidentsEndedAtUtcMigrationId));
+            Assert.Equal(1, await CountMigrationAsync(first, SqliteConnectionFactory.NotificationEmailSuppressionSchemaMigrationId));
             await AssertIntegrityOkAsync(first);
         }
         finally
@@ -694,21 +704,22 @@ public sealed class NetworkHealthMonitorTests
     }
 
     [Fact]
-    public async Task Three_failures_create_one_down_incident_and_one_outbox_item()
+    public async Task Smart_retry_confirmed_offline_creates_one_incident_and_one_initial_outbox_item()
     {
         await using var store = await TestStore.CreateAsync();
-        var fakePing = new FakePingService(false, false, false, false);
+        await EnableNtfyNotificationsAsync();
+        var fakePing = new FakePingService(false, false, false, false, false, false);
         var execution = CreatePingExecution(store, fakePing);
         var device = CreateDevice("Down", "127.0.0.3");
         device.Id = await AddDeviceAsync(store, device);
 
-        for (var index = 0; index < 4; index++)
+        for (var index = 0; index < 6; index++)
         {
             await execution.PingDevicesAsync(new[] { device }, new PingOptions(1000, 1, 3), PingTriggerType.Scheduled);
         }
 
         Assert.Equal(1, await CountOpenIncidentsAsync(store));
-        Assert.Equal(1, await CountOutboxAsync(store, "DeviceDown"));
+        Assert.Equal(1, await CountOutboxAsync(store, NotificationEventTypes.DeviceSuspectedOffline));
     }
 
     [Fact]
@@ -724,25 +735,26 @@ public sealed class NetworkHealthMonitorTests
         await execution.PingDevicesAsync(new[] { device }, new PingOptions(1000, 1, 3), PingTriggerType.Scheduled);
 
         Assert.Equal(0, await CountOpenIncidentsAsync(store));
-        Assert.Equal(0, await CountOutboxAsync(store, "DeviceDown"));
+        Assert.Equal(0, await CountOutboxAsync(store, NotificationEventTypes.DeviceSuspectedOffline));
     }
 
     [Fact]
     public async Task Recovery_after_two_successes_closes_incident_and_creates_one_recovery_notification()
     {
         await using var store = await TestStore.CreateAsync();
-        var fakePing = new FakePingService(false, false, false, true, true, true);
+        await EnableNtfyNotificationsAsync();
+        var fakePing = new FakePingService(false, false, false, false, false, false, true, true);
         var execution = CreatePingExecution(store, fakePing);
         var device = CreateDevice("Recover", "127.0.0.5");
         device.Id = await AddDeviceAsync(store, device);
 
-        for (var index = 0; index < 5; index++)
+        for (var index = 0; index < 8; index++)
         {
             await execution.PingDevicesAsync(new[] { device }, new PingOptions(1000, 1, 3), PingTriggerType.Scheduled);
         }
 
         Assert.Equal(0, await CountOpenIncidentsAsync(store));
-        Assert.Equal(1, await CountOutboxAsync(store, "DeviceDown"));
+        Assert.Equal(1, await CountOutboxAsync(store, NotificationEventTypes.DeviceSuspectedOffline));
         Assert.Equal(1, await CountOutboxAsync(store, "DeviceRecovered"));
         Assert.Equal(1, await CountClosedIncidentsWithEndedAtAsync(store));
     }
@@ -775,6 +787,360 @@ public sealed class NetworkHealthMonitorTests
         Assert.False(result.Success);
         Assert.False(result.IsTransient);
         Assert.Equal(401, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Initial_ntfy_and_email_notifications_are_queued_once_across_restart()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var clock = new FakeClock(new DateTime(2026, 7, 19, 8, 0, 0, DateTimeKind.Utc));
+        await ConfigureSettingsAsync(settings =>
+        {
+            settings.Notifications.Enabled = true;
+            settings.Notifications.Topic = "nhm-test";
+            settings.Notifications.EmailEnabled = true;
+            settings.Notifications.SenderEmail = "monitor@example.com";
+            settings.Notifications.InitialEmailRecipients = new() { new EmailRecipient { Email = "ops@example.com" } };
+        });
+
+        var device = CreateDevice("Restart Duplicate", "127.0.0.30");
+        device.Id = await AddDeviceAsync(store, device);
+        var firstWorker = CreatePingExecution(store, new FakePingService(() => clock.UtcNow, false, false, false, false, false, false), clock);
+        for (var index = 0; index < 6; index++)
+        {
+            await firstWorker.PingDevicesAsync(new[] { device }, new PingOptions(1000, 1, 3), PingTriggerType.Scheduled);
+            clock.Advance(TimeSpan.FromMinutes(1));
+        }
+
+        var restartedWorker = CreatePingExecution(store, new FakePingService(() => clock.UtcNow, false, false, false), clock);
+        for (var index = 0; index < 3; index++)
+        {
+            await restartedWorker.PingDevicesAsync(new[] { device }, new PingOptions(1000, 1, 3), PingTriggerType.Scheduled);
+            clock.Advance(TimeSpan.FromMinutes(1));
+        }
+
+        Assert.Equal(1, await CountOpenIncidentsAsync(store));
+        Assert.Equal(1, await CountOutboxAsync(store, NotificationEventTypes.DeviceSuspectedOffline, NotificationChannels.Ntfy));
+        Assert.Equal(1, await CountOutboxAsync(store, NotificationEventTypes.DeviceSuspectedOffline, NotificationChannels.Email, "ops@example.com"));
+    }
+
+    [Fact]
+    public async Task Escalation_is_not_queued_before_threshold_and_is_queued_once_when_due()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var clock = new FakeClock(new DateTime(2026, 7, 19, 8, 0, 0, DateTimeKind.Utc));
+        await ConfigureSettingsAsync(settings =>
+        {
+            settings.Notifications.EmailEnabled = true;
+            settings.Notifications.NotifyOnDeviceEscalated = true;
+            settings.Notifications.EscalationThresholdHours = 48;
+            settings.Notifications.SenderEmail = "monitor@example.com";
+            settings.Notifications.EscalationEmailRecipients = new() { new EmailRecipient { Email = "lead@example.com" } };
+        });
+
+        var device = CreateDevice("Escalate", "127.0.0.31");
+        device.Id = await AddDeviceAsync(store, device);
+        var execution = CreatePingExecution(store, new FakePingService(() => clock.UtcNow, false, false, false, false, false, false), clock);
+        for (var index = 0; index < 6; index++)
+        {
+            await execution.PingDevicesAsync(new[] { device }, new PingOptions(1000, 1, 3), PingTriggerType.Scheduled);
+            clock.Advance(TimeSpan.FromMinutes(1));
+        }
+
+        var incidentService = new IncidentService(store.ConnectionFactory, new AppSettingsService(), new AlertPolicyService(), new NotificationTemplateRenderer(), clock);
+        clock.Advance(TimeSpan.FromHours(47));
+        await incidentService.EvaluateOpenIncidentsAsync();
+        Assert.Equal(0, await CountOutboxAsync(store, NotificationEventTypes.DeviceOfflineEscalated));
+
+        clock.Advance(TimeSpan.FromHours(1));
+        await incidentService.EvaluateOpenIncidentsAsync();
+        await incidentService.EvaluateOpenIncidentsAsync();
+
+        Assert.Equal(1, await CountOutboxAsync(store, NotificationEventTypes.DeviceOfflineEscalated, NotificationChannels.Email, "lead@example.com"));
+    }
+
+    [Fact]
+    public async Task Device_recovery_then_new_failure_opens_a_new_incident()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var clock = new FakeClock(new DateTime(2026, 7, 19, 8, 0, 0, DateTimeKind.Utc));
+        await EnableNtfyNotificationsAsync();
+        var device = CreateDevice("Flap", "127.0.0.32");
+        device.Id = await AddDeviceAsync(store, device);
+        var execution = CreatePingExecution(
+            store,
+            new FakePingService(
+                () => clock.UtcNow,
+                false, false, false, false, false, false,
+                true, true,
+                false, false, false, false, false, false),
+            clock);
+
+        for (var index = 0; index < 14; index++)
+        {
+            await execution.PingDevicesAsync(new[] { device }, new PingOptions(1000, 1, 3), PingTriggerType.Scheduled);
+            clock.Advance(TimeSpan.FromMinutes(1));
+        }
+
+        Assert.Equal(2, await CountIncidentsAsync(store));
+        Assert.Equal(1, await CountOpenIncidentsAsync(store));
+        Assert.Equal(2, await CountOutboxAsync(store, NotificationEventTypes.DeviceSuspectedOffline, NotificationChannels.Ntfy));
+    }
+
+    [Fact]
+    public async Task Email_channel_failure_does_not_block_ntfy_delivery()
+    {
+        await using var store = await TestStore.CreateAsync();
+        await ConfigureSettingsAsync(settings =>
+        {
+            settings.Notifications.Enabled = true;
+            settings.Notifications.Topic = "nhm-test";
+            settings.Notifications.EmailEnabled = true;
+            settings.Notifications.SenderEmail = "monitor@example.com";
+        });
+        var repository = new NotificationOutboxRepository(store.ConnectionFactory);
+        var now = DateTime.UtcNow;
+        await repository.AddPendingAsync(CreateOutboxRequest(NotificationEventTypes.DeviceSuspectedOffline, NotificationChannels.Email, "bad@example.com", "email-fails"), now);
+        await repository.AddPendingAsync(CreateOutboxRequest(NotificationEventTypes.DeviceSuspectedOffline, NotificationChannels.Ntfy, "nhm-test", "ntfy-succeeds"), now);
+        var email = new FakeNotificationChannel(NotificationChannels.Email, _ => NotificationSendResult.PermanentFailure("SMTP rejected recipient."));
+        var ntfy = new FakeNotificationChannel(NotificationChannels.Ntfy);
+        var dispatcher = new NotificationDispatcherService(
+            repository,
+            new INotificationChannel[] { email, ntfy },
+            new AppSettingsService(),
+            new AlertPolicyService(),
+            "worker-test");
+
+        await dispatcher.DispatchOnceAsync();
+
+        var items = await repository.GetFilteredAsync(null, null, null, null, null, 10);
+        Assert.Contains(items, item => item.Channel == NotificationChannels.Email && item.Status == NotificationStatuses.DeadLetter);
+        Assert.Contains(items, item => item.Channel == NotificationChannels.Ntfy && item.Status == NotificationStatuses.Sent);
+    }
+
+    [Fact]
+    public async Task Ntfy_channel_failure_does_not_block_email_delivery()
+    {
+        await using var store = await TestStore.CreateAsync();
+        await ConfigureSettingsAsync(settings =>
+        {
+            settings.Notifications.Enabled = true;
+            settings.Notifications.Topic = "nhm-test";
+            settings.Notifications.EmailEnabled = true;
+            settings.Notifications.SenderEmail = "monitor@example.com";
+        });
+        var repository = new NotificationOutboxRepository(store.ConnectionFactory);
+        var now = DateTime.UtcNow;
+        await repository.AddPendingAsync(CreateOutboxRequest(NotificationEventTypes.DeviceSuspectedOffline, NotificationChannels.Ntfy, "nhm-test", "ntfy-fails"), now);
+        await repository.AddPendingAsync(CreateOutboxRequest(NotificationEventTypes.DeviceSuspectedOffline, NotificationChannels.Email, "ops@example.com", "email-succeeds"), now);
+        var ntfy = new FakeNotificationChannel(NotificationChannels.Ntfy, _ => NotificationSendResult.PermanentFailure("ntfy 403"));
+        var email = new FakeNotificationChannel(NotificationChannels.Email);
+        var dispatcher = new NotificationDispatcherService(
+            repository,
+            new INotificationChannel[] { ntfy, email },
+            new AppSettingsService(),
+            new AlertPolicyService(),
+            "worker-test");
+
+        await dispatcher.DispatchOnceAsync();
+
+        var items = await repository.GetFilteredAsync(null, null, null, null, null, 10);
+        Assert.Contains(items, item => item.Channel == NotificationChannels.Ntfy && item.Status == NotificationStatuses.DeadLetter);
+        Assert.Contains(items, item => item.Channel == NotificationChannels.Email && item.Status == NotificationStatuses.Sent);
+    }
+
+    [Fact]
+    public async Task One_failing_email_recipient_does_not_block_other_recipients()
+    {
+        await using var store = await TestStore.CreateAsync();
+        await ConfigureSettingsAsync(settings =>
+        {
+            settings.Notifications.EmailEnabled = true;
+            settings.Notifications.SenderEmail = "monitor@example.com";
+        });
+        var repository = new NotificationOutboxRepository(store.ConnectionFactory);
+        var now = DateTime.UtcNow;
+        await repository.AddPendingAsync(CreateOutboxRequest(NotificationEventTypes.DeviceSuspectedOffline, NotificationChannels.Email, "ok1@example.com", "email-ok-1"), now);
+        await repository.AddPendingAsync(CreateOutboxRequest(NotificationEventTypes.DeviceSuspectedOffline, NotificationChannels.Email, "bad@example.com", "email-bad"), now);
+        await repository.AddPendingAsync(CreateOutboxRequest(NotificationEventTypes.DeviceSuspectedOffline, NotificationChannels.Email, "ok2@example.com", "email-ok-2"), now);
+        var email = new FakeNotificationChannel(
+            NotificationChannels.Email,
+            item => item.Recipient == "bad@example.com"
+                ? NotificationSendResult.PermanentFailure("Invalid recipient.")
+                : NotificationSendResult.Ok());
+        var dispatcher = new NotificationDispatcherService(
+            repository,
+            new[] { email },
+            new AppSettingsService(),
+            new AlertPolicyService(),
+            "worker-test");
+
+        await dispatcher.DispatchOnceAsync();
+
+        var items = await repository.GetFilteredAsync(null, null, null, null, null, 10);
+        Assert.Equal(2, items.Count(item => item.Channel == NotificationChannels.Email && item.Status == NotificationStatuses.Sent));
+        Assert.Single(items, item => item.Recipient == "bad@example.com" && item.Status == NotificationStatuses.DeadLetter);
+    }
+
+    [Fact]
+    public async Task Muted_device_opens_incident_without_notification_outbox()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var clock = new FakeClock(new DateTime(2026, 7, 19, 8, 0, 0, DateTimeKind.Utc));
+        await ConfigureSettingsAsync(settings =>
+        {
+            settings.Notifications.Enabled = true;
+            settings.Notifications.Topic = "nhm-test";
+            settings.Notifications.EmailEnabled = true;
+            settings.Notifications.SenderEmail = "monitor@example.com";
+            settings.Notifications.InitialEmailRecipients = new() { new EmailRecipient { Email = "ops@example.com" } };
+        });
+        var device = CreateDevice("Muted", "127.0.0.33");
+        device.SuppressionMode = DeviceSuppressionMode.MuteNotifications;
+        device.SuppressedFromUtc = clock.UtcNow.AddMinutes(-5);
+        device.SuppressedUntilUtc = clock.UtcNow.AddHours(1);
+        device.Id = await AddDeviceAsync(store, device);
+        var execution = CreatePingExecution(store, new FakePingService(() => clock.UtcNow, false, false, false, false, false, false), clock);
+
+        for (var index = 0; index < 6; index++)
+        {
+            await execution.PingDevicesAsync(new[] { device }, new PingOptions(1000, 1, 3), PingTriggerType.Scheduled);
+            clock.Advance(TimeSpan.FromMinutes(1));
+        }
+
+        Assert.Equal(1, await CountOpenIncidentsAsync(store));
+        Assert.Equal(0, await CountOutboxAsync(store, NotificationEventTypes.DeviceSuspectedOffline));
+    }
+
+    [Fact]
+    public async Task Paused_device_is_skipped_by_scheduler_and_returns_after_expiry()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var fakePing = new FakePingService();
+        var scheduler = await CreateSchedulerAsync(store, fakePing);
+        var deviceId = await AddDeviceAsync(store, CreateDevice("Paused", "127.0.0.34"));
+        await AddPlanAsync(store, "Paused Plan", SchedulePlanTargetType.AllDevices, string.Empty, DateTime.Now.AddMinutes(-1));
+        var repository = new DeviceRepository(store.ConnectionFactory);
+        var now = DateTime.UtcNow;
+        await repository.BulkSetSuppressionAsync(
+            new[] { deviceId },
+            DeviceSuppressionMode.PauseMonitoring,
+            now.AddHours(1),
+            "Bakim",
+            "test",
+            now);
+
+        await scheduler.RunDuePlansOnceAsync();
+        Assert.Equal(0, fakePing.PingCount);
+
+        await repository.ExpireSuppressionsAsync(now.AddHours(2));
+        var device = await repository.GetActiveByIdAsync(deviceId);
+        Assert.NotNull(device);
+        Assert.Equal(DeviceSuppressionMode.None, device!.SuppressionMode);
+    }
+
+    [Fact]
+    public async Task Suppressed_duration_is_excluded_from_escalation_threshold()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var start = new DateTime(2026, 7, 19, 8, 0, 0, DateTimeKind.Utc);
+        var clock = new FakeClock(start);
+        await ConfigureSettingsAsync(settings =>
+        {
+            settings.Notifications.EmailEnabled = true;
+            settings.Notifications.NotifyOnDeviceEscalated = true;
+            settings.Notifications.EscalationThresholdHours = 48;
+            settings.Notifications.SenderEmail = "monitor@example.com";
+            settings.Notifications.EscalationEmailRecipients = new() { new EmailRecipient { Email = "lead@example.com" } };
+        });
+        var device = CreateDevice("Paused Escalation", "127.0.0.35");
+        device.Id = await AddDeviceAsync(store, device);
+        var execution = CreatePingExecution(store, new FakePingService(() => clock.UtcNow, false, false, false, false, false, false), clock);
+        for (var index = 0; index < 6; index++)
+        {
+            await execution.PingDevicesAsync(new[] { device }, new PingOptions(1000, 1, 3), PingTriggerType.Scheduled);
+            clock.Advance(TimeSpan.FromMinutes(1));
+        }
+
+        await SetDeviceSuppressionAsync(store, device.Id, DeviceSuppressionMode.PauseMonitoring, start.AddMinutes(6), start.AddHours(24).AddMinutes(6));
+        await new DeviceRepository(store.ConnectionFactory).ExpireSuppressionsAsync(start.AddHours(24).AddMinutes(6));
+        var incidentService = new IncidentService(store.ConnectionFactory, new AppSettingsService(), new AlertPolicyService(), new NotificationTemplateRenderer(), clock);
+        clock.Advance(TimeSpan.FromHours(49));
+        await incidentService.EvaluateOpenIncidentsAsync();
+        Assert.Equal(0, await CountOutboxAsync(store, NotificationEventTypes.DeviceOfflineEscalated));
+
+        clock.Advance(TimeSpan.FromHours(23));
+        await incidentService.EvaluateOpenIncidentsAsync();
+        Assert.Equal(1, await CountOutboxAsync(store, NotificationEventTypes.DeviceOfflineEscalated));
+    }
+
+    [Fact]
+    public void Notification_template_renderer_renders_known_placeholders_and_rejects_unknown()
+    {
+        var renderer = new NotificationTemplateRenderer();
+        var context = new NotificationTemplateContext
+        {
+            DeviceName = "Core Switch",
+            IpAddress = "192.0.2.40",
+            DeviceType = DeviceType.Switch.ToDisplayName(),
+            GroupName = "Merkez",
+            Status = DeviceStatus.Offline.ToDisplayName(),
+            IncidentStartedAtUtc = new DateTime(2026, 7, 19, 8, 0, 0, DateTimeKind.Utc),
+            LastCheckAtUtc = new DateTime(2026, 7, 19, 9, 0, 0, DateTimeKind.Utc),
+            OfflineDuration = TimeSpan.FromHours(1),
+            EscalationThreshold = TimeSpan.FromHours(48)
+        };
+
+        var rendered = renderer.Render("{DeviceName} {IpAddress} {ApplicationName}", context);
+
+        Assert.Contains("Core Switch", rendered);
+        Assert.Contains("192.0.2.40", rendered);
+        Assert.Throws<InvalidOperationException>(() => renderer.Render("{UnknownField}", context));
+    }
+
+    [Fact]
+    public async Task Smtp_secret_is_not_saved_as_plain_text()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var password = string.Join('-', "unit", "test", "smtp", "secret");
+        await ConfigureSettingsAsync(settings =>
+        {
+            settings.Notifications.EmailEnabled = true;
+            settings.Notifications.SmtpHost = "smtp.example.com";
+            settings.Notifications.SenderEmail = "monitor@example.com";
+            settings.Notifications.SmtpPassword = password;
+        });
+
+        var raw = await File.ReadAllTextAsync(DatabasePaths.SettingsFilePath);
+        var loaded = await new AppSettingsService().LoadAsync();
+
+        Assert.DoesNotContain(password, raw);
+        Assert.Contains("dpapi:", raw);
+        Assert.Equal(password, loaded.Notifications.SmtpPassword);
+    }
+
+    [Fact]
+    public async Task Same_device_cannot_have_two_open_incidents()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var device = CreateDevice("Unique Incident", "127.0.0.36");
+        device.Id = await AddDeviceAsync(store, device);
+        await InsertOpenIncidentAsync(store, device.Id, DateTime.UtcNow);
+
+        await Assert.ThrowsAsync<SqliteException>(() => InsertOpenIncidentAsync(store, device.Id, DateTime.UtcNow.AddMinutes(1)));
+    }
+
+    [Fact]
+    public async Task Outbox_idempotency_key_prevents_duplicate_records()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var repository = new NotificationOutboxRepository(store.ConnectionFactory);
+        var request = CreateOutboxRequest(NotificationEventTypes.DeviceSuspectedOffline, NotificationChannels.Email, "ops@example.com", "same-key");
+
+        await repository.AddPendingAsync(request, DateTime.UtcNow);
+        await repository.AddPendingAsync(request, DateTime.UtcNow);
+
+        Assert.Equal(1, await CountOutboxAsync(store, NotificationEventTypes.DeviceSuspectedOffline, NotificationChannels.Email, "ops@example.com"));
     }
 
     private static async Task<ISchedulerService> CreateSchedulerAsync(TestStore store, FakePingService pingService)
@@ -813,16 +1179,36 @@ public sealed class NetworkHealthMonitorTests
         return Convert.ToInt32(await command.ExecuteScalarAsync());
     }
 
-    private static async Task<int> CountOutboxAsync(TestStore store, string eventType)
+    private static async Task<int> CountOutboxAsync(
+        TestStore store,
+        string eventType,
+        string? channel = null,
+        string? recipient = null)
     {
         await using var connection = await store.ConnectionFactory.CreateOpenConnectionAsync();
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT COUNT(1) FROM NotificationOutbox WHERE EventType = @EventType;";
+        command.CommandText = """
+            SELECT COUNT(1)
+            FROM NotificationOutbox
+            WHERE EventType = @EventType
+              AND (@Channel = '' OR Channel = @Channel)
+              AND (@Recipient = '' OR Recipient = @Recipient);
+            """;
         command.Parameters.AddWithValue("@EventType", eventType);
+        command.Parameters.AddWithValue("@Channel", channel ?? string.Empty);
+        command.Parameters.AddWithValue("@Recipient", recipient ?? string.Empty);
         return Convert.ToInt32(await command.ExecuteScalarAsync());
     }
 
-    private static IPingExecutionService CreatePingExecution(TestStore store, IPingService pingService)
+    private static async Task<int> CountIncidentsAsync(TestStore store)
+    {
+        await using var connection = await store.ConnectionFactory.CreateOpenConnectionAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(1) FROM DeviceIncidents;";
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static IPingExecutionService CreatePingExecution(TestStore store, IPingService pingService, IClock? clock = null)
     {
         return new PingExecutionService(
             new DeviceRepository(store.ConnectionFactory),
@@ -833,7 +1219,7 @@ public sealed class NetworkHealthMonitorTests
             new DeviceCheckPolicyService(),
             new DeviceHealthEvaluator(),
             new AppSettingsService(),
-            new IncidentService(store.ConnectionFactory, new AppSettingsService(), new AlertPolicyService()));
+            new IncidentService(store.ConnectionFactory, new AppSettingsService(), new AlertPolicyService(), new NotificationTemplateRenderer(), clock));
     }
 
     private static DeviceImportExportService CreateImportService(TestStore store)
@@ -1419,6 +1805,94 @@ public sealed class NetworkHealthMonitorTests
     private static async Task EnsureSettingsAsync()
     {
         await new AppSettingsService().SaveAsync(AppSettings.Default);
+    }
+
+    private static async Task EnableNtfyNotificationsAsync()
+    {
+        await ConfigureSettingsAsync(settings =>
+        {
+            settings.Notifications.Enabled = true;
+            settings.Notifications.Topic = "nhm-test";
+            settings.Notifications.NotifyOnDeviceDown = true;
+            settings.Notifications.NotifyOnDeviceRecovered = true;
+        });
+    }
+
+    private static async Task ConfigureSettingsAsync(Action<AppSettings> configure)
+    {
+        var settings = AppSettings.Default;
+        configure(settings);
+        await new AppSettingsService().SaveAsync(settings);
+    }
+
+    private static NotificationOutboxCreateRequest CreateOutboxRequest(
+        string eventType,
+        string channel,
+        string recipient,
+        string idempotencyKey)
+    {
+        return new NotificationOutboxCreateRequest
+        {
+            EventType = eventType,
+            Channel = channel,
+            Recipient = recipient,
+            Subject = "subject",
+            Body = "body",
+            PayloadJson = channel == NotificationChannels.Ntfy
+                ? """{"title":"subject","message":"body"}"""
+                : "{}",
+            IdempotencyKey = idempotencyKey
+        };
+    }
+
+    private static async Task SetDeviceSuppressionAsync(
+        TestStore store,
+        int deviceId,
+        DeviceSuppressionMode mode,
+        DateTime fromUtc,
+        DateTime untilUtc)
+    {
+        await using var connection = await store.ConnectionFactory.CreateOpenConnectionAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE Devices
+            SET SuppressionMode = @SuppressionMode,
+                SuppressedFromUtc = @SuppressedFromUtc,
+                SuppressedUntilUtc = @SuppressedUntilUtc,
+                SuppressionReason = 'Test',
+                SuppressedBy = 'test'
+            WHERE Id = @DeviceId;
+            """;
+        command.Parameters.AddWithValue("@SuppressionMode", mode.ToStorageValue());
+        command.Parameters.AddWithValue("@SuppressedFromUtc", fromUtc.ToUniversalTime().ToString("O"));
+        command.Parameters.AddWithValue("@SuppressedUntilUtc", untilUtc.ToUniversalTime().ToString("O"));
+        command.Parameters.AddWithValue("@DeviceId", deviceId);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task InsertOpenIncidentAsync(TestStore store, int deviceId, DateTime startedAtUtc)
+    {
+        await using var connection = await store.ConnectionFactory.CreateOpenConnectionAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO DeviceIncidents
+                (DeviceId, StartedAtUtc, EndedAtUtc, Status, InitialFailureCount,
+                 CurrentFailureCount, RecoverySuccessCount, FirstFailureAtUtc, ConfirmedDownAtUtc,
+                 DetectionDelaySeconds, LastFailureAtUtc, LastObservedAtUtc, LastSuccessAtUtc,
+                 LastSuccessfulCheckAtUtc, DownNotificationCreatedAtUtc, InitialNotificationSentAtUtc,
+                 EscalationNotificationSentAtUtc, RecoveryNotificationCreatedAtUtc, ResolvedAtUtc,
+                 CurrentState, SuppressedDurationSeconds, FlapCount, CreatedAtUtc, UpdatedAtUtc)
+            VALUES
+                (@DeviceId, @StartedAtUtc, NULL, 'Open', 1,
+                 1, 0, @StartedAtUtc, @StartedAtUtc,
+                 0, @StartedAtUtc, @StartedAtUtc, NULL,
+                 NULL, NULL, NULL,
+                 NULL, NULL, NULL,
+                 'Open', 0, 0, @StartedAtUtc, @StartedAtUtc);
+            """;
+        command.Parameters.AddWithValue("@DeviceId", deviceId);
+        command.Parameters.AddWithValue("@StartedAtUtc", startedAtUtc.ToUniversalTime().ToString("O"));
+        await command.ExecuteNonQueryAsync();
     }
 
     private static async Task CreateMinimalSqliteAsync(string path)

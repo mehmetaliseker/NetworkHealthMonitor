@@ -6,6 +6,14 @@ namespace NetworkHealthMonitor.Data;
 
 public sealed class SchedulePlanRepository
 {
+    private const string SchedulePlanSelectColumns = """
+        Id, Name, TargetType, TargetValue, IntervalMinutes, TimeoutMs, MaxParallelism,
+        FailureThreshold, IsActive, Description, LastRunAt, NextRunAt, LastStatus, CreatedAt, UpdatedAt,
+        ScheduleMode, IntervalValue, IntervalUnit, TimesPerDay, DailyTimes, SelectedWeekDays, TimeZoneId,
+        FailureRetryEnabled, ConfirmationRetryCount, ConfirmationRetryIntervalSeconds, OfflineRecheckIntervalSeconds,
+        MissedRunPolicy
+        """;
+
     private readonly SqliteConnectionFactory _connectionFactory;
 
     public SchedulePlanRepository(SqliteConnectionFactory connectionFactory)
@@ -18,9 +26,8 @@ public sealed class SchedulePlanRepository
         var plans = new List<SchedulePlan>();
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
         await using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT Id, Name, TargetType, TargetValue, IntervalMinutes, TimeoutMs, MaxParallelism,
-                   FailureThreshold, IsActive, Description, LastRunAt, NextRunAt, LastStatus, CreatedAt, UpdatedAt
+        command.CommandText = $"""
+            SELECT {SchedulePlanSelectColumns}
             FROM SchedulePlans
             ORDER BY IsActive DESC, Name COLLATE NOCASE;
             """;
@@ -39,9 +46,8 @@ public sealed class SchedulePlanRepository
         var plans = new List<SchedulePlan>();
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
         await using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT Id, Name, TargetType, TargetValue, IntervalMinutes, TimeoutMs, MaxParallelism,
-                   FailureThreshold, IsActive, Description, LastRunAt, NextRunAt, LastStatus, CreatedAt, UpdatedAt
+        command.CommandText = $"""
+            SELECT {SchedulePlanSelectColumns}
             FROM SchedulePlans
             WHERE IsActive = 1
             ORDER BY COALESCE(NextRunAt, LastRunAt, CreatedAt), Name COLLATE NOCASE;
@@ -58,7 +64,7 @@ public sealed class SchedulePlanRepository
 
     public async Task<int> AddAsync(SchedulePlan plan)
     {
-        var now = DateTime.Now;
+        var now = DateTime.UtcNow;
         plan.CreatedAt = now;
         plan.UpdatedAt = now;
 
@@ -67,10 +73,16 @@ public sealed class SchedulePlanRepository
         command.CommandText = """
             INSERT INTO SchedulePlans
                 (Name, TargetType, TargetValue, IntervalMinutes, TimeoutMs, MaxParallelism,
-                 FailureThreshold, IsActive, Description, LastRunAt, NextRunAt, LastStatus, CreatedAt, UpdatedAt)
+                 FailureThreshold, IsActive, Description, LastRunAt, NextRunAt, LastStatus, CreatedAt, UpdatedAt,
+                 ScheduleMode, IntervalValue, IntervalUnit, TimesPerDay, DailyTimes, SelectedWeekDays, TimeZoneId,
+                 FailureRetryEnabled, ConfirmationRetryCount, ConfirmationRetryIntervalSeconds, OfflineRecheckIntervalSeconds,
+                 MissedRunPolicy)
             VALUES
                 (@Name, @TargetType, @TargetValue, @IntervalMinutes, @TimeoutMs, @MaxParallelism,
-                 @FailureThreshold, @IsActive, @Description, @LastRunAt, @NextRunAt, @LastStatus, @CreatedAt, @UpdatedAt);
+                 @FailureThreshold, @IsActive, @Description, @LastRunAt, @NextRunAt, @LastStatus, @CreatedAt, @UpdatedAt,
+                 @ScheduleMode, @IntervalValue, @IntervalUnit, @TimesPerDay, @DailyTimes, @SelectedWeekDays, @TimeZoneId,
+                 @FailureRetryEnabled, @ConfirmationRetryCount, @ConfirmationRetryIntervalSeconds, @OfflineRecheckIntervalSeconds,
+                 @MissedRunPolicy);
             SELECT last_insert_rowid();
             """;
 
@@ -82,7 +94,7 @@ public sealed class SchedulePlanRepository
 
     public async Task UpdateAsync(SchedulePlan plan)
     {
-        plan.UpdatedAt = DateTime.Now;
+        plan.UpdatedAt = DateTime.UtcNow;
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
         await using var command = connection.CreateCommand();
         command.CommandText = """
@@ -99,6 +111,18 @@ public sealed class SchedulePlanRepository
                 LastRunAt = @LastRunAt,
                 NextRunAt = @NextRunAt,
                 LastStatus = @LastStatus,
+                ScheduleMode = @ScheduleMode,
+                IntervalValue = @IntervalValue,
+                IntervalUnit = @IntervalUnit,
+                TimesPerDay = @TimesPerDay,
+                DailyTimes = @DailyTimes,
+                SelectedWeekDays = @SelectedWeekDays,
+                TimeZoneId = @TimeZoneId,
+                FailureRetryEnabled = @FailureRetryEnabled,
+                ConfirmationRetryCount = @ConfirmationRetryCount,
+                ConfirmationRetryIntervalSeconds = @ConfirmationRetryIntervalSeconds,
+                OfflineRecheckIntervalSeconds = @OfflineRecheckIntervalSeconds,
+                MissedRunPolicy = @MissedRunPolicy,
                 UpdatedAt = @UpdatedAt
             WHERE Id = @Id;
             """;
@@ -137,7 +161,7 @@ public sealed class SchedulePlanRepository
         AddParameter(command, "@LastRunAt", ToStorageDate(lastRunAt));
         AddParameter(command, "@NextRunAt", nextRunAt.HasValue ? ToStorageDate(nextRunAt.Value) : null);
         AddParameter(command, "@LastStatus", lastStatus);
-        AddParameter(command, "@UpdatedAt", ToStorageDate(DateTime.Now));
+        AddParameter(command, "@UpdatedAt", ToStorageDate(DateTime.UtcNow));
         AddParameter(command, "@Id", id);
         await command.ExecuteNonQueryAsync();
     }
@@ -176,7 +200,19 @@ public sealed class SchedulePlanRepository
             NextRunAt = reader.IsDBNull(11) ? null : FromStorageDate(reader.GetString(11)),
             LastStatus = reader.GetString(12),
             CreatedAt = FromStorageDate(reader.GetString(13)),
-            UpdatedAt = FromStorageDate(reader.GetString(14))
+            UpdatedAt = FromStorageDate(reader.GetString(14)),
+            ScheduleMode = ScheduleModelExtensions.ScheduleModeFromStorage(reader.GetString(15)),
+            IntervalValue = reader.GetInt32(16),
+            IntervalUnit = ScheduleModelExtensions.ScheduleIntervalUnitFromStorage(reader.GetString(17)),
+            TimesPerDay = reader.GetInt32(18),
+            DailyTimes = reader.GetString(19),
+            SelectedWeekDays = reader.GetString(20),
+            TimeZoneId = reader.GetString(21),
+            FailureRetryEnabled = reader.GetInt32(22) == 1,
+            ConfirmationRetryCount = reader.GetInt32(23),
+            ConfirmationRetryIntervalSeconds = reader.GetInt32(24),
+            OfflineRecheckIntervalSeconds = reader.GetInt32(25),
+            MissedRunPolicy = ScheduleModelExtensions.MissedRunPolicyFromStorage(reader.GetString(26))
         };
     }
 
@@ -196,6 +232,18 @@ public sealed class SchedulePlanRepository
         AddParameter(command, "@LastStatus", plan.LastStatus);
         AddParameter(command, "@CreatedAt", ToStorageDate(plan.CreatedAt));
         AddParameter(command, "@UpdatedAt", ToStorageDate(plan.UpdatedAt));
+        AddParameter(command, "@ScheduleMode", plan.ScheduleMode.ToStorageValue());
+        AddParameter(command, "@IntervalValue", Math.Max(1, plan.IntervalValue));
+        AddParameter(command, "@IntervalUnit", plan.IntervalUnit.ToStorageValue());
+        AddParameter(command, "@TimesPerDay", Math.Clamp(plan.TimesPerDay, 0, 48));
+        AddParameter(command, "@DailyTimes", plan.DailyTimes);
+        AddParameter(command, "@SelectedWeekDays", plan.SelectedWeekDays);
+        AddParameter(command, "@TimeZoneId", string.IsNullOrWhiteSpace(plan.TimeZoneId) ? TimeZoneInfo.Local.Id : plan.TimeZoneId);
+        AddParameter(command, "@FailureRetryEnabled", plan.FailureRetryEnabled ? 1 : 0);
+        AddParameter(command, "@ConfirmationRetryCount", Math.Clamp(plan.ConfirmationRetryCount, AppSettings.MinConfirmationRetryCount, AppSettings.MaxConfirmationRetryCount));
+        AddParameter(command, "@ConfirmationRetryIntervalSeconds", Math.Clamp(plan.ConfirmationRetryIntervalSeconds, AppSettings.MinConfirmationRetryIntervalSeconds, AppSettings.MaxConfirmationRetryIntervalSeconds));
+        AddParameter(command, "@OfflineRecheckIntervalSeconds", Math.Clamp(plan.OfflineRecheckIntervalSeconds, AppSettings.MinOfflineRecheckIntervalSeconds, AppSettings.MaxOfflineRecheckIntervalSeconds));
+        AddParameter(command, "@MissedRunPolicy", plan.MissedRunPolicy.ToStorageValue());
     }
 
     private static void AddParameter(SqliteCommand command, string name, object? value)
@@ -205,7 +253,7 @@ public sealed class SchedulePlanRepository
 
     private static string ToStorageDate(DateTime value)
     {
-        return value.ToString("O", CultureInfo.InvariantCulture);
+        return value.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture);
     }
 
     private static DateTime FromStorageDate(string value)
@@ -215,7 +263,7 @@ public sealed class SchedulePlanRepository
             CultureInfo.InvariantCulture,
             DateTimeStyles.RoundtripKind,
             out var parsed)
-            ? parsed
-            : DateTime.Now;
+            ? parsed.ToUniversalTime()
+            : DateTime.UtcNow;
     }
 }

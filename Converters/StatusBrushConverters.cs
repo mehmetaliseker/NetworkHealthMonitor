@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Windows;
 using System.Windows.Data;
 using System.Windows.Media;
 using NetworkHealthMonitor.Models;
@@ -72,6 +73,37 @@ public sealed class RowStatusBackgroundConverter : IValueConverter
                 _ => WpfColors.White
             })
             : WpfBrushes.White;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+public sealed class BooleanToGridLengthConverter : IValueConverter
+{
+    public double TrueWidth { get; set; } = 76;
+
+    public double FalseWidth { get; set; } = 276;
+
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        var isTrue = value is bool boolValue && boolValue;
+        return new GridLength(isTrue ? TrueWidth : FalseWidth);
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+public sealed class InverseBooleanToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        return value is bool boolValue && boolValue ? Visibility.Collapsed : Visibility.Visible;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

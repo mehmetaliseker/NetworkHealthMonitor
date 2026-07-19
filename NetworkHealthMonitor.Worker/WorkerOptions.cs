@@ -8,6 +8,12 @@ public sealed class WorkerOptions
 
     public bool HealthCheck { get; init; }
 
+    public DatabaseVerificationMode DatabaseVerificationMode { get; init; }
+
+    public string? DatabaseReportJsonPath { get; init; }
+
+    public string? DatabaseReportTextPath { get; init; }
+
     public bool SkipHeartbeatCheck { get; init; }
 
     public int HeartbeatMaxAgeSeconds { get; init; } = 120;
@@ -22,6 +28,9 @@ public sealed class WorkerOptions
     {
         var runOnce = false;
         var healthCheck = false;
+        var databaseVerificationMode = DatabaseVerificationMode.None;
+        string? databaseReportJsonPath = null;
+        string? databaseReportTextPath = null;
         var skipHeartbeatCheck = false;
         var heartbeatMaxAgeSeconds = 120;
         string? dataDirectory = null;
@@ -40,6 +49,42 @@ public sealed class WorkerOptions
             if (string.Equals(arg, "--health-check", StringComparison.OrdinalIgnoreCase))
             {
                 healthCheck = true;
+                continue;
+            }
+
+            if (string.Equals(arg, "--database-integrity-check", StringComparison.OrdinalIgnoreCase))
+            {
+                databaseVerificationMode = DatabaseVerificationMode.IntegrityCheck;
+                continue;
+            }
+
+            if (string.Equals(arg, "--database-summary", StringComparison.OrdinalIgnoreCase))
+            {
+                databaseVerificationMode = DatabaseVerificationMode.Summary;
+                continue;
+            }
+
+            if (string.Equals(arg, "--migration-status", StringComparison.OrdinalIgnoreCase))
+            {
+                databaseVerificationMode = DatabaseVerificationMode.MigrationStatus;
+                continue;
+            }
+
+            if (string.Equals(arg, "--verify-database", StringComparison.OrdinalIgnoreCase))
+            {
+                databaseVerificationMode = DatabaseVerificationMode.VerifyDatabase;
+                continue;
+            }
+
+            if (string.Equals(arg, "--database-report-json", StringComparison.OrdinalIgnoreCase) && index + 1 < args.Length)
+            {
+                databaseReportJsonPath = args[++index];
+                continue;
+            }
+
+            if (string.Equals(arg, "--database-report-text", StringComparison.OrdinalIgnoreCase) && index + 1 < args.Length)
+            {
+                databaseReportTextPath = args[++index];
                 continue;
             }
 
@@ -83,6 +128,9 @@ public sealed class WorkerOptions
         {
             RunOnce = runOnce,
             HealthCheck = healthCheck,
+            DatabaseVerificationMode = databaseVerificationMode,
+            DatabaseReportJsonPath = databaseReportJsonPath,
+            DatabaseReportTextPath = databaseReportTextPath,
             SkipHeartbeatCheck = skipHeartbeatCheck,
             HeartbeatMaxAgeSeconds = heartbeatMaxAgeSeconds,
             PathProvider = string.IsNullOrWhiteSpace(dataDirectory)
@@ -92,4 +140,13 @@ public sealed class WorkerOptions
             PollIntervalOverride = pollInterval
         };
     }
+}
+
+public enum DatabaseVerificationMode
+{
+    None,
+    IntegrityCheck,
+    Summary,
+    MigrationStatus,
+    VerifyDatabase
 }
