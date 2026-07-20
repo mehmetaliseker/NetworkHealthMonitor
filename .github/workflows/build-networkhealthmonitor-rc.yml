@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - release/final-production-scheduler
+      - main
 
 permissions:
   contents: read
