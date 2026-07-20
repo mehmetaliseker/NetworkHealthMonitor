@@ -7,6 +7,13 @@ public sealed partial class MainViewModel
 {
     private async Task ExportDevicesAsync()
     {
+        var devices = GetDevicesForCsvExport();
+        if (devices.Count == 0)
+        {
+            _dialogService.ShowWarning("Dışa aktarılacak cihaz yok", $"{CsvExportScope} kapsamında CSV'ye aktarılacak cihaz bulunamadı.");
+            return;
+        }
+
         var path = _dialogService.GetSaveCsvFilePath($"cihaz-listesi-{DateTime.Now:yyyy-MM-dd}.csv", ExportDirectory);
         if (path is null)
         {
@@ -16,19 +23,37 @@ public sealed partial class MainViewModel
         IsBusy = true;
         try
         {
-            await _deviceImportExportService.ExportDevicesAsync(DevicesView.Cast<Device>().ToList(), path, CsvDelimiter);
+            await _deviceImportExportService.ExportDevicesAsync(devices, path, CsvDelimiter);
             await RememberExportDirectoryAsync(path);
-            StatusMessage = $"Cihaz listesi CSV olarak dışa aktarıldı: {path}";
+            StatusMessage = $"Cihaz listesi CSV olarak dışa aktarıldı. Kapsam: {CsvExportScope}, kayıt: {devices.Count}. Dosya: {path}";
         }
         catch (Exception ex)
         {
-            _dialogService.ShowError("Cihaz CSV oluşturulamadı", $"CSV dosyası oluşturulamadı. Seçilen klasöre yazma izniniz olmayabilir.\n\n{ex.Message}");
+            _dialogService.ShowError("Cihaz CSV oluşturulamadı", $"CSV dosyası oluşturulamadı. Dosya başka bir uygulamada açık olabilir veya seçilen klasöre yazma izniniz olmayabilir.\n\n{ex.Message}");
             StatusMessage = "Cihaz CSV dışa aktarılamadı.";
         }
         finally
         {
             IsBusy = false;
         }
+    }
+
+    private List<Device> GetDevicesForCsvExport()
+    {
+        if (CsvExportScope == CsvExportAllDevicesText)
+        {
+            return Devices.ToList();
+        }
+
+        if (CsvExportScope == CsvExportSelectedDevicesText)
+        {
+            return Devices
+                .Where(device => device is { Id: > 0, IsSelected: true })
+                .DistinctBy(device => device.Id)
+                .ToList();
+        }
+
+        return DevicesView.Cast<Device>().ToList();
     }
 
     private async Task CreateCsvTemplateAsync()

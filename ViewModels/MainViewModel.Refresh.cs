@@ -101,6 +101,7 @@ public sealed partial class MainViewModel
                 if (args.PropertyName == nameof(Device.IsSelected))
                 {
                     OnPropertyChanged(nameof(SelectedDeviceCountText));
+                    OnPropertyChanged(nameof(PingSelectedDevicesText));
                     OnPropertyChanged(nameof(HasSelectedDevices));
                     RaiseCommandStates();
                 }
@@ -120,6 +121,7 @@ public sealed partial class MainViewModel
 
         DevicesView.Refresh();
         OnPropertyChanged(nameof(SelectedDeviceCountText));
+        OnPropertyChanged(nameof(PingSelectedDevicesText));
     }
 
     private async Task LoadGroupsAsync()
@@ -463,6 +465,10 @@ public sealed partial class MainViewModel
         DisableAutoCheckSelectedCommand?.NotifyCanExecuteChanged();
         AssignSelectedDevicesToGroupCommand?.NotifyCanExecuteChanged();
         ApplySelectedCheckIntervalCommand?.NotifyCanExecuteChanged();
+        SuppressNotificationsCommand?.NotifyCanExecuteChanged();
+        PauseMonitoringCommand?.NotifyCanExecuteChanged();
+        RemoveSuppressionCommand?.NotifyCanExecuteChanged();
+        ResumeMonitoringCommand?.NotifyCanExecuteChanged();
         DeactivateSelectedDevicesCommand?.NotifyCanExecuteChanged();
         DeleteSelectedDevicesBulkCommand?.NotifyCanExecuteChanged();
         RestoreSelectedDevicesBulkCommand?.NotifyCanExecuteChanged();
