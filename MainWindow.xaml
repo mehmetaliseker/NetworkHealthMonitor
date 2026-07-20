@@ -409,43 +409,91 @@
                     </Grid.RowDefinitions>
 
                     <Border Grid.Row="0" Style="{StaticResource PanelSectionStyle}">
-                        <WrapPanel VerticalAlignment="Center">
-                            <Button Content="Cihaz ekle" Command="{Binding NavigateDeviceEditCommand}" Style="{StaticResource ToolbarButtonStyle}" />
-                            <Button Content="CSV içe aktar" Command="{Binding ImportDevicesCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" />
-                            <Button Content="CSV dışa aktar" Command="{Binding ExportDevicesCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" />
-                            <Button Content="Yenile" Command="{Binding RefreshDevicesCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" />
-                            <Button Content="Seçilenlere ping at" Command="{Binding PingSelectedDevicesBulkCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" />
-                            <Button Content="Kolonları yönet" x:Name="DeviceColumnsButton" Style="{StaticResource SecondaryToolbarButtonStyle}" ToolTip="Cihaz listesinde gösterilecek kolonları seçin" />
-                            <Button Content="Filtreleri temizle" Command="{Binding ClearDeviceFiltersCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" />
-                        </WrapPanel>
+                        <DockPanel LastChildFill="True">
+                            <StackPanel DockPanel.Dock="Left" Margin="0,0,14,0">
+                                <TextBlock Text="Cihazlar" FontSize="18" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding ActiveDeviceFilterSummaryText}" Style="{StaticResource BodyMutedTextStyle}" FontSize="12" />
+                            </StackPanel>
+                            <WrapPanel HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <Button Content="+ Cihaz Ekle"
+                                        Command="{Binding NavigateDeviceEditCommand}"
+                                        Style="{StaticResource ToolbarButtonStyle}"
+                                        ToolTip="Yeni cihaz ekle" />
+                                <Button Content="{Binding PingSelectedDevicesText}"
+                                        Command="{Binding PingSelectedDevicesBulkCommand}"
+                                        CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}"
+                                        Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                        ToolTip="Seçili cihazlara manuel ping at" />
+                                <Button Content="⏱ Tüm Aktiflere Ping At"
+                                        Command="{Binding PingAllCommand}"
+                                        Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                        ToolTip="Tüm aktif cihazlara manuel ping at" />
+                                <Button Content="⏱ Listelenenlere Ping At"
+                                        Command="{Binding PingFilteredDevicesCommand}"
+                                        Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                        ToolTip="Geçerli filtrelerle listelenen cihazlara ping at" />
+                                <Button Content="CSV İçe Aktar"
+                                        Command="{Binding ImportDevicesCommand}"
+                                        Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                        ToolTip="CSV dosyası seç ve içe aktarma önizlemesi oluştur" />
+                                <Button Content="CSV Dışa Aktar"
+                                        Command="{Binding ExportDevicesCommand}"
+                                        Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                        ToolTip="Seçilen CSV kapsamını dosyaya kaydet" />
+                                <Button Content="Yenile"
+                                        Command="{Binding RefreshDevicesCommand}"
+                                        Style="{StaticResource SecondaryToolbarButtonStyle}" />
+                                <Menu Margin="0,0,8,8"
+                                      VerticalAlignment="Center"
+                                      Background="{StaticResource ShellSurfaceBrush}">
+                                    <MenuItem Header="Diğer İşlemler" Padding="12,7">
+                                        <MenuItem Header="Filtreleri Temizle" Command="{Binding ClearDeviceFiltersCommand}" />
+                                        <Separator />
+                                        <MenuItem Header="CSV Önizlemeyi Uygula" Command="{Binding ApplyCsvImportCommand}" />
+                                        <MenuItem Header="CSV Şablonu Oluştur" Command="{Binding CreateCsvTemplateCommand}" />
+                                        <Separator />
+                                        <MenuItem Header="Seçilenleri Gruba Ata" Command="{Binding AssignSelectedDevicesToGroupCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" />
+                                        <MenuItem Header="Otomatik Kontrolü Aç" Command="{Binding EnableAutoCheckSelectedCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" />
+                                        <MenuItem Header="Otomatik Kontrolü Kapat" Command="{Binding DisableAutoCheckSelectedCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" />
+                                        <MenuItem Header="Bildirimleri Sustur" Command="{Binding MuteNotificationsSelectedCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" />
+                                        <MenuItem Header="İzlemeyi Geçici Durdur" Command="{Binding PauseMonitoringSelectedCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" />
+                                        <MenuItem Header="Susturmayı Kaldır / İzlemeyi Devam Ettir" Command="{Binding ClearSuppressionSelectedCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" />
+                                        <MenuItem Header="Pasif Yap" Command="{Binding DeactivateSelectedDevicesCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" />
+                                        <MenuItem Header="Seçilenleri Sil" Command="{Binding DeleteSelectedDevicesBulkCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" />
+                                    </MenuItem>
+                                </Menu>
+                                <Button Content="Kolonları Yönet"
+                                        x:Name="DeviceColumnsButton"
+                                        Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                        ToolTip="Cihaz listesinde gösterilecek kolonları seçin" />
+                            </WrapPanel>
+                        </DockPanel>
                     </Border>
 
                     <Border Grid.Row="1" Style="{StaticResource PanelSectionStyle}">
                         <StackPanel>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="2*" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                            <WrapPanel>
+                                <StackPanel Width="260" MinWidth="220" Margin="0,0,10,0">
                                     <TextBlock Text="Cihaz adı veya IP" Style="{StaticResource FormFieldLabelStyle}" />
                                     <TextBox Text="{Binding DeviceSearchText, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FormTextBoxStyle}" />
                                 </StackPanel>
-                                <StackPanel Grid.Column="1" Margin="0,0,10,0">
+                                <StackPanel Width="180" MinWidth="150" Margin="0,0,10,0">
                                     <TextBlock Text="Cihaz tipi" Style="{StaticResource FormFieldLabelStyle}" />
                                     <ComboBox ItemsSource="{Binding DeviceTypeFilterOptions}" SelectedItem="{Binding DeviceTypeFilter}" Style="{StaticResource FormComboBoxStyle}" />
                                 </StackPanel>
-                                <StackPanel Grid.Column="2" Margin="0,0,10,0">
+                                <StackPanel Width="190" MinWidth="150" Margin="0,0,10,0">
                                     <TextBlock Text="Grup" Style="{StaticResource FormFieldLabelStyle}" />
                                     <ComboBox ItemsSource="{Binding DeviceGroupFilterOptions}" SelectedItem="{Binding DeviceGroupFilter}" Style="{StaticResource FormComboBoxStyle}" />
                                 </StackPanel>
-                                <StackPanel Grid.Column="3">
+                                <StackPanel Width="180" MinWidth="150" Margin="0,0,10,0">
                                     <TextBlock Text="Durum" Style="{StaticResource FormFieldLabelStyle}" />
                                     <ComboBox ItemsSource="{Binding DeviceStatusFilterOptions}" SelectedItem="{Binding DeviceStatusFilter}" Style="{StaticResource FormComboBoxStyle}" />
                                 </StackPanel>
-                            </Grid>
+                                <StackPanel Width="210" MinWidth="180" Margin="0,0,10,0">
+                                    <TextBlock Text="CSV dışa aktarma kapsamı" Style="{StaticResource FormFieldLabelStyle}" />
+                                    <ComboBox ItemsSource="{Binding CsvExportScopeOptions}" SelectedItem="{Binding CsvExportScope}" Style="{StaticResource FormComboBoxStyle}" />
+                                </StackPanel>
+                            </WrapPanel>
                             <WrapPanel Margin="0,2,0,0">
                                 <ComboBox Width="210" ItemsSource="{Binding AutoCheckFilterOptions}" SelectedItem="{Binding AutoCheckFilter}" Style="{StaticResource ModernComboBoxStyle}" Margin="0,0,8,8" />
                                 <ComboBox Width="220" ItemsSource="{Binding SuppressionFilterOptions}" SelectedItem="{Binding SuppressionFilter}" Style="{StaticResource ModernComboBoxStyle}" Margin="0,0,8,8" />
@@ -454,9 +502,10 @@
                                 <ComboBox Width="170" ItemsSource="{Binding CriticalFilterOptions}" SelectedItem="{Binding CriticalFilter}" Style="{StaticResource ModernComboBoxStyle}" Margin="0,0,8,8" />
                                 <ComboBox Width="170" ItemsSource="{Binding DeviceDeletedFilterOptions}" SelectedItem="{Binding DeletedDeviceFilter}" Style="{StaticResource ModernComboBoxStyle}" Margin="0,0,8,8" />
                                 <CheckBox Content="Yalnızca sorunlu cihazlar" IsChecked="{Binding DeviceOnlyProblematic}" VerticalAlignment="Center" Margin="0,0,12,8" />
-                                <Border Background="{StaticResource ShellInfoBackgroundBrush}" BorderBrush="{StaticResource ShellInfoBorderBrush}" BorderThickness="1" CornerRadius="999" Padding="10,5" Margin="0,0,8,8">
-                                    <TextBlock Text="{Binding ActiveDeviceFilterSummaryText}" Foreground="{StaticResource ShellPrimaryBrush}" TextWrapping="Wrap" />
-                                </Border>
+                                <ComboBox Width="220" ItemsSource="{Binding CsvImportModeOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding CsvImportMode}" Style="{StaticResource ModernComboBoxStyle}" Margin="0,0,8,8" ToolTip="CSV içe aktarma modu" />
+                                <ComboBox Width="240" ItemsSource="{Binding CsvImportScopeOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding CsvImportScope}" Style="{StaticResource ModernComboBoxStyle}" Margin="0,0,8,8" ToolTip="CSV eşitleme kapsamı" />
+                                <ComboBox Width="180" ItemsSource="{Binding DeviceGroupOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding CsvImportGroupId}" Style="{StaticResource ModernComboBoxStyle}" Margin="0,0,8,8" ToolTip="Grup kapsamlı eşitleme için seçili grup" />
+                                <TextBlock Text="{Binding CsvImportPreviewSummary}" Style="{StaticResource BodyMutedTextStyle}" MaxWidth="520" Margin="0,6,8,8" />
                             </WrapPanel>
                         </StackPanel>
                     </Border>
@@ -470,7 +519,7 @@
                                         <Setter Property="Width" Value="0" />
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding ShowDeviceFormPane}" Value="True">
-                                                <Setter Property="Width" Value="560" />
+                                                <Setter Property="Width" Value="480" />
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
@@ -488,18 +537,19 @@
                                 <DockPanel>
                                     <TextBlock DockPanel.Dock="Left" Text="{Binding SelectedDeviceCountText}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,16,0" />
                                     <WrapPanel>
-                                        <Button Content="Ping at" Command="{Binding PingSelectedDevicesBulkCommand}" Style="{StaticResource SmallActionButtonStyle}" />
+                                        <Button Content="Ping at" Command="{Binding PingSelectedDevicesBulkCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" Style="{StaticResource SmallActionButtonStyle}" />
                                         <ComboBox Width="180" ItemsSource="{Binding DeviceGroupOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding BulkTargetGroupId}" Style="{StaticResource ModernComboBoxStyle}" Margin="0,0,6,6" />
-                                        <Button Content="Gruba ata" Command="{Binding AssignSelectedDevicesToGroupCommand}" Style="{StaticResource SmallActionButtonStyle}" />
-                                        <Button Content="Otomatik kontrolü aç" Command="{Binding EnableAutoCheckSelectedCommand}" Style="{StaticResource SmallActionButtonStyle}" />
-                                        <Button Content="Otomatik kontrolü kapat" Command="{Binding DisableAutoCheckSelectedCommand}" Style="{StaticResource SmallActionButtonStyle}" />
+                                        <Button Content="Gruba ata" Command="{Binding AssignSelectedDevicesToGroupCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" Style="{StaticResource SmallActionButtonStyle}" />
+                                        <Button Content="Otomatik kontrolü aç" Command="{Binding EnableAutoCheckSelectedCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" Style="{StaticResource SmallActionButtonStyle}" />
+                                        <Button Content="Otomatik kontrolü kapat" Command="{Binding DisableAutoCheckSelectedCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" Style="{StaticResource SmallActionButtonStyle}" />
                                         <TextBox Width="70" Text="{Binding BulkSuppressionDurationHours}" Style="{StaticResource ModernTextBoxStyle}" Margin="0,0,6,6" ToolTip="Süre, saat olarak girilir. Sıfır süresiz anlamına gelir." />
                                         <TextBox Width="160" Text="{Binding BulkSuppressionReason}" Style="{StaticResource ModernTextBoxStyle}" Margin="0,0,6,6" ToolTip="Bakım, cihaz değişimi veya hat problemi gibi neden yazın." />
-                                        <Button Content="Bildirimleri sustur" Command="{Binding MuteNotificationsSelectedCommand}" Style="{StaticResource SmallActionButtonStyle}" />
-                                        <Button Content="İzlemeyi durdur" Command="{Binding PauseMonitoringSelectedCommand}" Style="{StaticResource SmallActionButtonStyle}" />
-                                        <Button Content="Susturmayı kaldır" Command="{Binding ClearSuppressionSelectedCommand}" Style="{StaticResource SmallActionButtonStyle}" />
-                                        <Button Content="Pasif yap" Command="{Binding DeactivateSelectedDevicesCommand}" Style="{StaticResource SmallActionButtonStyle}" />
-                                        <Button Content="Sil" Command="{Binding DeleteSelectedDevicesBulkCommand}" Style="{StaticResource DangerToolbarButtonStyle}" />
+                                        <Button Content="Bildirimleri sustur" Command="{Binding MuteNotificationsSelectedCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" Style="{StaticResource SmallActionButtonStyle}" />
+                                        <Button Content="İzlemeyi durdur" Command="{Binding PauseMonitoringSelectedCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" Style="{StaticResource SmallActionButtonStyle}" />
+                                        <Button Content="Susturmayı kaldır" Command="{Binding ClearSuppressionSelectedCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" Style="{StaticResource SmallActionButtonStyle}" />
+                                        <Button Content="Pasif yap" Command="{Binding DeactivateSelectedDevicesCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" Style="{StaticResource SmallActionButtonStyle}" />
+                                        <Button Content="Sil" Command="{Binding DeleteSelectedDevicesBulkCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" Style="{StaticResource DangerToolbarButtonStyle}" />
+                                        <Button Content="Geri yükle" Command="{Binding RestoreSelectedDevicesBulkCommand}" CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}" Style="{StaticResource SmallActionButtonStyle}" />
                                     </WrapPanel>
                                 </DockPanel>
                             </Border>
@@ -551,13 +601,49 @@
                                     <DataGridTextColumn Header="Uptime" Binding="{Binding Uptime30DaysText}" Width="92" />
                                     <DataGridTextColumn Header="Otomatik kontrol" Binding="{Binding AutoCheckText}" Width="130" />
                                     <DataGridTextColumn Header="Bildirim durumu" Binding="{Binding SuppressionText}" Width="175" ElementStyle="{StaticResource ReadableCellTextStyle}" />
-                                    <DataGridTemplateColumn Header="İşlemler" Width="190" MinWidth="170">
+                                    <DataGridTemplateColumn Header="İşlemler" Width="230" MinWidth="210">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
-                                                <WrapPanel>
-                                                    <Button Content="Ping" Command="{Binding DataContext.PingDeviceCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" Style="{StaticResource SmallActionButtonStyle}" />
-                                                    <Button Content="Detayı aç" Command="{Binding DataContext.EditDeviceCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" Style="{StaticResource SmallActionButtonStyle}" />
-                                                    <Button Content="Sil" Command="{Binding DataContext.DeleteDeviceCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" Style="{StaticResource SmallActionButtonStyle}" />
+                                                <WrapPanel VerticalAlignment="Center">
+                                                    <Button Content="Ping At"
+                                                            Command="{Binding DataContext.PingDeviceCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                            CommandParameter="{Binding}"
+                                                            Style="{StaticResource SmallActionButtonStyle}"
+                                                            ToolTip="Bu cihaza manuel ping at" />
+                                                    <Button Content="Detayı Aç"
+                                                            Command="{Binding DataContext.EditDeviceCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                            CommandParameter="{Binding}"
+                                                            Style="{StaticResource SmallActionButtonStyle}"
+                                                            ToolTip="Cihaz bilgilerini düzenle" />
+                                                    <Menu Margin="0,0,6,6"
+                                                          VerticalAlignment="Center"
+                                                          Background="{StaticResource ShellSurfaceBrush}"
+                                                          Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=DataGrid}}">
+                                                        <MenuItem Header="..." Padding="8,4">
+                                                            <MenuItem Header="Düzenle"
+                                                                      Command="{Binding Tag.EditDeviceCommand, RelativeSource={RelativeSource AncestorType=Menu}}"
+                                                                      CommandParameter="{Binding}" />
+                                                            <MenuItem Header="Sil"
+                                                                      Command="{Binding Tag.DeleteDeviceCommand, RelativeSource={RelativeSource AncestorType=Menu}}"
+                                                                      CommandParameter="{Binding}" />
+                                                            <MenuItem Header="Geri Yükle"
+                                                                      Command="{Binding Tag.RestoreDeviceCommand, RelativeSource={RelativeSource AncestorType=Menu}}"
+                                                                      CommandParameter="{Binding}" />
+                                                            <Separator />
+                                                            <MenuItem Header="Bildirimleri Sustur"
+                                                                      Command="{Binding Tag.SuppressNotificationsCommand, RelativeSource={RelativeSource AncestorType=Menu}}"
+                                                                      CommandParameter="{Binding}" />
+                                                            <MenuItem Header="İzlemeyi Geçici Durdur"
+                                                                      Command="{Binding Tag.PauseMonitoringCommand, RelativeSource={RelativeSource AncestorType=Menu}}"
+                                                                      CommandParameter="{Binding}" />
+                                                            <MenuItem Header="Susturmayı Kaldır"
+                                                                      Command="{Binding Tag.RemoveSuppressionCommand, RelativeSource={RelativeSource AncestorType=Menu}}"
+                                                                      CommandParameter="{Binding}" />
+                                                            <MenuItem Header="İzlemeyi Devam Ettir"
+                                                                      Command="{Binding Tag.ResumeMonitoringCommand, RelativeSource={RelativeSource AncestorType=Menu}}"
+                                                                      CommandParameter="{Binding}" />
+                                                        </MenuItem>
+                                                    </Menu>
                                                 </WrapPanel>
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>

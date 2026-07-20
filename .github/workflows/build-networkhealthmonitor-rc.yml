@@ -1,0 +1,147 @@
+name: Build NetworkHealthMonitor RC
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build-rc:
+    name: Build and Package RC
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Display environment
+        shell: powershell
+        run: |
+          dotnet --info
+          git rev-parse HEAD
+          git status --short
+
+      - name: Clean old release outputs
+        shell: powershell
+        run: |
+          Remove-Item ".\release\artifacts" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item ".\release\staging" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item ".\release\package-root" -Recurse -Force -ErrorAction SilentlyContinue
+
+      - name: Restore
+        shell: powershell
+        run: |
+          dotnet restore .\NetworkHealthMonitor.sln
+
+      - name: Build Debug
+        shell: powershell
+        run: |
+          dotnet build .\NetworkHealthMonitor.sln `
+            --configuration Debug `
+            --no-restore
+
+      - name: Build Release
+        shell: powershell
+        run: |
+          dotnet build .\NetworkHealthMonitor.sln `
+            --configuration Release `
+            --no-restore
+
+      - name: Test Debug
+        shell: powershell
+        run: |
+          dotnet test .\NetworkHealthMonitor.sln `
+            --configuration Debug `
+            --no-build `
+            --logger "trx;LogFileName=tests-debug.trx"
+
+      - name: Test Release
+        shell: powershell
+        run: |
+          dotnet test .\NetworkHealthMonitor.sln `
+            --configuration Release `
+            --no-build `
+            --logger "trx;LogFileName=tests-release.trx"
+
+      - name: Verify formatting
+        shell: powershell
+        run: |
+          dotnet format .\NetworkHealthMonitor.sln `
+            --verify-no-changes `
+            --no-restore
+
+      - name: Build release candidate package
+        shell: powershell
+        run: |
+          powershell -ExecutionPolicy Bypass `
+            -File .\scripts\build-final-release.ps1 `
+            -CreateReleaseCandidate
+
+      - name: Verify generated artifacts
+        shell: powershell
+        run: |
+          $artifactDir = ".\release\artifacts"
+
+          if (-not (Test-Path $artifactDir)) {
+              throw "Release artifact klasörü oluşturulmadı."
+          }
+
+          $zip = Get-ChildItem $artifactDir -Filter "*.zip" |
+              Sort-Object LastWriteTimeUtc -Descending |
+              Select-Object -First 1
+
+          if (-not $zip) {
+              throw "RC ZIP oluşturulmadı."
+          }
+
+          $shaFile = "$($zip.FullName).sha256"
+
+          if (-not (Test-Path $shaFile)) {
+              throw "SHA256 dosyası oluşturulmadı: $shaFile"
+          }
+
+          $expected = ((Get-Content $shaFile -Raw).Trim() -split "\s+")[0]
+          $actual = (Get-FileHash $zip.FullName -Algorithm SHA256).Hash
+
+          Write-Host "ZIP      : $($zip.FullName)"
+          Write-Host "Boyut    : $($zip.Length)"
+          Write-Host "Beklenen : $expected"
+          Write-Host "Gerçek   : $actual"
+
+          if ($expected -ne $actual) {
+              throw "SHA256 doğrulaması başarısız."
+          }
+
+          Write-Host "SHA256 doğrulaması başarılı."
+
+          Get-ChildItem $artifactDir -File |
+              Format-Table Name, Length, LastWriteTimeUtc -AutoSize
+
+      - name: Upload RC artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: NetworkHealthMonitor-v1.1.0-rc2
+          path: |
+            release/artifacts/**
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: NetworkHealthMonitor-test-reports
+          path: |
+            **/TestResults/**
+          if-no-files-found: warn
+          retention-days: 14

@@ -1,32 +1,39 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <SolidColorBrush x:Key="ShellBackgroundBrush" Color="#F4F7FB" />
+    <SolidColorBrush x:Key="ShellBackgroundBrush" Color="#F5F7FA" />
     <SolidColorBrush x:Key="ShellSurfaceBrush" Color="#FFFFFF" />
     <SolidColorBrush x:Key="ShellSurfaceAltBrush" Color="#F8FAFC" />
-    <SolidColorBrush x:Key="ShellBorderBrush" Color="#D8E1EC" />
-    <SolidColorBrush x:Key="ShellTextBrush" Color="#162033" />
-    <SolidColorBrush x:Key="ShellMutedTextBrush" Color="#5D6B82" />
-    <SolidColorBrush x:Key="ShellSubtleTextBrush" Color="#7A8798" />
+    <SolidColorBrush x:Key="ShellBorderBrush" Color="#CBD5E1" />
+    <SolidColorBrush x:Key="ShellBorderStrongBrush" Color="#94A3B8" />
+    <SolidColorBrush x:Key="ShellTextBrush" Color="#172033" />
+    <SolidColorBrush x:Key="ShellMutedTextBrush" Color="#526173" />
+    <SolidColorBrush x:Key="ShellSubtleTextBrush" Color="#64748B" />
     <SolidColorBrush x:Key="ShellPrimaryBrush" Color="#1769AA" />
     <SolidColorBrush x:Key="ShellPrimaryHoverBrush" Color="#0F5D99" />
-    <SolidColorBrush x:Key="ShellNavigationBrush" Color="#132032" />
-    <SolidColorBrush x:Key="ShellNavigationHoverBrush" Color="#1D2B42" />
-    <SolidColorBrush x:Key="ShellNavigationSelectedBrush" Color="#243B5A" />
+    <SolidColorBrush x:Key="ShellPrimaryPressedBrush" Color="#0A4D82" />
+    <SolidColorBrush x:Key="ShellPrimarySoftBrush" Color="#E8F2FB" />
+    <SolidColorBrush x:Key="ShellDangerBrush" Color="#B42318" />
+    <SolidColorBrush x:Key="ShellDangerHoverBrush" Color="#97180F" />
     <SolidColorBrush x:Key="ShellWarningBrush" Color="#B45309" />
     <SolidColorBrush x:Key="ShellWarningBackgroundBrush" Color="#FFF7ED" />
     <SolidColorBrush x:Key="ShellWarningBorderBrush" Color="#FDBA74" />
-    <SolidColorBrush x:Key="ShellDangerBrush" Color="#B42318" />
-    <SolidColorBrush x:Key="ShellDangerBackgroundBrush" Color="#FEF3F2" />
     <SolidColorBrush x:Key="ShellSuccessBrush" Color="#13795B" />
     <SolidColorBrush x:Key="ShellInfoBackgroundBrush" Color="#EFF6FF" />
     <SolidColorBrush x:Key="ShellInfoBorderBrush" Color="#93C5FD" />
     <SolidColorBrush x:Key="ShellFocusBrush" Color="#2563EB" />
+    <SolidColorBrush x:Key="ShellDisabledBackgroundBrush" Color="#EEF2F6" />
+    <SolidColorBrush x:Key="ShellDisabledForegroundBrush" Color="#6B7280" />
+    <SolidColorBrush x:Key="ShellNavigationBrush" Color="#132032" />
+    <SolidColorBrush x:Key="ShellNavigationHoverBrush" Color="#1D2B42" />
+    <SolidColorBrush x:Key="ShellNavigationSelectedBrush" Color="#243B5A" />
 
     <Thickness x:Key="ShellGapTiny">4</Thickness>
     <Thickness x:Key="ShellGapSmall">8</Thickness>
     <Thickness x:Key="ShellGap">12</Thickness>
     <Thickness x:Key="ShellGapLarge">16</Thickness>
     <Thickness x:Key="ShellGapXLarge">24</Thickness>
+    <CornerRadius x:Key="ShellCornerRadius">4</CornerRadius>
+    <CornerRadius x:Key="ShellControlCornerRadius">4</CornerRadius>
 
     <Style x:Key="ShellTitleTextStyle" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{StaticResource ShellTextBrush}" />
@@ -58,20 +65,18 @@
         <Setter Property="Background" Value="{StaticResource ShellSurfaceBrush}" />
         <Setter Property="BorderBrush" Value="{StaticResource ShellBorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="8" />
-        <Setter Property="Padding" Value="16" />
+        <Setter Property="CornerRadius" Value="{StaticResource ShellCornerRadius}" />
+        <Setter Property="Padding" Value="14" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
     </Style>
 
     <Style x:Key="PanelSectionStyle" TargetType="Border" BasedOn="{StaticResource PanelSurfaceStyle}">
-        <Setter Property="Margin" Value="0,0,0,14" />
+        <Setter Property="Margin" Value="0,0,0,12" />
     </Style>
 
-    <Style x:Key="MetricTileStyle" TargetType="Border">
-        <Setter Property="Background" Value="{StaticResource ShellSurfaceBrush}" />
-        <Setter Property="BorderBrush" Value="{StaticResource ShellBorderBrush}" />
-        <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="8" />
-        <Setter Property="Padding" Value="14" />
+    <Style x:Key="MetricTileStyle" TargetType="Border" BasedOn="{StaticResource PanelSurfaceStyle}">
+        <Setter Property="Padding" Value="12" />
         <Setter Property="MinWidth" Value="150" />
         <Setter Property="Margin" Value="0,0,10,10" />
     </Style>
@@ -80,19 +85,23 @@
         <Setter Property="Background" Value="{StaticResource ShellSurfaceAltBrush}" />
         <Setter Property="BorderBrush" Value="{StaticResource ShellBorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="CornerRadius" Value="{StaticResource ShellCornerRadius}" />
         <Setter Property="Padding" Value="10,8" />
         <Setter Property="Margin" Value="0,0,8,8" />
         <Setter Property="MinWidth" Value="118" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
     </Style>
 
     <Style x:Key="InlineNoticeStyle" TargetType="Border">
         <Setter Property="Background" Value="{StaticResource ShellInfoBackgroundBrush}" />
         <Setter Property="BorderBrush" Value="{StaticResource ShellInfoBorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="CornerRadius" Value="{StaticResource ShellCornerRadius}" />
         <Setter Property="Padding" Value="12,10" />
-        <Setter Property="Margin" Value="0,0,0,12" />
+        <Setter Property="Margin" Value="0,0,0,10" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
     </Style>
 
     <Style x:Key="WarningNoticeStyle" TargetType="Border" BasedOn="{StaticResource InlineNoticeStyle}">
@@ -102,14 +111,16 @@
 
     <Style x:Key="ModernButtonBaseStyle" TargetType="Button">
         <Setter Property="MinHeight" Value="34" />
-        <Setter Property="Padding" Value="13,7" />
+        <Setter Property="Padding" Value="12,7" />
         <Setter Property="Margin" Value="0,0,8,8" />
         <Setter Property="Background" Value="{StaticResource ShellPrimaryBrush}" />
         <Setter Property="Foreground" Value="White" />
-        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="BorderBrush" Value="{StaticResource ShellPrimaryBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -117,8 +128,9 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="6"
-                            Padding="{TemplateBinding Padding}">
+                            CornerRadius="{StaticResource ShellControlCornerRadius}"
+                            Padding="{TemplateBinding Padding}"
+                            SnapsToDevicePixels="True">
                         <ContentPresenter HorizontalAlignment="Center"
                                           VerticalAlignment="Center"
                                           RecognizesAccessKey="True" />
@@ -126,13 +138,21 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Root" Property="Background" Value="{StaticResource ShellPrimaryHoverBrush}" />
+                            <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource ShellPrimaryHoverBrush}" />
+                            <Setter Property="Foreground" Value="White" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{StaticResource ShellPrimaryPressedBrush}" />
+                            <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource ShellPrimaryPressedBrush}" />
+                            <Setter Property="Foreground" Value="White" />
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource ShellFocusBrush}" />
-                            <Setter TargetName="Root" Property="BorderThickness" Value="2" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter TargetName="Root" Property="Opacity" Value="0.55" />
+                            <Setter TargetName="Root" Property="Background" Value="{StaticResource ShellDisabledBackgroundBrush}" />
+                            <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource ShellBorderBrush}" />
+                            <Setter Property="Foreground" Value="{StaticResource ShellDisabledForegroundBrush}" />
                             <Setter Property="Cursor" Value="Arrow" />
                         </Trigger>
                     </ControlTemplate.Triggers>
@@ -145,13 +165,95 @@
 
     <Style x:Key="SecondaryToolbarButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButtonBaseStyle}">
         <Setter Property="Background" Value="{StaticResource ShellSurfaceBrush}" />
-        <Setter Property="Foreground" Value="{StaticResource ShellPrimaryBrush}" />
-        <Setter Property="BorderBrush" Value="{StaticResource ShellBorderBrush}" />
-        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Foreground" Value="{StaticResource ShellTextBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource ShellBorderStrongBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Root"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{StaticResource ShellControlCornerRadius}"
+                            Padding="{TemplateBinding Padding}"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          RecognizesAccessKey="True" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{StaticResource ShellPrimarySoftBrush}" />
+                            <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource ShellPrimaryBrush}" />
+                            <Setter Property="Foreground" Value="{StaticResource ShellTextBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="#D7E9F8" />
+                            <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource ShellPrimaryHoverBrush}" />
+                            <Setter Property="Foreground" Value="{StaticResource ShellTextBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource ShellFocusBrush}" />
+                            <Setter Property="Foreground" Value="{StaticResource ShellTextBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Root" Property="Background" Value="{StaticResource ShellDisabledBackgroundBrush}" />
+                            <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource ShellBorderBrush}" />
+                            <Setter Property="Foreground" Value="{StaticResource ShellDisabledForegroundBrush}" />
+                            <Setter Property="Cursor" Value="Arrow" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="OutlineToolbarButtonStyle" TargetType="Button" BasedOn="{StaticResource SecondaryToolbarButtonStyle}">
+        <Setter Property="Background" Value="Transparent" />
     </Style>
 
     <Style x:Key="DangerToolbarButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButtonBaseStyle}">
         <Setter Property="Background" Value="{StaticResource ShellDangerBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource ShellDangerBrush}" />
+        <Setter Property="Foreground" Value="White" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Root"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{StaticResource ShellControlCornerRadius}"
+                            Padding="{TemplateBinding Padding}"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          RecognizesAccessKey="True" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{StaticResource ShellDangerHoverBrush}" />
+                            <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource ShellDangerHoverBrush}" />
+                            <Setter Property="Foreground" Value="White" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="#7F1D1D" />
+                            <Setter TargetName="Root" Property="BorderBrush" Value="#7F1D1D" />
+                            <Setter Property="Foreground" Value="White" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource ShellFocusBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Root" Property="Background" Value="{StaticResource ShellDisabledBackgroundBrush}" />
+                            <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource ShellBorderBrush}" />
+                            <Setter Property="Foreground" Value="{StaticResource ShellDisabledForegroundBrush}" />
+                            <Setter Property="Cursor" Value="Arrow" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <Style x:Key="SmallActionButtonStyle" TargetType="Button" BasedOn="{StaticResource SecondaryToolbarButtonStyle}">
@@ -168,14 +270,18 @@
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Foreground" Value="#E5E7EB" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderBrush" Value="Transparent" />
         <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="Root"
                             Background="{TemplateBinding Background}"
-                            CornerRadius="7"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="5"
                             Padding="{TemplateBinding Padding}">
                         <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                           VerticalAlignment="Center" />
@@ -183,14 +289,19 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="Tag" Value="True">
                             <Setter TargetName="Root" Property="Background" Value="{StaticResource ShellNavigationSelectedBrush}" />
+                            <Setter Property="Foreground" Value="White" />
                             <Setter Property="FontWeight" Value="SemiBold" />
                         </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Root" Property="Background" Value="{StaticResource ShellNavigationHoverBrush}" />
+                            <Setter Property="Foreground" Value="White" />
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource ShellFocusBrush}" />
-                            <Setter TargetName="Root" Property="BorderThickness" Value="2" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="#94A3B8" />
+                            <Setter Property="Cursor" Value="Arrow" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -212,7 +323,7 @@
         <Setter Property="Padding" Value="12,8" />
         <Style.Triggers>
             <Trigger Property="Tag" Value="True">
-                <Setter Property="Background" Value="{StaticResource ShellInfoBackgroundBrush}" />
+                <Setter Property="Background" Value="{StaticResource ShellPrimarySoftBrush}" />
                 <Setter Property="BorderBrush" Value="{StaticResource ShellPrimaryBrush}" />
                 <Setter Property="Foreground" Value="{StaticResource ShellTextBrush}" />
             </Trigger>
@@ -222,17 +333,63 @@
     <Style x:Key="ModernTextBoxStyle" TargetType="TextBox">
         <Setter Property="MinHeight" Value="34" />
         <Setter Property="Padding" Value="9,6" />
-        <Setter Property="BorderBrush" Value="{StaticResource ShellBorderBrush}" />
+        <Setter Property="Background" Value="{StaticResource ShellSurfaceBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource ShellTextBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource ShellBorderStrongBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="BorderBrush" Value="{StaticResource ShellPrimaryBrush}" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                <Setter Property="BorderBrush" Value="{StaticResource ShellFocusBrush}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Background" Value="{StaticResource ShellDisabledBackgroundBrush}" />
+                <Setter Property="Foreground" Value="{StaticResource ShellDisabledForegroundBrush}" />
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <Style x:Key="ModernComboBoxStyle" TargetType="ComboBox">
         <Setter Property="MinHeight" Value="34" />
         <Setter Property="Padding" Value="8,5" />
-        <Setter Property="BorderBrush" Value="{StaticResource ShellBorderBrush}" />
+        <Setter Property="Background" Value="{StaticResource ShellSurfaceBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource ShellTextBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource ShellBorderStrongBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="BorderBrush" Value="{StaticResource ShellPrimaryBrush}" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                <Setter Property="BorderBrush" Value="{StaticResource ShellFocusBrush}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Background" Value="{StaticResource ShellDisabledBackgroundBrush}" />
+                <Setter Property="Foreground" Value="{StaticResource ShellDisabledForegroundBrush}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style TargetType="ComboBoxItem">
+        <Setter Property="Foreground" Value="{StaticResource ShellTextBrush}" />
+        <Setter Property="Background" Value="{StaticResource ShellSurfaceBrush}" />
+        <Setter Property="Padding" Value="8,6" />
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{StaticResource ShellPrimarySoftBrush}" />
+                <Setter Property="Foreground" Value="{StaticResource ShellTextBrush}" />
+            </Trigger>
+            <Trigger Property="IsSelected" Value="True">
+                <Setter Property="Background" Value="{StaticResource ShellPrimarySoftBrush}" />
+                <Setter Property="Foreground" Value="{StaticResource ShellTextBrush}" />
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <Style x:Key="StatusPillStyle" TargetType="Border">
@@ -250,17 +407,19 @@
 
     <Style x:Key="IpAddressCellTextStyle" TargetType="TextBlock" BasedOn="{StaticResource ReadableCellTextStyle}">
         <Setter Property="TextWrapping" Value="NoWrap" />
+        <Setter Property="TextTrimming" Value="None" />
         <Setter Property="FontFamily" Value="Consolas" />
         <Setter Property="FontSize" Value="13" />
     </Style>
 
     <Style x:Key="ModernDataGridStyle" TargetType="DataGrid">
         <Setter Property="Background" Value="{StaticResource ShellSurfaceBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource ShellTextBrush}" />
         <Setter Property="BorderBrush" Value="{StaticResource ShellBorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="GridLinesVisibility" Value="Horizontal" />
-        <Setter Property="HorizontalGridLinesBrush" Value="#E7EDF5" />
-        <Setter Property="VerticalGridLinesBrush" Value="#E7EDF5" />
+        <Setter Property="HorizontalGridLinesBrush" Value="#E2E8F0" />
+        <Setter Property="VerticalGridLinesBrush" Value="#E2E8F0" />
         <Setter Property="MinRowHeight" Value="42" />
         <Setter Property="HeadersVisibility" Value="Column" />
         <Setter Property="CanUserAddRows" Value="False" />
@@ -277,14 +436,106 @@
         <Setter Property="ScrollViewer.CanContentScroll" Value="True" />
         <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto" />
         <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+    </Style>
+
+    <Style TargetType="DataGridRow">
+        <Setter Property="Background" Value="{StaticResource ShellSurfaceBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource ShellTextBrush}" />
+        <Setter Property="MinHeight" Value="42" />
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{StaticResource ShellPrimarySoftBrush}" />
+                <Setter Property="Foreground" Value="{StaticResource ShellTextBrush}" />
+            </Trigger>
+            <Trigger Property="IsSelected" Value="True">
+                <Setter Property="Background" Value="{StaticResource ShellPrimaryBrush}" />
+                <Setter Property="Foreground" Value="White" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style TargetType="DataGridCell">
+        <Setter Property="Foreground" Value="{StaticResource ShellTextBrush}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Style.Triggers>
+            <Trigger Property="IsSelected" Value="True">
+                <Setter Property="Background" Value="{StaticResource ShellPrimarySoftBrush}" />
+                <Setter Property="Foreground" Value="{StaticResource ShellTextBrush}" />
+                <Setter Property="BorderBrush" Value="{StaticResource ShellPrimaryBrush}" />
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <Style x:Key="ModernDataGridHeaderStyle" TargetType="DataGridColumnHeader">
         <Setter Property="Background" Value="#EEF3FA" />
-        <Setter Property="Foreground" Value="#334155" />
+        <Setter Property="Foreground" Value="{StaticResource ShellTextBrush}" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Padding" Value="10,8" />
         <Setter Property="BorderBrush" Value="{StaticResource ShellBorderBrush}" />
+        <Setter Property="BorderThickness" Value="0,0,1,1" />
         <Setter Property="MinHeight" Value="38" />
+    </Style>
+
+    <Style TargetType="TabControl">
+        <Setter Property="Background" Value="{StaticResource ShellSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource ShellBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
+
+    <Style TargetType="TabItem">
+        <Setter Property="Foreground" Value="{StaticResource ShellTextBrush}" />
+        <Setter Property="Background" Value="{StaticResource ShellSurfaceAltBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource ShellBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1,1,1,0" />
+        <Setter Property="Padding" Value="12,7" />
+        <Setter Property="Margin" Value="0,0,2,0" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TabItem">
+                    <Border x:Name="TabRoot"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="4,4,0,0"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter ContentSource="Header"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          RecognizesAccessKey="True" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="TabRoot" Property="Background" Value="{StaticResource ShellPrimarySoftBrush}" />
+                            <Setter Property="Foreground" Value="{StaticResource ShellTextBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="TabRoot" Property="Background" Value="{StaticResource ShellSurfaceBrush}" />
+                            <Setter TargetName="TabRoot" Property="BorderBrush" Value="{StaticResource ShellPrimaryBrush}" />
+                            <Setter Property="Foreground" Value="{StaticResource ShellTextBrush}" />
+                            <Setter Property="FontWeight" Value="SemiBold" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="TabRoot" Property="BorderBrush" Value="{StaticResource ShellFocusBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="TabRoot" Property="Background" Value="{StaticResource ShellDisabledBackgroundBrush}" />
+                            <Setter Property="Foreground" Value="{StaticResource ShellDisabledForegroundBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="ContextMenu">
+        <Setter Property="Background" Value="{StaticResource ShellSurfaceBrush}" />
+        <Setter Property="Padding" Value="2" />
+    </Style>
+
+    <Style TargetType="MenuItem">
+        <Setter Property="Foreground" Value="{StaticResource ShellTextBrush}" />
+        <Setter Property="Padding" Value="10,6" />
     </Style>
 </ResourceDictionary>

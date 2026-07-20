@@ -1,0 +1,37 @@
+NetworkHealthMonitor tek tik kurulum
+
+Son kullanici akisi:
+1. ZIP dosyasini bir klasore cikarin.
+2. Kurulum.bat dosyasina cift tiklayin.
+3. UAC ekraninda Evet secin.
+4. Uygulamayi kullanin.
+
+Kurulum.bat sunlari otomatik yapar:
+- Paket klasorunu bulur.
+- ui\NetworkHealthMonitor.exe ve worker\NetworkHealthMonitor.Worker.exe dosyalarini dogrular.
+- Internetten indirilen dosyalardaki Windows engelini kaldirir.
+- Etkilesimli Windows kullanicisini otomatik algilar.
+- Gerekirse kendisini UAC ile yonetici olarak yeniden baslatir.
+- ExecutionPolicy ayarini kalici degistirmeden scripts\install-service.ps1 dosyasini Bypass ile calistirir.
+- ProgramData klasorlerini ve ACL izinlerini hazirlar.
+- Worker servisini kurar veya guvenli bicimde gunceller.
+- Servisi Automatic (Delayed Start) yapar ve recovery politikasini uygular.
+- Worker servisini baslatir ve health check yapar.
+- Masaustu ve Baslat Menusu kisayollarini olusturur.
+- Basarili olursa arayuzu acar.
+
+Basari mesaji:
+NetworkHealthMonitor kurulumu tamamlandi. Worker arka planda calisiyor ve Windows acildiginda otomatik baslayacak.
+
+Kaldirma:
+- Kaldir.bat dosyasina cift tiklayin.
+- UAC ekraninda Evet secin.
+- Varsayilan secimde veriler korunur.
+- Verileri de silmek icin soruldugunda EVET yazmaniz gerekir.
+
+Korunan veri klasoru:
+%ProgramData%\NetworkHealthMonitor
+
+Sorun giderme:
+- Kurulum ve kaldirma loglari %ProgramData%\NetworkHealthMonitor\logs altina yazilir.
+- Manuel PowerShell komutlari yalnizca gelismis sorun giderme icindir; normal kurulumda gerekli degildir.

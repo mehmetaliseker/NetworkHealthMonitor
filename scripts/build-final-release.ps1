@@ -1,7 +1,8 @@
 param(
     [string]$Version = (Get-Content -LiteralPath (Join-Path $PSScriptRoot "..\VERSION") -Raw).Trim(),
     [string]$Runtime = "win-x64",
-    [switch]$CreateReleaseCandidate
+    [switch]$CreateReleaseCandidate,
+    [switch]$SkipGitGuards
 )
 
 $ErrorActionPreference = "Stop"
@@ -9,7 +10,7 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $artifacts = Join-Path $repoRoot "release\artifacts"
 $staging = Join-Path $repoRoot "release\staging"
 $packageRoot = Join-Path $repoRoot "release\package-root"
-$suffix = if ($CreateReleaseCandidate) { "-rc" } else { "" }
+$suffix = if ($CreateReleaseCandidate) { "-rc.2" } else { "" }
 $artifactBase = "NetworkHealthMonitor-Server-$Runtime-v$Version$suffix"
 $zipPath = Join-Path $artifacts "$artifactBase.zip"
 $shaPath = "$zipPath.sha256"
@@ -88,6 +89,9 @@ function Assert-ReleasePackageLayout([string]$Root) {
     $requiredFiles = @(
         "ui\NetworkHealthMonitor.exe",
         "worker\NetworkHealthMonitor.Worker.exe",
+        "Kurulum.bat",
+        "Kaldir.bat",
+        "Kurulum-Kilavuzu.txt",
         "scripts\install-service.ps1",
         "scripts\production-readiness-test.ps1",
         "README-SERVER.md",
@@ -139,8 +143,10 @@ function Test-SecretPatterns([string]$Root) {
     }
 }
 
-Assert-Branch
-Assert-CleanGit
+if (-not $SkipGitGuards) {
+    Assert-Branch
+    Assert-CleanGit
+}
 
 if (-not $CreateReleaseCandidate) {
     Assert-ExternalReports
@@ -166,6 +172,9 @@ Copy-DirectoryContents (Join-Path $staging "ui") (Join-Path $packageRoot "ui")
 Copy-DirectoryContents (Join-Path $staging "worker") (Join-Path $packageRoot "worker")
 Copy-DirectoryContents (Join-Path $repoRoot "scripts") (Join-Path $packageRoot "scripts")
 Copy-DirectoryContents (Join-Path $repoRoot "docs") (Join-Path $packageRoot "docs")
+Copy-IfExists (Join-Path $repoRoot "Kurulum.bat") (Join-Path $packageRoot "Kurulum.bat")
+Copy-IfExists (Join-Path $repoRoot "Kaldir.bat") (Join-Path $packageRoot "Kaldir.bat")
+Copy-IfExists (Join-Path $repoRoot "Kurulum-Kilavuzu.txt") (Join-Path $packageRoot "Kurulum-Kilavuzu.txt")
 Copy-IfExists (Join-Path $repoRoot "README-SERVER.md") (Join-Path $packageRoot "README-SERVER.md")
 Copy-IfExists (Join-Path $repoRoot "README.md") (Join-Path $packageRoot "docs\README.md")
 Copy-IfExists (Join-Path $repoRoot "INSTALLATION-GUIDE.md") (Join-Path $packageRoot "INSTALLATION-GUIDE.md")

@@ -5,6 +5,78 @@ namespace NetworkHealthMonitor.ViewModels;
 
 public sealed partial class MainViewModel
 {
+    private async Task SetDeviceSuppressionAsync(Device? device, DeviceSuppressionMode mode)
+    {
+        if (device is null)
+        {
+            return;
+        }
+
+        var untilUtc = BulkSuppressionDurationHours <= 0
+            ? (DateTime?)null
+            : DateTime.UtcNow.AddHours(BulkSuppressionDurationHours);
+        var modeText = mode == DeviceSuppressionMode.PauseMonitoring
+            ? "izleme geçici durdurulacak"
+            : "bildirimler susturulacak";
+        var durationText = untilUtc.HasValue ? $"{BulkSuppressionDurationHours} saat" : "süresiz";
+
+        if (!_dialogService.Confirm(
+                "Cihazda geçici mod uygulansın mı?",
+                $"{device.Name} ({device.IpAddress}) için {modeText}. Süre: {durationText}."))
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var affected = await _deviceRepository.BulkSetSuppressionAsync(
+                new[] { device.Id },
+                mode,
+                untilUtc,
+                BulkSuppressionReason,
+                Environment.UserName,
+                DateTime.UtcNow);
+            await ReloadAllAsync();
+            StatusMessage = affected > 0
+                ? $"{device.Name} için {mode.ToDisplayName()} uygulandı."
+                : "Cihaz geçici modu güncellenemedi.";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task ClearDeviceSuppressionAsync(Device? device)
+    {
+        if (device is null)
+        {
+            return;
+        }
+
+        if (!_dialogService.Confirm(
+                "Geçici mod kaldırılsın mı?",
+                $"{device.Name} ({device.IpAddress}) normal izlemeye dönecek."))
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var affected = await _deviceRepository.BulkClearSuppressionAsync(new[] { device.Id }, DateTime.UtcNow);
+            await ReloadAllAsync();
+            StatusMessage = affected > 0
+                ? $"{device.Name} normal izlemeye alındı."
+                : "Cihaz geçici modu kaldırılamadı.";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     private async Task BulkSetAutoCheckAsync(object? parameter, bool enabled)
     {
         var devices = GetSelectedDevices(parameter);
@@ -266,6 +338,7 @@ public sealed partial class MainViewModel
         }
 
         OnPropertyChanged(nameof(SelectedDeviceCountText));
+        OnPropertyChanged(nameof(PingSelectedDevicesText));
         RaiseCommandStates();
     }
 

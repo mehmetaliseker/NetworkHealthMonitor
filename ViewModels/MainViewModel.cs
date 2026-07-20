@@ -57,6 +57,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private const string LastCheckNeverText = "Kontrol edilmedi";
     private const string AllOutboxStatusesText = "Tüm durumlar";
     private const string AllOutboxEventTypesText = "Tüm bildirimler";
+    private const string CsvExportAllDevicesText = "Tüm cihazlar";
+    private const string CsvExportFilteredDevicesText = "Filtrelenen cihazlar";
+    private const string CsvExportSelectedDevicesText = "Seçilen cihazlar";
 
     private readonly DeviceRepository _deviceRepository;
     private readonly DeviceGroupRepository _deviceGroupRepository;
@@ -255,6 +258,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private CsvImportMode _csvImportMode = CsvImportMode.AddOnly;
     private CsvImportScope _csvImportScope = CsvImportScope.AllActiveDevices;
     private int? _csvImportGroupId;
+    private string _csvExportScope = CsvExportFilteredDevicesText;
     private string _csvImportFilePath = string.Empty;
     private string _csvImportPreviewSummary = "CSV önizlemesi henüz alınmadı.";
     private CsvImportPreview? _csvImportPreview;
@@ -382,6 +386,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             new SelectionOption<CsvImportScope>(CsvImportScope.AllActiveDevices, "Tüm etkin cihazları CSV ile eşitle"),
             new SelectionOption<CsvImportScope>(CsvImportScope.SelectedGroup, "Yalnızca seçili grubu CSV ile eşitle")
         });
+        CsvExportScopeOptions = new ObservableCollection<string>(new[]
+        {
+            CsvExportFilteredDevicesText,
+            CsvExportAllDevicesText,
+            CsvExportSelectedDevicesText
+        });
         OutboxStatusOptions = new ObservableCollection<SelectionOption<string>>(new[]
         {
             new SelectionOption<string>(AllOutboxStatusesText, AllOutboxStatusesText),
@@ -481,6 +491,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         MuteNotificationsSelectedCommand = new AsyncRelayCommand<object>(parameter => BulkSetSuppressionAsync(parameter, DeviceSuppressionMode.MuteNotifications), CanUseSelectedDevices);
         PauseMonitoringSelectedCommand = new AsyncRelayCommand<object>(parameter => BulkSetSuppressionAsync(parameter, DeviceSuppressionMode.PauseMonitoring), CanUseSelectedDevices);
         ClearSuppressionSelectedCommand = new AsyncRelayCommand<object>(BulkClearSuppressionAsync, CanUseSelectedDevices);
+        SuppressNotificationsCommand = new AsyncRelayCommand<Device>(device => SetDeviceSuppressionAsync(device, DeviceSuppressionMode.MuteNotifications), device => device is { IsDeleted: false } && !IsBusy);
+        PauseMonitoringCommand = new AsyncRelayCommand<Device>(device => SetDeviceSuppressionAsync(device, DeviceSuppressionMode.PauseMonitoring), device => device is { IsDeleted: false } && !IsBusy);
+        RemoveSuppressionCommand = new AsyncRelayCommand<Device>(ClearDeviceSuppressionAsync, device => device is { IsDeleted: false, IsSuppressionActive: true } && !IsBusy);
+        ResumeMonitoringCommand = RemoveSuppressionCommand;
         DeactivateSelectedDevicesCommand = new AsyncRelayCommand<object>(BulkDeactivateAsync, CanUseSelectedDevices);
         DeleteSelectedDevicesBulkCommand = new AsyncRelayCommand<object>(BulkDeleteAsync, CanUseSelectedDevices);
         RestoreSelectedDevicesBulkCommand = new AsyncRelayCommand<object>(BulkRestoreAsync, parameter => !IsBusy && GetSelectedDevices(parameter).Any(device => device.IsDeleted));
@@ -526,6 +540,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         ImportDevicesCommand = new AsyncRelayCommand(PreviewImportDevicesAsync, () => !IsBusy);
         ApplyCsvImportCommand = new AsyncRelayCommand(ApplyCsvImportAsync, () => !IsBusy && CsvImportCanApply);
         CreateCsvTemplateCommand = new AsyncRelayCommand(CreateCsvTemplateAsync, () => !IsBusy);
+        AddDeviceCommand = NavigateDeviceEditCommand;
+        PingSelectedDevicesCommand = PingSelectedDevicesBulkCommand;
+        PingAllDevicesCommand = PingAllCommand;
+        ImportCsvCommand = ImportDevicesCommand;
+        ExportCsvCommand = ExportDevicesCommand;
+        ApplyBulkActionCommand = ApplySelectedCheckIntervalCommand;
         RefreshOutboxCommand = new AsyncRelayCommand(LoadOutboxAsync, () => !IsBusy);
         RetrySelectedOutboxCommand = new AsyncRelayCommand<object>(RetrySelectedOutboxAsync, parameter => !IsBusy && GetSelectedOutboxItems(parameter).Any(item => item.Status is "Failed" or "DeadLetter"));
         RetryOutboxCommand = new AsyncRelayCommand<NotificationOutboxItem>(item => RetryOutboxAsync(item), item => item is { Status: "Failed" or "DeadLetter" } && !IsBusy);
@@ -654,6 +674,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public ObservableCollection<SelectionOption<CsvImportScope>> CsvImportScopeOptions { get; }
 
+    public ObservableCollection<string> CsvExportScopeOptions { get; }
+
     public ObservableCollection<SelectionOption<DowntimeStartPolicy>> DowntimeStartPolicyOptions { get; }
 
     public ObservableCollection<SelectionOption<string>> OutboxStatusOptions { get; }
@@ -708,9 +730,19 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public AsyncRelayCommand<object> MuteNotificationsSelectedCommand { get; }
     public AsyncRelayCommand<object> PauseMonitoringSelectedCommand { get; }
     public AsyncRelayCommand<object> ClearSuppressionSelectedCommand { get; }
+    public AsyncRelayCommand<Device> SuppressNotificationsCommand { get; }
+    public AsyncRelayCommand<Device> PauseMonitoringCommand { get; }
+    public AsyncRelayCommand<Device> RemoveSuppressionCommand { get; }
+    public AsyncRelayCommand<Device> ResumeMonitoringCommand { get; }
     public AsyncRelayCommand<object> DeactivateSelectedDevicesCommand { get; }
     public AsyncRelayCommand<object> DeleteSelectedDevicesBulkCommand { get; }
     public AsyncRelayCommand<object> RestoreSelectedDevicesBulkCommand { get; }
+    public RelayCommand AddDeviceCommand { get; }
+    public AsyncRelayCommand<object> PingSelectedDevicesCommand { get; }
+    public AsyncRelayCommand PingAllDevicesCommand { get; }
+    public AsyncRelayCommand ImportCsvCommand { get; }
+    public AsyncRelayCommand ExportCsvCommand { get; }
+    public AsyncRelayCommand<object> ApplyBulkActionCommand { get; }
     public RelayCommand ToggleAllVisibleDevicesSelectionCommand { get; }
     public RelayCommand CancelPingCommand { get; }
     public AsyncRelayCommand SaveGroupCommand { get; }
@@ -2401,6 +2433,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         OnPropertyChanged(nameof(PausedDeviceCount));
         OnPropertyChanged(nameof(UnknownDeviceCount));
         OnPropertyChanged(nameof(HasSelectedDevices));
+        OnPropertyChanged(nameof(SelectedDeviceCountText));
+        OnPropertyChanged(nameof(PingSelectedDevicesText));
     }
 
     public string NotificationLastSuccessfulAtText
@@ -2541,7 +2575,23 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         set => SetProperty(ref _downtimeStartPolicy, value);
     }
 
-    public string SelectedDeviceCountText => $"{Devices.Count(device => device.IsSelected)} seçili";
+    public string SelectedDeviceCountText => $"{Devices.Count(device => device.IsSelected)} cihaz seçildi";
+
+    public string PingSelectedDevicesText => Devices.Count(device => device.IsSelected) > 0
+        ? $"Seçilenlere Ping At ({Devices.Count(device => device.IsSelected)})"
+        : "Seçilenlere Ping At";
+
+    public string CsvExportScope
+    {
+        get => _csvExportScope;
+        set
+        {
+            if (SetProperty(ref _csvExportScope, string.IsNullOrWhiteSpace(value) ? CsvExportFilteredDevicesText : value))
+            {
+                ExportDevicesCommand?.NotifyCanExecuteChanged();
+            }
+        }
+    }
 
     public int BulkCheckIntervalSeconds
     {
