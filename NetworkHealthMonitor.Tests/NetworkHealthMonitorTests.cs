@@ -469,7 +469,7 @@ public sealed class NetworkHealthMonitorTests
         DatabasePaths.Configure(new FixedApplicationPathProvider(data), legacy);
         await new SqliteConnectionFactory().InitializeAsync();
 
-        Assert.True(File.Exists(Path.Combine(data, "data", "network_health_monitor.db")));
+        Assert.True(File.Exists(Path.Combine(data, "data", DatabasePaths.DatabaseFileName)));
         Assert.True(File.Exists(legacyDb));
         Assert.NotEmpty(Directory.GetFiles(Path.Combine(data, "backups"), "*.db"));
         SqliteConnection.ClearAllPools();
@@ -484,7 +484,7 @@ public sealed class NetworkHealthMonitorTests
         var legacy = Path.Combine(root, "legacy");
         Directory.CreateDirectory(data);
         Directory.CreateDirectory(legacy);
-        var programDataDb = Path.Combine(data, "data", "network_health_monitor.db");
+        var programDataDb = Path.Combine(data, "data", DatabasePaths.DatabaseFileName);
         var legacyDb = Path.Combine(legacy, "network_health_monitor.db");
         Directory.CreateDirectory(Path.GetDirectoryName(programDataDb)!);
         await CreateMarkerSqliteAsync(programDataDb, "ProgramDataMarker");
@@ -1598,6 +1598,19 @@ public sealed class NetworkHealthMonitorTests
         Assert.True(status.IsRunning);
         Assert.True(status.IsAutomaticStartup);
         Assert.True(status.RecoveryActionsConfigured);
+    }
+
+    [Fact]
+    public void Service_status_mapping_detects_manual_startup()
+    {
+        var status = WindowsServiceStatusService.ParseStatus(
+            "STATE              : 1  STOPPED",
+            "START_TYPE         : 3   DEMAND_START",
+            string.Empty);
+
+        Assert.False(status.IsRunning);
+        Assert.False(status.IsAutomaticStartup);
+        Assert.True(status.IsManualStartup);
     }
 
     [Fact]

@@ -4,7 +4,7 @@
 - Windows Server 2019/2022/2025 veya Windows 10/11 x64.
 - Yonetici PowerShell oturumu.
 - ICMP Echo isteklerine izin veren firewall politikasi.
-- Release paketindeki self-contained UI ve Worker; ayrica .NET runtime kurmak gerekmez.
+- Release paketindeki self-contained UI, Worker ve Tray; ayrica .NET runtime kurmak gerekmez.
 
 ## Ilk kurulum
 Zip dosyasini kalici bir klasore acin:
@@ -26,40 +26,46 @@ Iki hash degeri ayni olmalidir.
 Worker service kurulumu:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\install-service.ps1
+powershell -ExecutionPolicy Bypass -File .\Scripts\Install-NetworkHealthMonitor.ps1
 ```
 
-Kurulum scripti servisi `Automatic (Delayed Start)` olarak ayarlar. Recovery politikasi ilk hata icin 1 dakika, ikinci hata icin 5 dakika, sonraki hatalar icin 15 dakika sonra yeniden baslatmadir. Worker UI acilmadan ve kullanici oturumu acilmadan calismaya devam eder.
+Kurulum scripti Worker servisini `Manual / Demand Start` olarak ayarlar ve servisi otomatik baslatmaz. Bilgisayar yeniden basladiginda Worker kendiliginden calismaz; kullanici tray uygulamasindan veya servis yonetiminden baslatir.
 
 UI farkli bir Windows kullanicisiyle calisacaksa bu kullaniciyi acikca verin. Script `C:\ProgramData\NetworkHealthMonitor` ACL'ini SYSTEM, Administrators ve verilen UI kullanicisiyle sinirlar:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\install-service.ps1 -UiUser "DOMAIN\kullanici"
+powershell -ExecutionPolicy Bypass -File .\Scripts\Install-WorkerService.ps1 -DataUser "DOMAIN\kullanici"
 ```
 
 Worker service yonetimi:
 
 ```powershell
-.\scripts\start-service.ps1
+.\Scripts\Start-Worker.ps1
 .\scripts\service-status.ps1
-.\scripts\stop-service.ps1
-.\scripts\restart-service.ps1
-.\scripts\uninstall-service.ps1
+.\Scripts\Stop-Worker.ps1
+.\Scripts\Restart-Worker.ps1
+.\Scripts\Uninstall-WorkerService.ps1
 ```
 
 UI acma:
 
 ```powershell
-.\ui\NetworkHealthMonitor.exe
+.\UI\NetworkHealthMonitor.exe
 ```
 
-UI kapali olsa bile Worker service kurulu ve Running durumundaysa otomatik ping devam eder. Worker calismiyorsa UI acilir ve manuel ping/cihaz/plan/ayar ekranlari kullanilabilir, ancak otomatik plan pingleri ve outbox dispatch arka planda ilerlemez.
+Tray acma:
+
+```powershell
+.\Tray\NetworkHealthMonitor.Tray.exe
+```
+
+UI veya Tray kapali olsa bile Worker service calisiyorsa otomatik ping devam eder. Worker calismiyorsa UI acilir ve manuel ping/cihaz/plan/ayar ekranlari kullanilabilir, ancak otomatik plan pingleri ve outbox dispatch arka planda ilerlemez.
 
 ## ProgramData dizini
 UI ve Worker ayni veriyi kullanir:
 
 ```text
-C:\ProgramData\NetworkHealthMonitor\data\network_health_monitor.db
+C:\ProgramData\NetworkHealthMonitor\data\NetworkHealthMonitor.db
 C:\ProgramData\NetworkHealthMonitor\config\settings.json
 C:\ProgramData\NetworkHealthMonitor\logs
 C:\ProgramData\NetworkHealthMonitor\backups
@@ -191,8 +197,8 @@ Islemler:
 
 Sent kayitlar yeniden gonderilmez. 401/403 hatali failed kayitlarda once ntfy BaseUrl/topic/access token ayarlarini kontrol edin.
 
-## UI otomatik baslangic
-Worker Windows Service olarak automatic/delayed automatic calisir ve kullanici oturumu acilmadan da ping atar. UI otomatik baslangici zorunlu degildir.
+## UI ve Tray otomatik baslangic
+Worker Windows Service olarak Manual / Demand Start calisir. Bilgisayar acilisinda otomatik baslamaz.
 
 UI > Ayarlar:
 
@@ -201,6 +207,15 @@ Windows'a giris yaptigimda yonetim ekranini ac
 ```
 
 Bu secenek yalnizca WPF yonetim ekranini etkiler. Etkinlestirildiginde kullanici Startup klasorune `NetworkHealthMonitor.lnk` olusturulur:
+
+Tray > Ayarlar:
+
+```text
+[ ] Windows acildiginda tray uygulamasini baslat
+[ ] Tray uygulamasi acildiginda Worker'i baslat
+```
+
+Bu iki secenek ayri davranislardir ve varsayilan olarak kapalidir. Tray'in Windows ile acilmasi Worker'in otomatik baslamasi anlamina gelmez.
 
 ```text
 %AppData%\Microsoft\Windows\Start Menu\Programs\Startup
@@ -358,11 +373,11 @@ Restore mevcut veriyi once ayrica yedekler, servisi durdurur, veriyi geri yukler
 Onerilen guncelleme sirasi:
 1. Eski kurulum klasorunu silmeden once `.\scripts\backup-data.ps1` ile backup alin.
 2. Yeni ZIP'i yeni bir kalici klasore acin.
-3. Yonetici PowerShell ile yeni klasorde `.\scripts\upgrade-service.ps1 -NewWorkerPath ".\worker"` calistirin.
+3. Yonetici PowerShell ile yeni klasorde `.\scripts\upgrade-service.ps1 -NewWorkerPath ".\Worker"` calistirin.
 4. `.\scripts\service-status.ps1` ve `.\scripts\health-check.ps1` ile Worker sagligini kontrol edin.
-5. UI'yi `.\ui\NetworkHealthMonitor.exe` ile acin.
+5. UI'yi `.\UI\NetworkHealthMonitor.exe` ile acin.
 
-Eski surumden ilk geciste `%LocalAppData%\NetworkHealthMonitor\network_health_monitor.db` veya `C:\ProgramData\NetworkHealthMonitor\network_health_monitor.db` bulunursa aktif DB yokken `C:\ProgramData\NetworkHealthMonitor\data\network_health_monitor.db` konumuna kopyalanir, kaynak dosya silinmez ve backup olusturulur. Aktif DB zaten varsa eski kaynak tekrar kopyalanip guncel semayi ezmez.
+Eski surumden ilk geciste `%LocalAppData%\NetworkHealthMonitor\network_health_monitor.db`, `C:\ProgramData\NetworkHealthMonitor\network_health_monitor.db` veya eski `data\network_health_monitor.db` bulunursa aktif DB yokken `C:\ProgramData\NetworkHealthMonitor\data\NetworkHealthMonitor.db` konumuna kopyalanir, kaynak dosya silinmez ve backup olusturulur. Aktif DB zaten varsa eski kaynak tekrar kopyalanip guncel semayi ezmez.
 
 ## Production readiness testi
 
@@ -372,7 +387,7 @@ Publish paketinde son kurulum oncesi otomatik kontrol:
 .\scripts\production-readiness-test.ps1
 ```
 
-Script her kontrol icin `PASS` veya `FAIL` yazar. Zorunlu kontrollerden biri basarisizsa non-zero exit code doner. Kontroller worker/UI exe varligi, service kurulum ve Running durumu, Automatic startup, recovery actions, ProgramData yazilabilirligi, Worker health-check ile SQLite/outbox/heartbeat, backup, disk alani ve UI/Worker surum eslesmesini kapsar.
+Script her kontrol icin `PASS` veya `FAIL` yazar. Zorunlu kontrollerden biri basarisizsa non-zero exit code doner. Kontroller Worker/UI/Tray exe varligi, service kurulum ve Running durumu, Manual startup, ProgramData yazilabilirligi, Worker health-check ile SQLite/outbox/heartbeat, backup, disk alani ve UI/Worker surum eslesmesini kapsar.
 
 ## Servisi kaldirma
 

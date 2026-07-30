@@ -5,6 +5,8 @@ namespace NetworkHealthMonitor.Data;
 public static class DatabasePaths
 {
     public const string AppFolderName = "NetworkHealthMonitor";
+    public const string DatabaseFileName = "NetworkHealthMonitor.db";
+    public const string LegacyDatabaseFileName = "network_health_monitor.db";
 
     private static IApplicationPathProvider _pathProvider = new ProgramDataApplicationPathProvider();
     private static string? _legacyDataDirectoryOverride;
@@ -49,11 +51,13 @@ public static class DatabasePaths
         }
     }
 
-    public static string LegacyDatabaseFilePath => Path.Combine(LegacyLocalAppDataDirectory, "network_health_monitor.db");
+    public static string LegacyDatabaseFilePath => Path.Combine(LegacyLocalAppDataDirectory, LegacyDatabaseFileName);
 
     public static string LegacySettingsFilePath => Path.Combine(LegacyLocalAppDataDirectory, "settings.json");
 
-    public static string LegacyProgramDataDatabaseFilePath => Path.Combine(Current.RootDirectory, "network_health_monitor.db");
+    public static string LegacyProgramDataDatabaseFilePath => Path.Combine(Current.RootDirectory, LegacyDatabaseFileName);
+
+    public static string LegacyProgramDataDataDirectoryDatabaseFilePath => Path.Combine(Current.DataDirectory, LegacyDatabaseFileName);
 
     public static string LegacyProgramDataSettingsFilePath => Path.Combine(Current.RootDirectory, "settings.json");
 

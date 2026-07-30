@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Threading;
 using NetworkHealthMonitor.Data;
 using NetworkHealthMonitor.Infrastructure;
+using NetworkHealthMonitor.Services;
 using WpfApplication = System.Windows.Application;
 using WpfMessageBox = System.Windows.MessageBox;
 
@@ -11,6 +12,8 @@ namespace NetworkHealthMonitor;
 
 public partial class App : WpfApplication
 {
+    private SingleInstanceGuard? _singleInstanceGuard;
+
     protected override void OnStartup(StartupEventArgs e)
     {
         ConfigurePathsFromEnvironment();
@@ -18,7 +21,26 @@ public partial class App : WpfApplication
         DispatcherUnhandledException += HandleDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += HandleUnhandledException;
         TaskScheduler.UnobservedTaskException += HandleUnobservedTaskException;
+
+        _singleInstanceGuard = new SingleInstanceGuard(SingleInstanceNames.ManagementUi);
+        if (!_singleInstanceGuard.IsFirstInstance)
+        {
+            ExistingProcessActivator.ActivateMainWindow("NetworkHealthMonitor", Environment.ProcessId);
+            Shutdown(0);
+            return;
+        }
+
         base.OnStartup(e);
+
+        var mainWindow = new MainWindow();
+        MainWindow = mainWindow;
+        mainWindow.Show();
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        _singleInstanceGuard?.Dispose();
+        base.OnExit(e);
     }
 
     private static void ConfigurePathsFromEnvironment()

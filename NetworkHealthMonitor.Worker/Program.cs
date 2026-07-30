@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using NetworkHealthMonitor.Services;
 using NetworkHealthMonitor.Worker;
 
 var options = WorkerOptions.Parse(args);
@@ -28,7 +29,7 @@ builder.Services.AddSingleton(options);
 builder.Services.AddHostedService<WorkerService>();
 builder.Services.AddWindowsService(serviceOptions =>
 {
-    serviceOptions.ServiceName = "NetworkHealthMonitorWorker";
+    serviceOptions.ServiceName = WorkerServiceConstants.ServiceName;
 });
 
 await builder.Build().RunAsync();

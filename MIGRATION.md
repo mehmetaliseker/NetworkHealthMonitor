@@ -1,6 +1,6 @@
 # Database Migration
 
-Varsayilan veritabani: `C:\ProgramData\NetworkHealthMonitor\data\network_health_monitor.db`.
+Varsayilan veritabani: `C:\ProgramData\NetworkHealthMonitor\data\NetworkHealthMonitor.db`.
 
 Bu surumde eklenen migration:
 

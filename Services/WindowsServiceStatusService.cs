@@ -4,7 +4,7 @@ namespace NetworkHealthMonitor.Services;
 
 public sealed class WindowsServiceStatusService : IWindowsServiceStatusService
 {
-    public const string ServiceName = "NetworkHealthMonitorWorker";
+    public const string ServiceName = WorkerServiceConstants.ServiceName;
 
     public async Task<WindowsServiceStatus> GetStatusAsync(CancellationToken cancellationToken = default)
     {
@@ -53,6 +53,8 @@ public sealed class WindowsServiceStatusService : IWindowsServiceStatusService
     {
         var startupType = ParseStartupType(qcOutput);
         var isAutomatic = startupType.Contains("AUTO", StringComparison.OrdinalIgnoreCase);
+        var isManual = startupType.Contains("DEMAND", StringComparison.OrdinalIgnoreCase)
+                       || startupType.Contains("MANUAL", StringComparison.OrdinalIgnoreCase);
         var recoveryConfigured = failureOutput.Contains("RESTART", StringComparison.OrdinalIgnoreCase);
         var baseStatus = queryOutput.Contains("RUNNING", StringComparison.OrdinalIgnoreCase)
             ? new WindowsServiceStatus("Running", "Çalışıyor") { IsRunning = true }
@@ -68,6 +70,7 @@ public sealed class WindowsServiceStatusService : IWindowsServiceStatusService
         {
             StartupType = startupType,
             IsAutomaticStartup = isAutomatic,
+            IsManualStartup = isManual,
             RecoveryActionsConfigured = recoveryConfigured,
             RawStatus = queryOutput + qcOutput + failureOutput
         };

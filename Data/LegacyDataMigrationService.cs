@@ -23,6 +23,14 @@ public static class LegacyDataMigrationService
                 "programdata-root");
         }
 
+        if (File.Exists(DatabasePaths.LegacyProgramDataDataDirectoryDatabaseFilePath))
+        {
+            return await CopyLegacyDatabaseAsync(
+                DatabasePaths.LegacyProgramDataDataDirectoryDatabaseFilePath,
+                DatabasePaths.LegacyProgramDataSettingsFilePath,
+                "programdata-data");
+        }
+
         if (!File.Exists(DatabasePaths.LegacyDatabaseFilePath))
         {
             return LegacyMigrationResult.Skipped("No legacy LocalAppData database was found.");

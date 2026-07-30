@@ -1,7 +1,8 @@
 param(
     [string]$ServiceName = "NetworkHealthMonitorWorker",
-    [string]$WorkerPath = (Join-Path $PSScriptRoot "..\worker\NetworkHealthMonitor.Worker.exe"),
-    [string]$UiPath = (Join-Path $PSScriptRoot "..\ui\NetworkHealthMonitor.exe"),
+    [string]$WorkerPath = (Join-Path $PSScriptRoot "..\Worker\NetworkHealthMonitor.Worker.exe"),
+    [string]$UiPath = (Join-Path $PSScriptRoot "..\UI\NetworkHealthMonitor.exe"),
+    [string]$TrayPath = (Join-Path $PSScriptRoot "..\Tray\NetworkHealthMonitor.Tray.exe"),
     [string]$DataRoot = (Join-Path $env:ProgramData "NetworkHealthMonitor"),
     [string]$ZipPath = "",
     [string]$Sha256Path = "",
@@ -68,6 +69,7 @@ function Test-FileContainsSecretPattern([string]$Root) {
         Where-Object {
             $textExtensions -contains $_.Extension.ToLowerInvariant() -and
             $_.FullName -notmatch '\\(bin|obj|TestResults)\\' -and
+            $_.FullName -notmatch '\\artifacts\\' -and
             $_.FullName -notmatch '\\release\\(archive|artifacts|staging|package-root|verification)\\'
         } |
         ForEach-Object {
@@ -92,13 +94,15 @@ function Test-FileContainsSecretPattern([string]$Root) {
 
 $worker = Resolve-ExistingPath $WorkerPath
 $ui = Resolve-ExistingPath $UiPath
-$db = Join-Path $DataRoot "data\network_health_monitor.db"
+$db = Join-Path $DataRoot "data\NetworkHealthMonitor.db"
 $jsonPath = if ([System.IO.Path]::IsPathRooted($ReportJsonPath)) { $ReportJsonPath } else { Join-Path (Get-Location) $ReportJsonPath }
 $textPath = if ([System.IO.Path]::IsPathRooted($ReportTextPath)) { $ReportTextPath } else { Join-Path (Get-Location) $ReportTextPath }
 
 Add-Result -Status ($(if (Test-Administrator) { "PASS" } else { "WARNING" })) -Name "Yonetici durumu" -Detail "Kurulum/servis kontrolleri icin yonetici oturumu gerekir." -Mandatory:$false
 Add-Result -Status ($(if (Test-Path $worker) { "PASS" } else { "FAIL" })) -Name "Worker exe var" -Detail $worker
 Add-Result -Status ($(if (Test-Path $ui) { "PASS" } else { "FAIL" })) -Name "UI exe var" -Detail $ui
+$tray = Resolve-ExistingPath $TrayPath
+Add-Result -Status ($(if (Test-Path $tray) { "PASS" } else { "FAIL" })) -Name "Tray exe var" -Detail $tray
 
 if (-not [string]::IsNullOrWhiteSpace($ZipPath)) {
     $zipExists = Test-Path $ZipPath
@@ -121,18 +125,18 @@ Add-Result -Status ($(if ($null -ne $service) { "PASS" } else { "FAIL" })) -Name
 Add-Result -Status ($(if ($service -and $service.Status -eq "Running") { "PASS" } else { "FAIL" })) -Name "Service Running" -Detail ($(if ($service) { $service.Status } else { "Missing" }))
 
 $wmi = Get-CimInstance -ClassName Win32_Service -Filter "Name='$($ServiceName.Replace("'","''"))'" -ErrorAction SilentlyContinue
-Add-Result -Status ($(if ($wmi -and $wmi.StartMode -eq "Auto") { "PASS" } else { "FAIL" })) -Name "Service Automatic" -Detail ($(if ($wmi) { $wmi.StartMode } else { "Missing" }))
+Add-Result -Status ($(if ($wmi -and $wmi.StartMode -eq "Manual") { "PASS" } else { "FAIL" })) -Name "Service Manual" -Detail ($(if ($wmi) { $wmi.StartMode } else { "Missing" }))
 
 $delayedStatus = "FAIL"
 $delayedDetail = "Service registry kaydi bulunamadi."
 try {
     $serviceRegPath = "HKLM:\SYSTEM\CurrentControlSet\Services\$ServiceName"
-    $delayed = (Get-ItemProperty -LiteralPath $serviceRegPath -Name DelayedAutoStart -ErrorAction Stop).DelayedAutoStart
-    $delayedStatus = if ($delayed -eq 1) { "PASS" } else { "FAIL" }
+    $delayed = (Get-ItemProperty -LiteralPath $serviceRegPath -Name DelayedAutoStart -ErrorAction SilentlyContinue).DelayedAutoStart
+    $delayedStatus = if ($null -eq $delayed -or $delayed -eq 0) { "PASS" } else { "FAIL" }
     $delayedDetail = "DelayedAutoStart=$delayed"
 }
 catch {}
-Add-Result -Status $delayedStatus -Name "DelayedAutoStart aktif" -Detail $delayedDetail
+Add-Result -Status $delayedStatus -Name "DelayedAutoStart kapali" -Detail $delayedDetail
 
 $recoveryOutput = @()
 $recoveryExitCode = -1
@@ -149,8 +153,8 @@ finally {
     $ErrorActionPreference = $previousErrorActionPreference
 }
 $recoveryText = $recoveryOutput -join "`n"
-$recoveryOk = $recoveryExitCode -eq 0 -and $recoveryText -match "60000" -and $recoveryText -match "300000" -and $recoveryText -match "900000"
-Add-Result -Status ($(if ($recoveryOk) { "PASS" } else { "FAIL" })) -Name "Recovery policy 1/5/15 dakika" -Detail (($recoveryOutput | Select-Object -First 5) -join " ")
+$recoveryHasRestart = $recoveryExitCode -eq 0 -and $recoveryText -match "RESTART"
+Add-Result -Status ($(if (-not $recoveryHasRestart) { "PASS" } else { "WARNING" })) -Name "Recovery auto restart yok" -Detail (($recoveryOutput | Select-Object -First 5) -join " ") -Mandatory:$false
 
 try {
     New-Item -ItemType Directory -Force -Path $DataRoot | Out-Null
