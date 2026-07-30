@@ -9,7 +9,7 @@ $ErrorActionPreference = "Stop"
 $programData = $DataRoot
 $dataDir = Join-Path $programData "data"
 $configDir = Join-Path $programData "config"
-$db = Join-Path $dataDir "network_health_monitor.db"
+$db = Join-Path $dataDir "NetworkHealthMonitor.db"
 if (-not (Test-Path $db)) { throw "Veritabani bulunamadi: $db" }
 
 $service = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue

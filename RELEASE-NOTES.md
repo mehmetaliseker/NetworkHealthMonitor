@@ -8,7 +8,7 @@ Bu surum final release kapilari tamamlanmadan final olarak yayinlanmamalidir. Di
 - Normal plan ile erisilemeyen cihaz yeniden kontrol araligi ayrildi.
 - Varsayilan erisilemeyen cihaz yeniden kontrol araligi 20 dakika oldu.
 - Eski `SchedulePlans.IntervalMinutes` kayitlari `2026071902-extended-scheduler` migration'i ile sabit aralik planina donusturulur.
-- Windows Service kurulum scripti Automatic Delayed Start ve 1/5/15 dakika recovery politikasini uygular ve dogrular.
+- Windows Service kurulum scripti Manual / Demand Start davranisini uygular ve dogrular; Worker sistem tepsisi companion uygulamasi uzerinden manuel yonetilir.
 - Production readiness raporu JSON ve TXT olarak uretilir.
 
 ## Final release icin zorunlu dis kanitlar

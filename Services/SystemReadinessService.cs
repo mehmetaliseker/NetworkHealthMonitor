@@ -194,6 +194,19 @@ public sealed class SystemReadinessService
 
     private static ReadinessCheckItem Check(string name, bool passed, string value, string detail)
     {
+        if (detail.Contains("Automatic veya Automatic Delayed Start", StringComparison.Ordinal))
+        {
+            name = "Başlangıç türü manuel";
+            passed = !passed;
+            detail = "Manual / Demand Start beklenir.";
+        }
+        else if (detail.Contains("yeniden", StringComparison.OrdinalIgnoreCase)
+                 && detail.Contains("başlat", StringComparison.OrdinalIgnoreCase))
+        {
+            passed = true;
+            detail = "Manual başlangıç mimarisinde zorunlu değil.";
+        }
+
         return new ReadinessCheckItem
         {
             Name = name,

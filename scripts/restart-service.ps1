@@ -1,7 +1,7 @@
 param(
-    [string]$ServiceName = "NetworkHealthMonitorWorker"
+    [string]$ServiceName = "NetworkHealthMonitorWorker",
+    [int]$TimeoutSeconds = 30
 )
 
 $ErrorActionPreference = "Stop"
-& (Join-Path $PSScriptRoot "stop-service.ps1") -ServiceName $ServiceName
-& (Join-Path $PSScriptRoot "start-service.ps1") -ServiceName $ServiceName
+& (Join-Path $PSScriptRoot "Restart-Worker.ps1") -ServiceName $ServiceName -TimeoutSeconds $TimeoutSeconds

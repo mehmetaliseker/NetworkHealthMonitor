@@ -9,8 +9,8 @@ $ErrorActionPreference = "Stop"
 $programData = $DataRoot
 $dataDir = Join-Path $programData "data"
 $configDir = Join-Path $programData "config"
-$db = Join-Path $dataDir "network_health_monitor.db"
-$backupDb = Join-Path $BackupPath "network_health_monitor.db"
+$db = Join-Path $dataDir "NetworkHealthMonitor.db"
+$backupDb = Join-Path $BackupPath "NetworkHealthMonitor.db"
 if (-not (Test-Path $backupDb)) { throw "Yedek veritabani bulunamadi: $backupDb" }
 
 $service = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue

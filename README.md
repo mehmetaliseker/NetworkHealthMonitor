@@ -29,16 +29,16 @@ Bu sürüm profesyonel şirket içi kullanım için sade tutulmuştur: alarm sis
 
 ## Veri Saklama
 
-Uygulama verileri kullanıcı profilinde saklanır:
+Uygulama verileri ProgramData altinda saklanir:
 
 ```text
-%LocalAppData%\NetworkHealthMonitor\network_health_monitor.db
-%LocalAppData%\NetworkHealthMonitor\settings.json
+C:\ProgramData\NetworkHealthMonitor\data\NetworkHealthMonitor.db
+C:\ProgramData\NetworkHealthMonitor\config\settings.json
 ```
 
 ## Geliştirme Ortamında Çalıştırma
 
-Geliştirme için Windows ve .NET 9 SDK gerekir.
+Gelistirme icin Windows ve .NET 10 SDK gerekir.
 
 ```powershell
 dotnet restore

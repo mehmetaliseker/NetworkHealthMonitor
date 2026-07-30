@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Drawing;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Input;
@@ -8,7 +7,6 @@ using NetworkHealthMonitor.Data;
 using NetworkHealthMonitor.Infrastructure;
 using NetworkHealthMonitor.Services;
 using NetworkHealthMonitor.ViewModels;
-using Forms = System.Windows.Forms;
 using WpfApplication = System.Windows.Application;
 using WpfMessageBox = System.Windows.MessageBox;
 
@@ -18,10 +16,8 @@ public partial class MainWindow : Window
 {
     private readonly SqliteConnectionFactory _connectionFactory;
     private readonly MainViewModel _viewModel;
-    private readonly Forms.NotifyIcon _notifyIcon;
     private bool _loaded;
     private bool _closingHandled;
-    private bool _exitRequested;
 
     public MainWindow()
     {
@@ -101,13 +97,10 @@ public partial class MainWindow : Window
         DataContext = _viewModel;
         Loaded += MainWindowLoaded;
         Closing += MainWindowClosing;
-        StateChanged += MainWindowStateChanged;
         SizeChanged += MainWindow_SizeChanged;
         DevicesGrid.MouseDoubleClick += DevicesGrid_MouseDoubleClick;
 
         _viewModel.IsCompactLayout = Width < 1280;
-
-        _notifyIcon = CreateNotifyIcon();
     }
 
     private async void MainWindowLoaded(object sender, RoutedEventArgs e)
@@ -172,7 +165,7 @@ public partial class MainWindow : Window
 
         try
         {
-            if (!_exitRequested && !string.Equals(Environment.GetEnvironmentVariable("NHM_SUPPRESS_CLOSE_NOTICE"), "1", StringComparison.Ordinal))
+            if (!string.Equals(Environment.GetEnvironmentVariable("NHM_SUPPRESS_CLOSE_NOTICE"), "1", StringComparison.Ordinal))
             {
                 WpfMessageBox.Show(
                     "Arayüz kapanacak. Network Health Monitor Worker servisi kurulu ve çalışıyorsa izleme arka planda devam eder.",
@@ -189,13 +182,12 @@ public partial class MainWindow : Window
         }
         finally
         {
-            _notifyIcon.Visible = false;
-            _notifyIcon.Dispose();
             Closing -= MainWindowClosing;
             _ = Dispatcher.BeginInvoke(Close, DispatcherPriority.Background);
         }
     }
 
+#if false
     private Forms.NotifyIcon CreateNotifyIcon()
     {
         var contextMenu = new Forms.ContextMenuStrip();
@@ -253,6 +245,7 @@ public partial class MainWindow : Window
         Close();
     }
 
+#endif
     private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         _viewModel.IsCompactLayout = ActualWidth < 1280;

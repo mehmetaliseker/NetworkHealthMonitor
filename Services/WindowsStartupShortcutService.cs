@@ -5,10 +5,14 @@ namespace NetworkHealthMonitor.Services;
 
 public sealed class WindowsStartupShortcutService : IUiAutostartService
 {
-    private const string ShortcutFileName = "NetworkHealthMonitor.lnk";
     private readonly string _startupDirectory;
+    private readonly string _shortcutFileName;
+    private readonly string _description;
 
-    public WindowsStartupShortcutService(string? startupDirectory = null)
+    public WindowsStartupShortcutService(
+        string? startupDirectory = null,
+        string shortcutFileName = "NetworkHealthMonitor.lnk",
+        string description = "Network Health Monitor management UI")
     {
         _startupDirectory = string.IsNullOrWhiteSpace(startupDirectory)
             ? Path.Combine(
@@ -19,9 +23,15 @@ public sealed class WindowsStartupShortcutService : IUiAutostartService
                 "Programs",
                 "Startup")
             : startupDirectory;
+        _shortcutFileName = string.IsNullOrWhiteSpace(shortcutFileName)
+            ? "NetworkHealthMonitor.lnk"
+            : shortcutFileName;
+        _description = string.IsNullOrWhiteSpace(description)
+            ? "Network Health Monitor"
+            : description;
     }
 
-    public string ShortcutPath => Path.Combine(_startupDirectory, ShortcutFileName);
+    public string ShortcutPath => Path.Combine(_startupDirectory, _shortcutFileName);
 
     public bool IsEnabled(string targetPath)
     {
@@ -84,7 +94,7 @@ public sealed class WindowsStartupShortcutService : IUiAutostartService
         var shortcut = CreateShortcutObject(ShortcutPath);
         SetProperty(shortcut, "TargetPath", targetPath);
         SetProperty(shortcut, "WorkingDirectory", Path.GetDirectoryName(targetPath) ?? AppContext.BaseDirectory);
-        SetProperty(shortcut, "Description", "Network Health Monitor management UI");
+        SetProperty(shortcut, "Description", _description);
         Invoke(shortcut, "Save");
     }
 

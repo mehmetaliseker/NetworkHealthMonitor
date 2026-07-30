@@ -1,6 +1,6 @@
 param(
     [string]$ServiceName = "NetworkHealthMonitorWorker",
-    [string]$WorkerPath = (Join-Path $PSScriptRoot "..\worker\NetworkHealthMonitor.Worker.exe"),
+    [string]$WorkerPath = (Join-Path $PSScriptRoot "..\Worker\NetworkHealthMonitor.Worker.exe"),
     [string]$DataRoot = (Join-Path $env:ProgramData "NetworkHealthMonitor"),
     [int]$HeartbeatMaxAgeSeconds = 120,
     [switch]$SkipServiceCheck,
@@ -11,7 +11,7 @@ param(
 $ErrorActionPreference = "Stop"
 $errors = New-Object System.Collections.Generic.List[string]
 $programData = $DataRoot
-$db = Join-Path $programData "data\network_health_monitor.db"
+$db = Join-Path $programData "data\NetworkHealthMonitor.db"
 $worker = $WorkerPath
 try { $worker = (Resolve-Path $WorkerPath).Path } catch {}
 

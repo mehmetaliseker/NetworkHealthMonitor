@@ -149,7 +149,7 @@ try {
     $backupDir = Join-Path $runRoot "input-backup"
     New-Item -ItemType Directory -Force -Path $dataDir, $configDir, $backupDir | Out-Null
 
-    $targetDb = Join-Path $dataDir "network_health_monitor.db"
+    $targetDb = Join-Path $dataDir "NetworkHealthMonitor.db"
     Copy-Item -LiteralPath $OldDatabasePath -Destination $targetDb -Force
     $databaseBackupPath = Join-Path $backupDir ("network_health_monitor-input-{0}.db" -f $runId)
     Copy-Item -LiteralPath $OldDatabasePath -Destination $databaseBackupPath -Force
