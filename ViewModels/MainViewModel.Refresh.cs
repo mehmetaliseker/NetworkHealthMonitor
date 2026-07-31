@@ -40,6 +40,8 @@ public sealed partial class MainViewModel
     {
         _pingCancellationTokenSource?.Cancel();
         _pingCancellationTokenSource?.Dispose();
+        _deviceConnectionTestCancellationTokenSource?.Cancel();
+        _deviceConnectionTestCancellationTokenSource?.Dispose();
         await _schedulerService.DisposeAsync();
         _schedulerService.StatusChanged -= SchedulerStatusChanged;
     }
@@ -120,6 +122,9 @@ public sealed partial class MainViewModel
 
         DevicesView.Refresh();
         OnPropertyChanged(nameof(SelectedDeviceCountText));
+        OnPropertyChanged(nameof(HasNoDevices));
+        OnPropertyChanged(nameof(HasDevicesButNoFilteredDevices));
+        OnPropertyChanged(nameof(HasNoFilteredDevices));
     }
 
     private async Task LoadGroupsAsync()
@@ -214,6 +219,17 @@ public sealed partial class MainViewModel
         }
 
         if (DeletedDeviceFilter == DeletedDevicesText && !device.IsDeleted)
+        {
+            return false;
+        }
+
+        var isSelectableActiveDevice = !device.IsDeleted && device.IsEnabled && device.IsActive;
+        if (DeviceActivityFilter == ActiveOnlyText && !isSelectableActiveDevice)
+        {
+            return false;
+        }
+
+        if (DeviceActivityFilter == PassiveOnlyText && isSelectableActiveDevice)
         {
             return false;
         }
@@ -450,6 +466,7 @@ public sealed partial class MainViewModel
     private void RaiseCommandStates()
     {
         SaveDeviceCommand?.NotifyCanExecuteChanged();
+        TestDeviceConnectionCommand?.NotifyCanExecuteChanged();
         ClearDeviceFormCommand?.NotifyCanExecuteChanged();
         EditSelectedDeviceCommand?.NotifyCanExecuteChanged();
         DeleteSelectedDeviceCommand?.NotifyCanExecuteChanged();
@@ -463,6 +480,7 @@ public sealed partial class MainViewModel
         DisableAutoCheckSelectedCommand?.NotifyCanExecuteChanged();
         AssignSelectedDevicesToGroupCommand?.NotifyCanExecuteChanged();
         ApplySelectedCheckIntervalCommand?.NotifyCanExecuteChanged();
+        ActivateSelectedDevicesCommand?.NotifyCanExecuteChanged();
         DeactivateSelectedDevicesCommand?.NotifyCanExecuteChanged();
         DeleteSelectedDevicesBulkCommand?.NotifyCanExecuteChanged();
         RestoreSelectedDevicesBulkCommand?.NotifyCanExecuteChanged();
@@ -481,6 +499,8 @@ public sealed partial class MainViewModel
         RunSelectedSchedulePlanCommand?.NotifyCanExecuteChanged();
         StartSchedulerCommand?.NotifyCanExecuteChanged();
         StopSchedulerCommand?.NotifyCanExecuteChanged();
+        RestartWorkerServiceCommand?.NotifyCanExecuteChanged();
+        RefreshWorkerServiceStatusCommand?.NotifyCanExecuteChanged();
         RefreshLogsCommand?.NotifyCanExecuteChanged();
         RefreshDevicesCommand?.NotifyCanExecuteChanged();
         ClearLogsCommand?.NotifyCanExecuteChanged();

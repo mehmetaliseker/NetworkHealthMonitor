@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:converters="clr-namespace:NetworkHealthMonitor.Converters"
         xmlns:infra="clr-namespace:NetworkHealthMonitor.Infrastructure"
+        xmlns:dialogs="clr-namespace:NetworkHealthMonitor.Views.Dialogs"
         mc:Ignorable="d"
         Title="Ağ İzleme Yönetim Paneli"
         Height="860"
@@ -91,7 +92,8 @@
                                 Margin="4,0,0,0"
                                 Command="{Binding ToggleNavigationCommand}"
                                 Style="{StaticResource NavigationButtonStyle}"
-                                ToolTip="{Binding NavigationToggleText}">
+                                ToolTip="{Binding NavigationToggleText}"
+                                AutomationProperties.Name="{Binding NavigationToggleText}">
                             <TextBlock Text="☰" FontSize="16" HorizontalAlignment="Center" />
                         </Button>
                     </Grid>
@@ -99,7 +101,8 @@
                     <Button Style="{StaticResource NavigationButtonStyle}"
                             Command="{Binding NavigateDashboardCommand}"
                             Tag="{Binding IsDashboardNavSelected}"
-                            ToolTip="Genel Bakış">
+                            ToolTip="Genel Bakış"
+                            AutomationProperties.Name="Genel Bakış bölümünü aç">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="▦" Style="{StaticResource NavIconStyle}" />
                             <TextBlock Text="Genel Bakış" Style="{StaticResource NavigationLabelStyle}" />
@@ -108,7 +111,8 @@
                     <Button Style="{StaticResource NavigationButtonStyle}"
                             Command="{Binding NavigateDevicesCommand}"
                             Tag="{Binding IsDevicesNavSelected}"
-                            ToolTip="Cihazlar">
+                            ToolTip="Cihazlar"
+                            AutomationProperties.Name="Cihazlar bölümünü aç">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="▣" Style="{StaticResource NavIconStyle}" />
                             <TextBlock Text="Cihazlar" Style="{StaticResource NavigationLabelStyle}" />
@@ -117,7 +121,8 @@
                     <Button Style="{StaticResource NavigationButtonStyle}"
                             Command="{Binding NavigateGroupsCommand}"
                             Tag="{Binding IsGroupsNavSelected}"
-                            ToolTip="Gruplar">
+                            ToolTip="Gruplar"
+                            AutomationProperties.Name="Gruplar bölümünü aç">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="◎" Style="{StaticResource NavIconStyle}" />
                             <TextBlock Text="Gruplar" Style="{StaticResource NavigationLabelStyle}" />
@@ -126,7 +131,8 @@
                     <Button Style="{StaticResource NavigationButtonStyle}"
                             Command="{Binding NavigateSchedulesCommand}"
                             Tag="{Binding IsSchedulesNavSelected}"
-                            ToolTip="İzleme Planları">
+                            ToolTip="İzleme Planları"
+                            AutomationProperties.Name="İzleme planları bölümünü aç">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="◷" Style="{StaticResource NavIconStyle}" />
                             <TextBlock Text="İzleme Planları" Style="{StaticResource NavigationLabelStyle}" />
@@ -135,7 +141,8 @@
                     <Button Style="{StaticResource NavigationButtonStyle}"
                             Command="{Binding NavigateEventsCommand}"
                             Tag="{Binding IsEventsNavSelected}"
-                            ToolTip="Olaylar">
+                            ToolTip="Olaylar"
+                            AutomationProperties.Name="Olaylar bölümünü aç">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="!" Style="{StaticResource NavIconStyle}" />
                             <TextBlock Text="Olaylar" Style="{StaticResource NavigationLabelStyle}" />
@@ -144,7 +151,8 @@
                     <Button Style="{StaticResource NavigationButtonStyle}"
                             Command="{Binding NavigateNotificationsCommand}"
                             Tag="{Binding IsNotificationsNavSelected}"
-                            ToolTip="Bildirimler">
+                            ToolTip="Bildirimler"
+                            AutomationProperties.Name="Bildirimler bölümünü aç">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="↗" Style="{StaticResource NavIconStyle}" />
                             <TextBlock Text="Bildirimler" Style="{StaticResource NavigationLabelStyle}" />
@@ -153,7 +161,8 @@
                     <Button Style="{StaticResource NavigationButtonStyle}"
                             Command="{Binding NavigateLogsCommand}"
                             Tag="{Binding IsLogsNavSelected}"
-                            ToolTip="Ping Logları">
+                            ToolTip="Ping Logları"
+                            AutomationProperties.Name="Ping kayıtları bölümünü aç">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="≡" Style="{StaticResource NavIconStyle}" />
                             <TextBlock Text="Ping Logları" Style="{StaticResource NavigationLabelStyle}" />
@@ -162,7 +171,8 @@
                     <Button Style="{StaticResource NavigationButtonStyle}"
                             Command="{Binding NavigateReportsCommand}"
                             Tag="{Binding IsReportsNavSelected}"
-                            ToolTip="Raporlar / Uptime">
+                            ToolTip="Raporlar / Uptime"
+                            AutomationProperties.Name="Raporlar ve uptime bölümünü aç">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="%" Style="{StaticResource NavIconStyle}" />
                             <TextBlock Text="Raporlar / Uptime" Style="{StaticResource NavigationLabelStyle}" />
@@ -171,7 +181,8 @@
                     <Button Style="{StaticResource NavigationButtonStyle}"
                             Command="{Binding NavigateSettingsCommand}"
                             Tag="{Binding IsSettingsNavSelected}"
-                            ToolTip="Ayarlar">
+                            ToolTip="Ayarlar"
+                            AutomationProperties.Name="Ayarlar bölümünü aç">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="⚙" Style="{StaticResource NavIconStyle}" />
                             <TextBlock Text="Ayarlar" Style="{StaticResource NavigationLabelStyle}" />
@@ -409,15 +420,61 @@
                     </Grid.RowDefinitions>
 
                     <Border Grid.Row="0" Style="{StaticResource PanelSectionStyle}">
-                        <WrapPanel VerticalAlignment="Center">
-                            <Button Content="Cihaz ekle" Command="{Binding NavigateDeviceEditCommand}" Style="{StaticResource ToolbarButtonStyle}" />
-                            <Button Content="CSV içe aktar" Command="{Binding ImportDevicesCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" />
-                            <Button Content="CSV dışa aktar" Command="{Binding ExportDevicesCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" />
-                            <Button Content="Yenile" Command="{Binding RefreshDevicesCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" />
-                            <Button Content="Seçilenlere ping at" Command="{Binding PingSelectedDevicesBulkCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" />
-                            <Button Content="Kolonları yönet" x:Name="DeviceColumnsButton" Style="{StaticResource SecondaryToolbarButtonStyle}" ToolTip="Cihaz listesinde gösterilecek kolonları seçin" />
-                            <Button Content="Filtreleri temizle" Command="{Binding ClearDeviceFiltersCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" />
-                        </WrapPanel>
+                        <StackPanel>
+                            <WrapPanel VerticalAlignment="Center">
+                                <Button Content="+ Yeni Cihaz"
+                                        Command="{Binding NavigateDeviceEditCommand}"
+                                        Style="{StaticResource ToolbarButtonStyle}"
+                                        AutomationProperties.Name="Yeni cihaz ekle" />
+                                <Button Content="CSV İçe Aktar"
+                                        Command="{Binding ImportDevicesCommand}"
+                                        Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                        AutomationProperties.Name="CSV ile cihaz içe aktar" />
+                                <Button Content="CSV Dışa Aktar"
+                                        Command="{Binding ExportDevicesCommand}"
+                                        Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                        AutomationProperties.Name="Cihaz listesini CSV dışa aktar" />
+                                <Button Content="Yenile"
+                                        Command="{Binding RefreshDevicesCommand}"
+                                        Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                        AutomationProperties.Name="Cihaz listesini yenile" />
+                                <Button Content="Kolonları Yönet"
+                                        x:Name="DeviceColumnsButton"
+                                        Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                        ToolTip="Cihaz listesinde gösterilecek kolonları seçin"
+                                        AutomationProperties.Name="Cihaz kolonlarını yönet" />
+                                <Button Content="Filtreleri Temizle"
+                                        Command="{Binding ClearDeviceFiltersCommand}"
+                                        Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                        AutomationProperties.Name="Cihaz filtrelerini temizle" />
+                            </WrapPanel>
+                            <WrapPanel VerticalAlignment="Center" Margin="0,2,0,0">
+                                <Button Content="Seçileni Düzenle"
+                                        Command="{Binding EditSelectedDeviceCommand}"
+                                        Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                        AutomationProperties.Name="Seçili cihazı düzenle" />
+                                <Button Content="Seçileni Sil"
+                                        Command="{Binding DeleteSelectedDeviceCommand}"
+                                        Style="{StaticResource DangerToolbarButtonStyle}"
+                                        AutomationProperties.Name="Seçili cihazı sil" />
+                                <Button Content="Seçilene Ping"
+                                        Command="{Binding PingSelectedDeviceCommand}"
+                                        Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                        AutomationProperties.Name="Seçili cihaza ping at" />
+                                <Button Content="Seçilenleri Sil"
+                                        Command="{Binding DeleteSelectedDevicesBulkCommand}"
+                                        Style="{StaticResource DangerToolbarButtonStyle}"
+                                        AutomationProperties.Name="Seçili cihazları toplu sil" />
+                                <Button Content="Aktif Yap"
+                                        Command="{Binding ActivateSelectedDevicesCommand}"
+                                        Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                        AutomationProperties.Name="Seçili cihazları aktif yap" />
+                                <Button Content="Pasif Yap"
+                                        Command="{Binding DeactivateSelectedDevicesCommand}"
+                                        Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                        AutomationProperties.Name="Seçili cihazları pasif yap" />
+                            </WrapPanel>
+                        </StackPanel>
                     </Border>
 
                     <Border Grid.Row="1" Style="{StaticResource PanelSectionStyle}">
@@ -425,6 +482,7 @@
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="2*" />
+                                    <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
@@ -441,7 +499,11 @@
                                     <TextBlock Text="Grup" Style="{StaticResource FormFieldLabelStyle}" />
                                     <ComboBox ItemsSource="{Binding DeviceGroupFilterOptions}" SelectedItem="{Binding DeviceGroupFilter}" Style="{StaticResource FormComboBoxStyle}" />
                                 </StackPanel>
-                                <StackPanel Grid.Column="3">
+                                <StackPanel Grid.Column="3" Margin="0,0,10,0">
+                                    <TextBlock Text="Aktif/Pasif" Style="{StaticResource FormFieldLabelStyle}" />
+                                    <ComboBox ItemsSource="{Binding DeviceActivityFilterOptions}" SelectedItem="{Binding DeviceActivityFilter}" Style="{StaticResource FormComboBoxStyle}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="4">
                                     <TextBlock Text="Durum" Style="{StaticResource FormFieldLabelStyle}" />
                                     <ComboBox ItemsSource="{Binding DeviceStatusFilterOptions}" SelectedItem="{Binding DeviceStatusFilter}" Style="{StaticResource FormComboBoxStyle}" />
                                 </StackPanel>
@@ -454,8 +516,8 @@
                                 <ComboBox Width="170" ItemsSource="{Binding CriticalFilterOptions}" SelectedItem="{Binding CriticalFilter}" Style="{StaticResource ModernComboBoxStyle}" Margin="0,0,8,8" />
                                 <ComboBox Width="170" ItemsSource="{Binding DeviceDeletedFilterOptions}" SelectedItem="{Binding DeletedDeviceFilter}" Style="{StaticResource ModernComboBoxStyle}" Margin="0,0,8,8" />
                                 <CheckBox Content="Yalnızca sorunlu cihazlar" IsChecked="{Binding DeviceOnlyProblematic}" VerticalAlignment="Center" Margin="0,0,12,8" />
-                                <Border Background="{StaticResource ShellInfoBackgroundBrush}" BorderBrush="{StaticResource ShellInfoBorderBrush}" BorderThickness="1" CornerRadius="999" Padding="10,5" Margin="0,0,8,8">
-                                    <TextBlock Text="{Binding ActiveDeviceFilterSummaryText}" Foreground="{StaticResource ShellPrimaryBrush}" TextWrapping="Wrap" />
+                                <Border Background="{StaticResource ShellSurfaceAltBrush}" BorderBrush="{StaticResource ShellBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="8,4" Margin="0,0,8,8" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding ActiveDeviceFilterSummaryText}" Foreground="{StaticResource ShellMutedTextBrush}" FontSize="12" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
                                 </Border>
                             </WrapPanel>
                         </StackPanel>
@@ -464,18 +526,7 @@
                     <Grid Grid.Row="2">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="0">
-                                <ColumnDefinition.Style>
-                                    <Style TargetType="ColumnDefinition">
-                                        <Setter Property="Width" Value="0" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding ShowDeviceFormPane}" Value="True">
-                                                <Setter Property="Width" Value="560" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </ColumnDefinition.Style>
-                            </ColumnDefinition>
+                            <ColumnDefinition Width="0" />
                         </Grid.ColumnDefinitions>
 
                         <Grid Grid.Column="0">
@@ -488,18 +539,19 @@
                                 <DockPanel>
                                     <TextBlock DockPanel.Dock="Left" Text="{Binding SelectedDeviceCountText}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,16,0" />
                                     <WrapPanel>
-                                        <Button Content="Ping at" Command="{Binding PingSelectedDevicesBulkCommand}" Style="{StaticResource SmallActionButtonStyle}" />
+                                        <Button Content="Ping at" Command="{Binding PingSelectedDevicesBulkCommand}" Style="{StaticResource SmallActionButtonStyle}" AutomationProperties.Name="Seçili cihazlara ping at" />
                                         <ComboBox Width="180" ItemsSource="{Binding DeviceGroupOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding BulkTargetGroupId}" Style="{StaticResource ModernComboBoxStyle}" Margin="0,0,6,6" />
-                                        <Button Content="Gruba ata" Command="{Binding AssignSelectedDevicesToGroupCommand}" Style="{StaticResource SmallActionButtonStyle}" />
-                                        <Button Content="Otomatik kontrolü aç" Command="{Binding EnableAutoCheckSelectedCommand}" Style="{StaticResource SmallActionButtonStyle}" />
-                                        <Button Content="Otomatik kontrolü kapat" Command="{Binding DisableAutoCheckSelectedCommand}" Style="{StaticResource SmallActionButtonStyle}" />
+                                        <Button Content="Gruba ata" Command="{Binding AssignSelectedDevicesToGroupCommand}" Style="{StaticResource SmallActionButtonStyle}" AutomationProperties.Name="Seçili cihazları gruba ata" />
+                                        <Button Content="Otomatik kontrolü aç" Command="{Binding EnableAutoCheckSelectedCommand}" Style="{StaticResource SmallActionButtonStyle}" AutomationProperties.Name="Seçili cihazlarda otomatik kontrolü aç" />
+                                        <Button Content="Otomatik kontrolü kapat" Command="{Binding DisableAutoCheckSelectedCommand}" Style="{StaticResource SmallActionButtonStyle}" AutomationProperties.Name="Seçili cihazlarda otomatik kontrolü kapat" />
                                         <TextBox Width="70" Text="{Binding BulkSuppressionDurationHours}" Style="{StaticResource ModernTextBoxStyle}" Margin="0,0,6,6" ToolTip="Süre, saat olarak girilir. Sıfır süresiz anlamına gelir." />
                                         <TextBox Width="160" Text="{Binding BulkSuppressionReason}" Style="{StaticResource ModernTextBoxStyle}" Margin="0,0,6,6" ToolTip="Bakım, cihaz değişimi veya hat problemi gibi neden yazın." />
-                                        <Button Content="Bildirimleri sustur" Command="{Binding MuteNotificationsSelectedCommand}" Style="{StaticResource SmallActionButtonStyle}" />
-                                        <Button Content="İzlemeyi durdur" Command="{Binding PauseMonitoringSelectedCommand}" Style="{StaticResource SmallActionButtonStyle}" />
-                                        <Button Content="Susturmayı kaldır" Command="{Binding ClearSuppressionSelectedCommand}" Style="{StaticResource SmallActionButtonStyle}" />
-                                        <Button Content="Pasif yap" Command="{Binding DeactivateSelectedDevicesCommand}" Style="{StaticResource SmallActionButtonStyle}" />
-                                        <Button Content="Sil" Command="{Binding DeleteSelectedDevicesBulkCommand}" Style="{StaticResource DangerToolbarButtonStyle}" />
+                                        <Button Content="Bildirimleri sustur" Command="{Binding MuteNotificationsSelectedCommand}" Style="{StaticResource SmallActionButtonStyle}" AutomationProperties.Name="Seçili cihazlarda bildirimleri sustur" />
+                                        <Button Content="İzlemeyi durdur" Command="{Binding PauseMonitoringSelectedCommand}" Style="{StaticResource SmallActionButtonStyle}" AutomationProperties.Name="Seçili cihazlarda izlemeyi durdur" />
+                                        <Button Content="Susturmayı kaldır" Command="{Binding ClearSuppressionSelectedCommand}" Style="{StaticResource SmallActionButtonStyle}" AutomationProperties.Name="Seçili cihazlarda susturmayı kaldır" />
+                                        <Button Content="Aktif yap" Command="{Binding ActivateSelectedDevicesCommand}" Style="{StaticResource SmallActionButtonStyle}" AutomationProperties.Name="Seçili cihazları aktif yap" />
+                                        <Button Content="Pasif yap" Command="{Binding DeactivateSelectedDevicesCommand}" Style="{StaticResource SmallActionButtonStyle}" AutomationProperties.Name="Seçili cihazları pasif yap" />
+                                        <Button Content="Sil" Command="{Binding DeleteSelectedDevicesBulkCommand}" Style="{StaticResource DangerToolbarButtonStyle}" AutomationProperties.Name="Seçili cihazları sil" />
                                     </WrapPanel>
                                 </DockPanel>
                             </Border>
@@ -526,9 +578,11 @@
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTextColumn Header="IP adresi" Binding="{Binding IpAddress}" Width="145" MinWidth="145" ElementStyle="{StaticResource IpAddressCellTextStyle}" />
+                                    <DataGridTextColumn Header="IP adresi / hostname" Binding="{Binding IpAddress}" Width="185" MinWidth="165" ElementStyle="{StaticResource IpAddressCellTextStyle}" />
                                     <DataGridTextColumn Header="Cihaz tipi" Binding="{Binding DeviceTypeText}" Width="130" MinWidth="110" />
                                     <DataGridTextColumn Header="Grup" Binding="{Binding GroupName}" Width="150" MinWidth="120" ElementStyle="{StaticResource ReadableCellTextStyle}" />
+                                    <DataGridTextColumn Header="Konum" Binding="{Binding Location}" Width="150" MinWidth="120" ElementStyle="{StaticResource ReadableCellTextStyle}" />
+                                    <DataGridTextColumn Header="Aktif/Pasif" Binding="{Binding IsDeletedOrDisabledText}" Width="115" MinWidth="110" />
                                     <DataGridTemplateColumn Header="Son durum" Width="190" MinWidth="170">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
@@ -551,13 +605,14 @@
                                     <DataGridTextColumn Header="Uptime" Binding="{Binding Uptime30DaysText}" Width="92" />
                                     <DataGridTextColumn Header="Otomatik kontrol" Binding="{Binding AutoCheckText}" Width="130" />
                                     <DataGridTextColumn Header="Bildirim durumu" Binding="{Binding SuppressionText}" Width="175" ElementStyle="{StaticResource ReadableCellTextStyle}" />
-                                    <DataGridTemplateColumn Header="İşlemler" Width="190" MinWidth="170">
+                                    <DataGridTextColumn Header="Açıklama" Binding="{Binding Description}" Width="220" MinWidth="160" ElementStyle="{StaticResource ReadableCellTextStyle}" />
+                                    <DataGridTemplateColumn Header="İşlemler" Width="200" MinWidth="180">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <WrapPanel>
-                                                    <Button Content="Ping" Command="{Binding DataContext.PingDeviceCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" Style="{StaticResource SmallActionButtonStyle}" />
-                                                    <Button Content="Detayı aç" Command="{Binding DataContext.EditDeviceCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" Style="{StaticResource SmallActionButtonStyle}" />
-                                                    <Button Content="Sil" Command="{Binding DataContext.DeleteDeviceCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" Style="{StaticResource SmallActionButtonStyle}" />
+                                                    <Button Content="Düzenle" Command="{Binding DataContext.EditDeviceCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" Style="{StaticResource SmallActionButtonStyle}" AutomationProperties.Name="Cihazı düzenle" />
+                                                    <Button Content="Ping" Command="{Binding DataContext.PingDeviceCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" Style="{StaticResource SmallActionButtonStyle}" AutomationProperties.Name="Cihaz bağlantısına ping at" />
+                                                    <Button Content="Sil" Command="{Binding DataContext.DeleteDeviceCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" Style="{StaticResource SmallActionButtonStyle}" AutomationProperties.Name="Cihazı sil" />
                                                 </WrapPanel>
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
@@ -565,49 +620,93 @@
                                 </DataGrid.Columns>
                             </DataGrid>
 
-                            <TextBlock Grid.Row="1"
-                                       Text="Filtrelerle eşleşen cihaz bulunamadı. Filtreleri temizleyebilir veya yeni cihaz ekleyebilirsiniz."
-                                       Style="{StaticResource BodyMutedTextStyle}"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       Visibility="{Binding HasNoFilteredDevices, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <Border Grid.Row="1"
+                                    Style="{StaticResource PanelSurfaceStyle}"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    MaxWidth="520"
+                                    Visibility="{Binding HasNoDevices, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel HorizontalAlignment="Center">
+                                    <TextBlock Text="Henüz cihaz eklenmemiş." FontSize="18" FontWeight="SemiBold" TextAlignment="Center" />
+                                    <TextBlock Text="İlk cihazınızı manuel olarak ekleyebilir veya CSV dosyasından toplu içe aktarabilirsiniz."
+                                               Style="{StaticResource BodyMutedTextStyle}"
+                                               TextAlignment="Center"
+                                               Margin="0,8,0,14" />
+                                    <WrapPanel HorizontalAlignment="Center">
+                                        <Button Content="+ Yeni Cihaz"
+                                                Command="{Binding NavigateDeviceEditCommand}"
+                                                Style="{StaticResource ToolbarButtonStyle}"
+                                                AutomationProperties.Name="Boş listeden yeni cihaz ekle" />
+                                        <Button Content="CSV İçe Aktar"
+                                                Command="{Binding ImportDevicesCommand}"
+                                                Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                                AutomationProperties.Name="Boş listeden CSV ile cihaz içe aktar" />
+                                    </WrapPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Grid.Row="1"
+                                    Style="{StaticResource InlineNoticeStyle}"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    MaxWidth="560"
+                                    Visibility="{Binding HasDevicesButNoFilteredDevices, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel>
+                                    <TextBlock Text="Filtrelerle eşleşen cihaz bulunamadı." FontWeight="SemiBold" TextAlignment="Center" />
+                                    <TextBlock Text="Filtreleri temizleyebilir veya arama ölçütünü değiştirebilirsiniz."
+                                               Style="{StaticResource BodyMutedTextStyle}"
+                                               TextAlignment="Center"
+                                               Margin="0,6,0,10" />
+                                    <Button Content="Filtreleri Temizle"
+                                            Command="{Binding ClearDeviceFiltersCommand}"
+                                            Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                            HorizontalAlignment="Center"
+                                            AutomationProperties.Name="Boş filtre sonucunda cihaz filtrelerini temizle" />
+                                </StackPanel>
+                            </Border>
                         </Grid>
 
                         <Border Grid.Column="1"
                                 Style="{StaticResource PanelSurfaceStyle}"
                                 Margin="14,0,0,0"
-                                Visibility="{Binding ShowDeviceFormPane, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                Visibility="Collapsed">
+                            <Border.InputBindings>
+                                <KeyBinding Key="Enter" Command="{Binding SaveDeviceCommand}" />
+                                <KeyBinding Key="Escape" Command="{Binding CloseDeviceFormCommand}" />
+                            </Border.InputBindings>
                             <ScrollViewer VerticalScrollBarVisibility="Auto">
                                 <StackPanel>
                                     <DockPanel Margin="0,0,0,12">
-                                        <Button DockPanel.Dock="Right" Content="Kapat" Command="{Binding CloseDeviceFormCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" />
+                                        <Button DockPanel.Dock="Right" Content="Kapat" Command="{Binding CloseDeviceFormCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" AutomationProperties.Name="Cihaz formunu kapat" />
                                         <TextBlock Text="{Binding DeviceFormTitle}" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
                                     </DockPanel>
                                     <TextBlock Text="Genel bilgiler" FontWeight="SemiBold" Margin="0,0,0,8" />
-                                    <TextBlock Text="Cihaz adı" Style="{StaticResource FormFieldLabelStyle}" />
-                                    <TextBox Text="{Binding FormName, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FormTextBoxStyle}" />
-                                    <TextBlock Text="IPv4 adresi" Style="{StaticResource FormFieldLabelStyle}" />
-                                    <TextBox Text="{Binding FormIpAddress, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FormTextBoxStyle}" />
+                                    <TextBlock Text="Cihaz adı *" Style="{StaticResource FormFieldLabelStyle}" />
+                                    <TextBox Text="{Binding FormName, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FormTextBoxStyle}" AutomationProperties.Name="Cihaz adı" />
+                                    <TextBlock Text="IP adresi veya hostname *" Style="{StaticResource FormFieldLabelStyle}" />
+                                    <TextBox Text="{Binding FormIpAddress, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FormTextBoxStyle}" AutomationProperties.Name="IP adresi veya hostname" />
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,8,0">
-                                            <TextBlock Text="Cihaz tipi" Style="{StaticResource FormFieldLabelStyle}" />
-                                            <ComboBox ItemsSource="{Binding DeviceTypeOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding FormDeviceType}" Style="{StaticResource FormComboBoxStyle}" />
+                                            <TextBlock Text="Cihaz tipi *" Style="{StaticResource FormFieldLabelStyle}" />
+                                            <ComboBox ItemsSource="{Binding DeviceTypeOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding FormDeviceType}" Style="{StaticResource FormComboBoxStyle}" AutomationProperties.Name="Cihaz tipi" />
                                         </StackPanel>
                                         <StackPanel Grid.Column="1">
                                             <TextBlock Text="Grup" Style="{StaticResource FormFieldLabelStyle}" />
-                                            <ComboBox ItemsSource="{Binding DeviceGroupOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding FormGroupId}" Style="{StaticResource FormComboBoxStyle}" />
+                                            <ComboBox ItemsSource="{Binding DeviceGroupOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding FormGroupId}" Style="{StaticResource FormComboBoxStyle}" AutomationProperties.Name="Cihaz grubu" />
                                         </StackPanel>
                                     </Grid>
+                                    <TextBlock Text="Grup / Konum" Style="{StaticResource FormFieldLabelStyle}" />
+                                    <TextBox Text="{Binding FormLocation, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FormTextBoxStyle}" AutomationProperties.Name="Grup veya konum" />
                                     <TextBlock Text="Açıklama" Style="{StaticResource FormFieldLabelStyle}" />
-                                    <TextBox Text="{Binding FormDescription, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FormTextBoxStyle}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="72" VerticalScrollBarVisibility="Auto" />
+                                    <TextBox Text="{Binding FormDescription, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FormTextBoxStyle}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="72" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="Cihaz açıklaması" />
                                     <TextBlock Text="İzleme politikası" FontWeight="SemiBold" Margin="0,8,0,8" />
-                                    <CheckBox Content="Otomatik kontrole dahil et" IsChecked="{Binding FormAutoCheckEnabled}" Margin="0,0,0,10" />
+                                    <CheckBox Content="Otomatik kontrol ve bildirimleri etkinleştir" IsChecked="{Binding FormAutoCheckEnabled}" Margin="0,0,0,10" AutomationProperties.Name="Bildirimleri etkinleştir" />
                                     <TextBlock Text="Ping planı veya politika" Style="{StaticResource FormFieldLabelStyle}" />
-                                    <ComboBox ItemsSource="{Binding SchedulePlanOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding FormDefaultSchedulePlanId}" Style="{StaticResource FormComboBoxStyle}" />
+                                    <ComboBox ItemsSource="{Binding SchedulePlanOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding FormDefaultSchedulePlanId}" Style="{StaticResource FormComboBoxStyle}" AutomationProperties.Name="Ping planı veya politika" />
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
@@ -615,11 +714,11 @@
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,8,0">
                                             <TextBlock Text="Kontrol aralığı, saniye" Style="{StaticResource FormFieldLabelStyle}" />
-                                            <TextBox Text="{Binding FormCheckIntervalSeconds, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FormTextBoxStyle}" />
+                                            <TextBox Text="{Binding FormCheckIntervalSeconds, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FormTextBoxStyle}" AutomationProperties.Name="Kontrol aralığı saniye" />
                                         </StackPanel>
                                         <StackPanel Grid.Column="1">
-                                            <TextBlock Text="Zaman aşımı, ms" Style="{StaticResource FormFieldLabelStyle}" />
-                                            <TextBox Text="{Binding FormPingTimeoutMs, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FormTextBoxStyle}" />
+                                            <TextBlock Text="Ping zaman aşımı, ms" Style="{StaticResource FormFieldLabelStyle}" />
+                                            <TextBox Text="{Binding FormPingTimeoutMs, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FormTextBoxStyle}" AutomationProperties.Name="Ping zaman aşımı" />
                                         </StackPanel>
                                     </Grid>
                                     <Grid>
@@ -629,22 +728,27 @@
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,8,0">
                                             <TextBlock Text="Yeniden deneme aralığı, saniye" Style="{StaticResource FormFieldLabelStyle}" />
-                                            <TextBox Text="{Binding FormFailureRetryIntervalSeconds, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FormTextBoxStyle}" />
+                                            <TextBox Text="{Binding FormFailureRetryIntervalSeconds, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FormTextBoxStyle}" AutomationProperties.Name="Yeniden deneme aralığı saniye" />
                                         </StackPanel>
                                         <StackPanel Grid.Column="1">
                                             <TextBlock Text="Yeniden deneme sınırı" Style="{StaticResource FormFieldLabelStyle}" />
-                                            <TextBox Text="{Binding FormFailureRetryLimit, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FormTextBoxStyle}" />
+                                            <TextBox Text="{Binding FormFailureRetryLimit, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FormTextBoxStyle}" AutomationProperties.Name="Yeniden deneme sınırı" />
                                         </StackPanel>
                                     </Grid>
                                     <TextBlock Text="Kesin sorun eşiği" Style="{StaticResource FormFieldLabelStyle}" />
-                                    <TextBox Text="{Binding FormFailureThreshold, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FormTextBoxStyle}" />
+                                    <TextBox Text="{Binding FormFailureThreshold, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FormTextBoxStyle}" AutomationProperties.Name="Kesin sorun eşiği" />
                                     <WrapPanel Margin="0,4,0,0">
-                                        <CheckBox Content="Kritik cihaz" IsChecked="{Binding FormIsCritical}" Margin="0,0,14,8" />
-                                        <CheckBox Content="Etkin kayıt" IsChecked="{Binding FormIsActive}" Margin="0,0,14,8" />
+                                        <CheckBox Content="Kritik cihaz" IsChecked="{Binding FormIsCritical}" Margin="0,0,14,8" AutomationProperties.Name="Kritik cihaz" />
+                                        <CheckBox Content="Aktif" IsChecked="{Binding FormIsActive}" Margin="0,0,14,8" AutomationProperties.Name="Cihaz aktif" />
                                     </WrapPanel>
+                                    <TextBlock Text="{Binding DeviceConnectionTestMessage}"
+                                               Style="{StaticResource BodyMutedTextStyle}"
+                                               Margin="0,4,0,4"
+                                               Visibility="{Binding HasDeviceConnectionTestMessage, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                     <WrapPanel HorizontalAlignment="Right" Margin="0,10,0,0">
-                                        <Button Content="Temizle" Command="{Binding ClearDeviceFormCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" />
-                                        <Button Content="{Binding DeviceFormActionText}" Command="{Binding SaveDeviceCommand}" Style="{StaticResource ToolbarButtonStyle}" />
+                                        <Button Content="Bağlantıyı Test Et" Command="{Binding TestDeviceConnectionCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" AutomationProperties.Name="Cihaz bağlantısını test et" />
+                                        <Button Content="{Binding DeviceFormActionText}" Command="{Binding SaveDeviceCommand}" Style="{StaticResource ToolbarButtonStyle}" AutomationProperties.Name="Cihazı kaydet" />
+                                        <Button Content="İptal" Command="{Binding CloseDeviceFormCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" AutomationProperties.Name="Cihaz formunu iptal et" />
                                     </WrapPanel>
                                 </StackPanel>
                             </ScrollViewer>
@@ -727,6 +831,82 @@
                                 <TextBlock Text="Normal kontrol" FontWeight="SemiBold" Margin="0,10,0,8" />
                                 <TextBlock Text="Zamanlama modu" Style="{StaticResource FormFieldLabelStyle}" />
                                 <ComboBox ItemsSource="{Binding ScheduleModeOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding PlanFormScheduleMode}" Style="{StaticResource FormComboBoxStyle}" />
+                                <Border Style="{StaticResource PanelSectionStyle}" Visibility="Collapsed">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <DockPanel Grid.Row="0" Margin="0,0,0,10">
+                                            <Button DockPanel.Dock="Right"
+                                                    Content="Durumu Yenile"
+                                                    Command="{Binding RefreshWorkerServiceStatusCommand}"
+                                                    Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                                    AutomationProperties.Name="İzleme hizmeti durumunu yenile" />
+                                            <StackPanel>
+                                                <TextBlock Text="İzleme Hizmeti" FontSize="18" FontWeight="SemiBold" />
+                                                <TextBlock Text="İzleme hizmeti ağ cihazlarını arka planda kontrol eder. Ana yönetim ekranı kapalı olsa bile çalışabilir."
+                                                           Style="{StaticResource BodyMutedTextStyle}" />
+                                            </StackPanel>
+                                        </DockPanel>
+                                        <Grid Grid.Row="1" Margin="0,0,0,10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Border Style="{StaticResource TopMetricStyle}">
+                                                <StackPanel>
+                                                    <TextBlock Text="Servis durumu" Style="{StaticResource MicroLabelTextStyle}" />
+                                                    <TextBlock Text="{Binding WorkerHealthText}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                                </StackPanel>
+                                            </Border>
+                                            <Border Grid.Column="1" Style="{StaticResource TopMetricStyle}">
+                                                <StackPanel>
+                                                    <TextBlock Text="Başlangıç davranışı" Style="{StaticResource MicroLabelTextStyle}" />
+                                                    <TextBlock Text="{Binding WorkerStartupBehaviorText}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                                </StackPanel>
+                                            </Border>
+                                            <Border Grid.Column="2" Style="{StaticResource TopMetricStyle}">
+                                                <StackPanel>
+                                                    <TextBlock Text="SCM startup type" Style="{StaticResource MicroLabelTextStyle}" />
+                                                    <TextBlock Text="{Binding WorkerStartupTypeText}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+                                        <Grid Grid.Row="2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel>
+                                                <CheckBox Content="Windows açıldığında izleme hizmetini otomatik başlat"
+                                                          IsChecked="{Binding WorkerAutostartEnabled, Mode=TwoWay}"
+                                                          IsEnabled="{Binding IsWorkerServiceInstalled}"
+                                                          Margin="0,0,0,6"
+                                                          AutomationProperties.Name="Windows açıldığında izleme hizmetini otomatik başlat" />
+                                                <TextBlock Text="{Binding WorkerServiceControlMessage}"
+                                                           Style="{StaticResource BodyMutedTextStyle}"
+                                                           TextWrapping="Wrap" />
+                                            </StackPanel>
+                                            <WrapPanel Grid.Column="1">
+                                                <Button Content="İzleme hizmetini başlat"
+                                                        Command="{Binding StartSchedulerCommand}"
+                                                        Style="{StaticResource ToolbarButtonStyle}"
+                                                        AutomationProperties.Name="İzleme hizmetini başlat" />
+                                                <Button Content="İzleme hizmetini durdur"
+                                                        Command="{Binding StopSchedulerCommand}"
+                                                        Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                                        AutomationProperties.Name="İzleme hizmetini durdur" />
+                                                <Button Content="İzleme hizmetini yeniden başlat"
+                                                        Command="{Binding RestartWorkerServiceCommand}"
+                                                        Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                                        AutomationProperties.Name="İzleme hizmetini yeniden başlat" />
+                                            </WrapPanel>
+                                        </Grid>
+                                    </Grid>
+                                </Border>
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -1316,6 +1496,82 @@
 
                             <StackPanel Visibility="{Binding IsSettingsReadinessSection, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <Border Style="{StaticResource PanelSectionStyle}">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <DockPanel Grid.Row="0" Margin="0,0,0,10">
+                                            <Button DockPanel.Dock="Right"
+                                                    Content="Durumu Yenile"
+                                                    Command="{Binding RefreshWorkerServiceStatusCommand}"
+                                                    Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                                    AutomationProperties.Name="İzleme hizmeti durumunu yenile" />
+                                            <StackPanel>
+                                                <TextBlock Text="İzleme Hizmeti" FontSize="18" FontWeight="SemiBold" />
+                                                <TextBlock Text="İzleme hizmeti ağ cihazlarını arka planda kontrol eder. Ana yönetim ekranı kapalı olsa bile çalışabilir."
+                                                           Style="{StaticResource BodyMutedTextStyle}" />
+                                            </StackPanel>
+                                        </DockPanel>
+                                        <Grid Grid.Row="1" Margin="0,0,0,10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Border Style="{StaticResource TopMetricStyle}">
+                                                <StackPanel>
+                                                    <TextBlock Text="Servis durumu" Style="{StaticResource MicroLabelTextStyle}" />
+                                                    <TextBlock Text="{Binding WorkerHealthText}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                                </StackPanel>
+                                            </Border>
+                                            <Border Grid.Column="1" Style="{StaticResource TopMetricStyle}">
+                                                <StackPanel>
+                                                    <TextBlock Text="Başlangıç davranışı" Style="{StaticResource MicroLabelTextStyle}" />
+                                                    <TextBlock Text="{Binding WorkerStartupBehaviorText}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                                </StackPanel>
+                                            </Border>
+                                            <Border Grid.Column="2" Style="{StaticResource TopMetricStyle}">
+                                                <StackPanel>
+                                                    <TextBlock Text="SCM startup type" Style="{StaticResource MicroLabelTextStyle}" />
+                                                    <TextBlock Text="{Binding WorkerStartupTypeText}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+                                        <Grid Grid.Row="2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel>
+                                                <CheckBox Content="Windows açıldığında izleme hizmetini otomatik başlat"
+                                                          IsChecked="{Binding WorkerAutostartEnabled, Mode=TwoWay}"
+                                                          IsEnabled="{Binding IsWorkerServiceInstalled}"
+                                                          Margin="0,0,0,6"
+                                                          AutomationProperties.Name="Windows açıldığında izleme hizmetini otomatik başlat" />
+                                                <TextBlock Text="{Binding WorkerServiceControlMessage}"
+                                                           Style="{StaticResource BodyMutedTextStyle}"
+                                                           TextWrapping="Wrap" />
+                                            </StackPanel>
+                                            <WrapPanel Grid.Column="1">
+                                                <Button Content="İzleme hizmetini başlat"
+                                                        Command="{Binding StartSchedulerCommand}"
+                                                        Style="{StaticResource ToolbarButtonStyle}"
+                                                        AutomationProperties.Name="İzleme hizmetini başlat" />
+                                                <Button Content="İzleme hizmetini durdur"
+                                                        Command="{Binding StopSchedulerCommand}"
+                                                        Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                                        AutomationProperties.Name="İzleme hizmetini durdur" />
+                                                <Button Content="İzleme hizmetini yeniden başlat"
+                                                        Command="{Binding RestartWorkerServiceCommand}"
+                                                        Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                                        AutomationProperties.Name="İzleme hizmetini yeniden başlat" />
+                                            </WrapPanel>
+                                        </Grid>
+                                    </Grid>
+                                </Border>
+                                <Border Style="{StaticResource PanelSectionStyle}">
                                     <DockPanel>
                                         <Button DockPanel.Dock="Right" Content="Yenile" Command="{Binding RefreshReadinessCommand}" Style="{StaticResource ToolbarButtonStyle}" />
                                         <StackPanel>
@@ -1425,6 +1681,18 @@
                     <Button Grid.Column="1" Content="İptal" Command="{Binding CancelPingCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" Visibility="{Binding CanShowPingProgress, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 </Grid>
             </Border>
+        </Grid>
+
+        <Grid Grid.ColumnSpan="2"
+              Panel.ZIndex="100"
+              Background="#99000000"
+              Visibility="{Binding IsDeviceFormVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Grid.InputBindings>
+                <KeyBinding Key="Escape" Command="{Binding CloseDeviceFormCommand}" />
+            </Grid.InputBindings>
+            <dialogs:AddEditDeviceDialog HorizontalAlignment="Center"
+                                         VerticalAlignment="Center"
+                                         Margin="24" />
         </Grid>
     </Grid>
 </Window>

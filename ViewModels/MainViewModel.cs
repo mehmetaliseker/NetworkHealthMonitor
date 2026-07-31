@@ -40,6 +40,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private const string ActiveDevicesText = "Etkin kayıtlar";
     private const string DeletedDevicesText = "Silinen cihazlar";
     private const string AllDeletionStatesText = "Tüm kayıtlar";
+    private const string AllActivityStatesText = "Tüm aktiflik durumları";
+    private const string ActiveOnlyText = "Aktif cihazlar";
+    private const string PassiveOnlyText = "Pasif cihazlar";
     private const string AllAutoCheckStatesText = "Tüm otomatik kontrol durumları";
     private const string AutoCheckEnabledText = "Otomatik kontrol açık";
     private const string AutoCheckDisabledText = "Otomatik kontrol kapalı";
@@ -67,6 +70,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly IDeviceGroupService _deviceGroupService;
     private readonly ISchedulePlanService _schedulePlanService;
     private readonly IPingExecutionService _pingExecutionService;
+    private readonly IDeviceConnectionTestService _deviceConnectionTestService;
     private readonly IAvailabilityService _availabilityService;
     private readonly ISchedulerService _schedulerService;
     private readonly SchedulePlanTargetResolver _schedulePlanTargetResolver;
@@ -85,6 +89,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly IUiAutostartService _uiAutostartService;
 
     private CancellationTokenSource? _pingCancellationTokenSource;
+    private CancellationTokenSource? _deviceConnectionTestCancellationTokenSource;
     private bool _isInitialized;
     private bool _isBusy;
     private bool _isPinging;
@@ -103,6 +108,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private string _deviceGroupFilter = AllGroupsText;
     private string _criticalFilter = AllCriticalText;
     private string _deletedDeviceFilter = ActiveDevicesText;
+    private string _deviceActivityFilter = AllActivityStatesText;
     private string _autoCheckFilter = AllAutoCheckStatesText;
     private string _suppressionFilter = AllSuppressionStatesText;
     private string _uptimeRangeFilter = AllUptimeRangesText;
@@ -132,6 +138,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private int _formFailureThreshold;
     private bool _formIsCritical;
     private bool _formIsActive = true;
+    private bool _isTestingDeviceConnection;
+    private string _deviceConnectionTestMessage = string.Empty;
+    private string _deviceNameValidationMessage = string.Empty;
+    private string _deviceAddressValidationMessage = string.Empty;
+    private string _deviceFormValidationMessage = string.Empty;
     private int? _editingGroupId;
     private string _groupFormName = string.Empty;
     private string _groupFormDescription = string.Empty;
@@ -266,6 +277,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private int _pingFailureCount;
     private bool _isSchedulerRunning;
     private string _schedulerStatusText = "Bilinmiyor";
+    private bool _workerAutostartEnabled;
+    private bool _isSyncingWorkerAutostart;
+    private bool _isWorkerServiceOperationInProgress;
+    private bool _isWorkerServiceInstalled;
+    private bool _isWorkerServiceRunning;
+    private string _workerStartupTypeText = "Bilinmiyor";
+    private string _workerStartupBehaviorText = "Bilinmiyor";
+    private string _workerServiceControlMessage = string.Empty;
 
     public MainViewModel(
         DeviceRepository deviceRepository,
@@ -292,7 +311,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         INotificationOutboxRepository? notificationOutboxRepository = null,
         WorkerHeartbeatRepository? workerHeartbeatRepository = null,
         IUiAutostartService? uiAutostartService = null,
-        IEmailSender? emailSender = null)
+        IEmailSender? emailSender = null,
+        IDeviceConnectionTestService? deviceConnectionTestService = null)
     {
         _deviceRepository = deviceRepository;
         _deviceGroupRepository = deviceGroupRepository;
@@ -303,6 +323,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _deviceGroupService = deviceGroupService;
         _schedulePlanService = schedulePlanService;
         _pingExecutionService = pingExecutionService;
+        _deviceConnectionTestService = deviceConnectionTestService ?? new DeviceConnectionTestService(new PingService());
         _availabilityService = availabilityService;
         _schedulerService = schedulerService;
         _schedulePlanTargetResolver = schedulePlanTargetResolver;
@@ -341,6 +362,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         });
         CriticalFilterOptions = new ObservableCollection<string>(new[] { AllCriticalText, CriticalOnlyText, NonCriticalOnlyText });
         DeviceDeletedFilterOptions = new ObservableCollection<string>(new[] { ActiveDevicesText, DeletedDevicesText, AllDeletionStatesText });
+        DeviceActivityFilterOptions = new ObservableCollection<string>(new[] { AllActivityStatesText, ActiveOnlyText, PassiveOnlyText });
         AutoCheckFilterOptions = new ObservableCollection<string>(new[] { AllAutoCheckStatesText, AutoCheckEnabledText, AutoCheckDisabledText });
         SuppressionFilterOptions = new ObservableCollection<string>(new[] { AllSuppressionStatesText, MutedOnlyText, PausedOnlyText, NoSuppressionText });
         UptimeRangeFilterOptions = new ObservableCollection<string>(new[] { AllUptimeRangesText, UptimeUnder95Text, UptimeUnder99Text, UptimeUnknownText });
@@ -460,6 +482,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         ClearDeviceFiltersCommand = new RelayCommand(ClearDeviceFilters);
 
         SaveDeviceCommand = new AsyncRelayCommand(SaveDeviceAsync, () => !IsBusy);
+        TestDeviceConnectionCommand = new AsyncRelayCommand(TestDeviceConnectionAsync, () => !IsBusy && !IsTestingDeviceConnection);
         ClearDeviceFormCommand = new RelayCommand(ClearDeviceForm, () => !IsBusy);
         EditSelectedDeviceCommand = new RelayCommand(() => StartEditDevice(SelectedDevice), () => SelectedDevice is not null && !IsBusy);
         EditDeviceCommand = new RelayCommand<Device>(StartEditDevice, device => device is not null && !IsBusy);
@@ -481,7 +504,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         MuteNotificationsSelectedCommand = new AsyncRelayCommand<object>(parameter => BulkSetSuppressionAsync(parameter, DeviceSuppressionMode.MuteNotifications), CanUseSelectedDevices);
         PauseMonitoringSelectedCommand = new AsyncRelayCommand<object>(parameter => BulkSetSuppressionAsync(parameter, DeviceSuppressionMode.PauseMonitoring), CanUseSelectedDevices);
         ClearSuppressionSelectedCommand = new AsyncRelayCommand<object>(BulkClearSuppressionAsync, CanUseSelectedDevices);
-        DeactivateSelectedDevicesCommand = new AsyncRelayCommand<object>(BulkDeactivateAsync, CanUseSelectedDevices);
+        ActivateSelectedDevicesCommand = new AsyncRelayCommand<object>(parameter => BulkSetActiveAsync(parameter, true), CanUseSelectedDevices);
+        DeactivateSelectedDevicesCommand = new AsyncRelayCommand<object>(parameter => BulkSetActiveAsync(parameter, false), CanUseSelectedDevices);
         DeleteSelectedDevicesBulkCommand = new AsyncRelayCommand<object>(BulkDeleteAsync, CanUseSelectedDevices);
         RestoreSelectedDevicesBulkCommand = new AsyncRelayCommand<object>(BulkRestoreAsync, parameter => !IsBusy && GetSelectedDevices(parameter).Any(device => device.IsDeleted));
         ToggleAllVisibleDevicesSelectionCommand = new RelayCommand(ToggleAllVisibleDevicesSelection, () => !IsBusy);
@@ -499,8 +523,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         EditSelectedSchedulePlanCommand = new RelayCommand(() => StartEditSchedulePlan(SelectedSchedulePlan), () => SelectedSchedulePlan is not null && !IsBusy);
         DeleteSelectedSchedulePlanCommand = new AsyncRelayCommand(() => DeleteSchedulePlanAsync(SelectedSchedulePlan), () => SelectedSchedulePlan is not null && !IsBusy);
         RunSelectedSchedulePlanCommand = new AsyncRelayCommand(() => SelectedSchedulePlan is null ? Task.CompletedTask : RunSchedulePlanNowAsync(SelectedSchedulePlan), () => SelectedSchedulePlan is { IsActive: true } && !IsBusy);
-        StartSchedulerCommand = new AsyncRelayCommand(ShowServiceControlInfoAsync, () => !IsBusy);
-        StopSchedulerCommand = new AsyncRelayCommand(ShowServiceControlInfoAsync, () => !IsBusy);
+        StartSchedulerCommand = new AsyncRelayCommand(StartSchedulerAsync, CanControlWorkerService);
+        StopSchedulerCommand = new AsyncRelayCommand(StopSchedulerAsync, CanControlWorkerService);
+        RestartWorkerServiceCommand = new AsyncRelayCommand(RestartWorkerServiceAsync, CanControlWorkerService);
+        RefreshWorkerServiceStatusCommand = new AsyncRelayCommand(RefreshWorkerServiceStatusAsync, () => !IsBusy && !IsWorkerServiceOperationInProgress);
 
         RefreshLogsCommand = new AsyncRelayCommand(LoadLogsAsync, () => !IsBusy);
         RefreshDevicesCommand = new AsyncRelayCommand(ReloadAllAsync, () => !IsBusy);
@@ -612,6 +638,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public ObservableCollection<string> DeviceDeletedFilterOptions { get; }
 
+    public ObservableCollection<string> DeviceActivityFilterOptions { get; }
+
     public ObservableCollection<string> AutoCheckFilterOptions { get; }
 
     public ObservableCollection<string> SuppressionFilterOptions { get; }
@@ -688,6 +716,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public RelayCommand CloseDeviceFormCommand { get; }
     public RelayCommand ClearDeviceFiltersCommand { get; }
     public AsyncRelayCommand SaveDeviceCommand { get; }
+    public AsyncRelayCommand TestDeviceConnectionCommand { get; }
     public RelayCommand ClearDeviceFormCommand { get; }
     public RelayCommand EditSelectedDeviceCommand { get; }
     public RelayCommand<Device> EditDeviceCommand { get; }
@@ -708,6 +737,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public AsyncRelayCommand<object> MuteNotificationsSelectedCommand { get; }
     public AsyncRelayCommand<object> PauseMonitoringSelectedCommand { get; }
     public AsyncRelayCommand<object> ClearSuppressionSelectedCommand { get; }
+    public AsyncRelayCommand<object> ActivateSelectedDevicesCommand { get; }
     public AsyncRelayCommand<object> DeactivateSelectedDevicesCommand { get; }
     public AsyncRelayCommand<object> DeleteSelectedDevicesBulkCommand { get; }
     public AsyncRelayCommand<object> RestoreSelectedDevicesBulkCommand { get; }
@@ -726,6 +756,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public AsyncRelayCommand RunSelectedSchedulePlanCommand { get; }
     public AsyncRelayCommand StartSchedulerCommand { get; }
     public AsyncRelayCommand StopSchedulerCommand { get; }
+    public AsyncRelayCommand RestartWorkerServiceCommand { get; }
+    public AsyncRelayCommand RefreshWorkerServiceStatusCommand { get; }
     public AsyncRelayCommand RefreshLogsCommand { get; }
     public AsyncRelayCommand RefreshDevicesCommand { get; }
     public AsyncRelayCommand ClearLogsCommand { get; }
@@ -1051,6 +1083,19 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    public string DeviceActivityFilter
+    {
+        get => _deviceActivityFilter;
+        set
+        {
+            if (SetProperty(ref _deviceActivityFilter, value ?? AllActivityStatesText))
+            {
+                DevicesView.Refresh();
+                NotifyDeviceFilterState();
+            }
+        }
+    }
+
     public string AutoCheckFilter
     {
         get => _autoCheckFilter;
@@ -1277,13 +1322,27 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public string FormName
     {
         get => _formName;
-        set => SetProperty(ref _formName, value ?? string.Empty);
+        set
+        {
+            if (SetProperty(ref _formName, value ?? string.Empty) && HasDeviceNameValidationMessage)
+            {
+                DeviceNameValidationMessage = string.Empty;
+                DeviceFormValidationMessage = string.Empty;
+            }
+        }
     }
 
     public string FormIpAddress
     {
         get => _formIpAddress;
-        set => SetProperty(ref _formIpAddress, value ?? string.Empty);
+        set
+        {
+            if (SetProperty(ref _formIpAddress, value ?? string.Empty) && HasDeviceAddressValidationMessage)
+            {
+                DeviceAddressValidationMessage = string.Empty;
+                DeviceFormValidationMessage = string.Empty;
+            }
+        }
     }
 
     public DeviceType FormDeviceType
@@ -1376,7 +1435,80 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         set => SetProperty(ref _formIsActive, value);
     }
 
-    public string DeviceFormTitle => _editingDeviceId.HasValue ? "Cihazı Düzenle" : "Yeni Cihaz";
+    public bool IsTestingDeviceConnection
+    {
+        get => _isTestingDeviceConnection;
+        private set
+        {
+            if (SetProperty(ref _isTestingDeviceConnection, value))
+            {
+                TestDeviceConnectionCommand?.NotifyCanExecuteChanged();
+            }
+        }
+    }
+
+    public string DeviceConnectionTestMessage
+    {
+        get => _deviceConnectionTestMessage;
+        private set
+        {
+            if (SetProperty(ref _deviceConnectionTestMessage, value ?? string.Empty))
+            {
+                OnPropertyChanged(nameof(HasDeviceConnectionTestMessage));
+                OnPropertyChanged(nameof(DeviceConnectionStatusText));
+            }
+        }
+    }
+
+    public bool HasDeviceConnectionTestMessage => !string.IsNullOrWhiteSpace(DeviceConnectionTestMessage);
+
+    public string DeviceConnectionStatusText => HasDeviceConnectionTestMessage
+        ? DeviceConnectionTestMessage
+        : "Bağlantı durumu: Henüz test edilmedi";
+
+    public string DeviceNameValidationMessage
+    {
+        get => _deviceNameValidationMessage;
+        private set
+        {
+            if (SetProperty(ref _deviceNameValidationMessage, value ?? string.Empty))
+            {
+                OnPropertyChanged(nameof(HasDeviceNameValidationMessage));
+            }
+        }
+    }
+
+    public bool HasDeviceNameValidationMessage => !string.IsNullOrWhiteSpace(DeviceNameValidationMessage);
+
+    public string DeviceAddressValidationMessage
+    {
+        get => _deviceAddressValidationMessage;
+        private set
+        {
+            if (SetProperty(ref _deviceAddressValidationMessage, value ?? string.Empty))
+            {
+                OnPropertyChanged(nameof(HasDeviceAddressValidationMessage));
+            }
+        }
+    }
+
+    public bool HasDeviceAddressValidationMessage => !string.IsNullOrWhiteSpace(DeviceAddressValidationMessage);
+
+    public string DeviceFormValidationMessage
+    {
+        get => _deviceFormValidationMessage;
+        private set
+        {
+            if (SetProperty(ref _deviceFormValidationMessage, value ?? string.Empty))
+            {
+                OnPropertyChanged(nameof(HasDeviceFormValidationMessage));
+            }
+        }
+    }
+
+    public bool HasDeviceFormValidationMessage => !string.IsNullOrWhiteSpace(DeviceFormValidationMessage);
+
+    public string DeviceFormTitle => _editingDeviceId.HasValue ? "Cihazı Düzenle" : "Yeni Cihaz Ekle";
 
     public string DeviceFormActionText => _editingDeviceId.HasValue ? "Güncelle" : "Kaydet";
 
@@ -2229,6 +2361,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 OnPropertyChanged(nameof(IsDeviceEditSection));
                 OnPropertyChanged(nameof(ShowDeviceListPane));
                 OnPropertyChanged(nameof(ShowDeviceFormPane));
+                OnPropertyChanged(nameof(DeviceWorkspaceColumns));
             }
         }
     }
@@ -2259,6 +2392,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         OnPropertyChanged(nameof(ActiveDeviceFilterCount));
         OnPropertyChanged(nameof(ActiveDeviceFilterCountText));
         OnPropertyChanged(nameof(ActiveDeviceFilterSummaryText));
+        OnPropertyChanged(nameof(HasNoDevices));
+        OnPropertyChanged(nameof(HasDevicesButNoFilteredDevices));
         OnPropertyChanged(nameof(HasNoFilteredDevices));
     }
 
@@ -2293,6 +2428,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             }
 
             if (DeletedDeviceFilter != ActiveDevicesText)
+            {
+                count++;
+            }
+
+            if (DeviceActivityFilter != AllActivityStatesText)
             {
                 count++;
             }
@@ -2346,6 +2486,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             AddIfActive(filters, DeviceGroupFilter, AllGroupsText);
             AddIfActive(filters, CriticalFilter, AllCriticalText);
             AddIfActive(filters, DeletedDeviceFilter, ActiveDevicesText);
+            AddIfActive(filters, DeviceActivityFilter, AllActivityStatesText);
             AddIfActive(filters, AutoCheckFilter, AllAutoCheckStatesText);
             AddIfActive(filters, SuppressionFilter, AllSuppressionStatesText);
             AddIfActive(filters, UptimeRangeFilter, AllUptimeRangesText);
@@ -2367,6 +2508,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             filters.Add(value);
         }
     }
+
+    public bool HasNoDevices =>
+        string.Equals(DeletedDeviceFilter, ActiveDevicesText, StringComparison.Ordinal)
+        && Devices.All(device => device.IsDeleted);
+
+    public bool HasDevicesButNoFilteredDevices => !HasNoDevices && DevicesView is { IsEmpty: true };
 
     public bool HasNoFilteredDevices => DevicesView is { IsEmpty: true };
 
@@ -2580,6 +2727,65 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         get => _schedulerStatusText;
         private set => SetProperty(ref _schedulerStatusText, value ?? "Bilinmiyor");
+    }
+
+    public bool WorkerAutostartEnabled
+    {
+        get => _workerAutostartEnabled;
+        set
+        {
+            if (!SetProperty(ref _workerAutostartEnabled, value))
+            {
+                return;
+            }
+
+            if (!_isSyncingWorkerAutostart)
+            {
+                _ = SetWorkerAutostartAsync(value);
+            }
+        }
+    }
+
+    public bool IsWorkerServiceInstalled
+    {
+        get => _isWorkerServiceInstalled;
+        private set => SetProperty(ref _isWorkerServiceInstalled, value);
+    }
+
+    public bool IsWorkerServiceRunning
+    {
+        get => _isWorkerServiceRunning;
+        private set => SetProperty(ref _isWorkerServiceRunning, value);
+    }
+
+    public bool IsWorkerServiceOperationInProgress
+    {
+        get => _isWorkerServiceOperationInProgress;
+        private set
+        {
+            if (SetProperty(ref _isWorkerServiceOperationInProgress, value))
+            {
+                RaiseCommandStates();
+            }
+        }
+    }
+
+    public string WorkerStartupTypeText
+    {
+        get => _workerStartupTypeText;
+        private set => SetProperty(ref _workerStartupTypeText, string.IsNullOrWhiteSpace(value) ? "Bilinmiyor" : value);
+    }
+
+    public string WorkerStartupBehaviorText
+    {
+        get => _workerStartupBehaviorText;
+        private set => SetProperty(ref _workerStartupBehaviorText, string.IsNullOrWhiteSpace(value) ? "Bilinmiyor" : value);
+    }
+
+    public string WorkerServiceControlMessage
+    {
+        get => _workerServiceControlMessage;
+        private set => SetProperty(ref _workerServiceControlMessage, value ?? string.Empty);
     }
 
     public int PingTotalCount

@@ -1,5 +1,6 @@
 ﻿using System.Globalization;
 using System.Windows;
+using NetworkHealthMonitor.Infrastructure;
 using NetworkHealthMonitor.Models;
 using NetworkHealthMonitor.Services;
 using WpfApplication = System.Windows.Application;
@@ -164,20 +165,79 @@ public sealed partial class MainViewModel
 
     private async Task StartSchedulerAsync()
     {
-        await ShowServiceControlInfoAsync();
+        await RunWorkerServiceOperationAsync(
+            () => _windowsServiceStatusService.StartAsync(),
+            "Worker başlatılıyor...");
     }
 
     private async Task StopSchedulerAsync()
     {
-        await ShowServiceControlInfoAsync();
+        await RunWorkerServiceOperationAsync(
+            () => _windowsServiceStatusService.StopAsync(),
+            "Worker durduruluyor...");
     }
 
-    private async Task ShowServiceControlInfoAsync()
+    private async Task RestartWorkerServiceAsync()
     {
-        await RefreshWorkerServiceStatusAsync();
-        _dialogService.ShowInfo(
-            "Windows Service yönetimi",
-            "Otomatik izleme Windows Service tarafından çalıştırılır. Başlatma, durdurma ve kurulum işlemleri için yönetici PowerShell ile scripts klasöründeki servis scriptlerini kullanın. Arayüz kapanırsa izleme servisi çalışmaya devam eder.");
+        await RunWorkerServiceOperationAsync(
+            () => _windowsServiceStatusService.RestartAsync(),
+            "Worker yeniden başlatılıyor...");
+    }
+
+    private async Task SetWorkerAutostartAsync(bool enabled)
+    {
+        if (_isSyncingWorkerAutostart)
+        {
+            return;
+        }
+
+        await RunWorkerServiceOperationAsync(
+            () => _windowsServiceStatusService.SetStartupTypeAsync(enabled),
+            enabled
+                ? "Worker otomatik başlangıcı açılıyor..."
+                : "Worker otomatik başlangıcı kapatılıyor...",
+            showWarningOnFailure: true);
+    }
+
+    private async Task RunWorkerServiceOperationAsync(
+        Func<Task<OperationResult>> operation,
+        string progressMessage,
+        bool showWarningOnFailure = false)
+    {
+        IsWorkerServiceOperationInProgress = true;
+        WorkerServiceControlMessage = progressMessage;
+        StatusMessage = progressMessage;
+
+        try
+        {
+            var result = await operation();
+            WorkerServiceControlMessage = result.Message;
+            StatusMessage = result.Message;
+            if (!result.Success && showWarningOnFailure)
+            {
+                _dialogService.ShowWarning("Worker servisi", result.Message);
+            }
+        }
+        catch (Exception ex)
+        {
+            AppErrorLogger.Log(ex, "Worker service control failed.");
+            WorkerServiceControlMessage = "Worker servis işlemi tamamlanamadı.";
+            StatusMessage = WorkerServiceControlMessage;
+            if (showWarningOnFailure)
+            {
+                _dialogService.ShowWarning("Worker servisi", WorkerServiceControlMessage);
+            }
+        }
+        finally
+        {
+            await RefreshWorkerServiceStatusAsync();
+            IsWorkerServiceOperationInProgress = false;
+        }
+    }
+
+    private bool CanControlWorkerService()
+    {
+        return !IsBusy && !IsWorkerServiceOperationInProgress;
     }
 
     private async Task RefreshWorkerServiceStatusAsync()
@@ -194,6 +254,19 @@ public sealed partial class MainViewModel
         WorkerLastSchedulerCycleText = FormatLocal(heartbeat?.LastSchedulerCycleAtUtc);
         WorkerLastScheduledPingText = FormatLocal(heartbeat?.LastSuccessfulPingAtUtc);
         WorkerLastNotificationText = FormatLocal(heartbeat?.LastNotificationDispatchAtUtc);
+        IsWorkerServiceInstalled = status.IsInstalled;
+        IsWorkerServiceRunning = status.Code == "Running";
+        WorkerStartupTypeText = string.IsNullOrWhiteSpace(status.StartupType)
+            ? "Bilinmiyor"
+            : status.StartupType;
+        WorkerStartupBehaviorText = status.IsAutomaticStartup
+            ? "Otomatik"
+            : status.IsManualStartup
+                ? "Manuel"
+                : status.IsInstalled
+                    ? "Bilinmiyor"
+                    : "Servis kurulu değil";
+        ApplyWorkerAutostartFromStatus(status.IsAutomaticStartup);
 
         var heartbeatAge = heartbeat is null ? TimeSpan.MaxValue : DateTime.UtcNow - heartbeat.LastSeenAtUtc;
         if (status.Code == "NotFound")
@@ -219,6 +292,19 @@ public sealed partial class MainViewModel
 
         SchedulerStatusText = $"{status.DisplayText} / {WorkerHealthText}";
         IsSchedulerRunning = status.Code == "Running" && WorkerHealthText == "Çalışıyor";
+    }
+
+    private void ApplyWorkerAutostartFromStatus(bool enabled)
+    {
+        _isSyncingWorkerAutostart = true;
+        try
+        {
+            WorkerAutostartEnabled = enabled;
+        }
+        finally
+        {
+            _isSyncingWorkerAutostart = false;
+        }
     }
 
     public async Task<string> GetWorkerServiceStatusTextAsync()

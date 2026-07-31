@@ -164,7 +164,7 @@ public sealed partial class MainViewModel
         }
     }
 
-    private async Task BulkDeactivateAsync(object? parameter)
+    private async Task BulkSetActiveAsync(object? parameter, bool isActive)
     {
         var devices = GetSelectedDevices(parameter);
         if (devices.Count == 0)
@@ -173,7 +173,12 @@ public sealed partial class MainViewModel
             return;
         }
 
-        if (!_dialogService.Confirm("Seçili cihazlar pasifleştirilsin mi?", $"{devices.Count} cihaz otomatik kontrol ve manuel toplu işlemler dışında kalacak. Cihaz kayıtları silinmez."))
+        var title = isActive ? "Seçili cihazlar aktif hale getirilsin mi?" : "Seçili cihazlar pasifleştirilsin mi?";
+        var message = isActive
+            ? $"{devices.Count} cihaz tekrar aktif listeye alınacak. Otomatik kontrol ayarı açık olanlar Worker tarafından kullanılabilir."
+            : $"{devices.Count} cihaz otomatik kontrol ve manuel toplu işlemler dışında kalacak. Cihaz kayıtları silinmez.";
+
+        if (!_dialogService.Confirm(title, message))
         {
             return;
         }
@@ -181,9 +186,9 @@ public sealed partial class MainViewModel
         IsBusy = true;
         try
         {
-            var affected = await _deviceRepository.BulkSetActiveAsync(devices.Select(device => device.Id), false);
+            var affected = await _deviceRepository.BulkSetActiveAsync(devices.Select(device => device.Id), isActive);
             await ReloadAllAsync();
-            StatusMessage = $"{affected} cihaz pasifleştirildi.";
+            StatusMessage = isActive ? $"{affected} cihaz aktif hale getirildi." : $"{affected} cihaz pasifleştirildi.";
         }
         finally
         {

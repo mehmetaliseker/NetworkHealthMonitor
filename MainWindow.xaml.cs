@@ -92,7 +92,9 @@ public partial class MainWindow : Window
             notificationClient,
             notificationOutboxRepository,
             heartbeatRepository,
-            new WindowsStartupShortcutService());
+            new WindowsStartupShortcutService(),
+            null,
+            new DeviceConnectionTestService(pingService));
 
         DataContext = _viewModel;
         Loaded += MainWindowLoaded;

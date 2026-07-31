@@ -735,11 +735,13 @@ public sealed class CsvExportService
             return "Cihaz adi bos.";
         }
 
-        normalizedIp = NormalizeIp(ipAddress) ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(normalizedIp))
+        var addressValidation = IpAddressValidator.ValidateDeviceAddress(ipAddress);
+        if (!addressValidation.IsValid)
         {
-            return "Gecersiz IPv4 adresi.";
+            return addressValidation.ErrorMessage;
         }
+
+        normalizedIp = addressValidation.NormalizedAddress;
 
         if (!DeviceTypeExtensions.TryParse(deviceTypeText, out deviceType))
         {
@@ -847,23 +849,8 @@ public sealed class CsvExportService
 
     private static string? NormalizeIp(string value)
     {
-        var trimmed = value.Trim();
-        var parts = trimmed.Split('.');
-        if (parts.Length != 4 || !IPAddress.TryParse(trimmed, out var address) || address.AddressFamily != AddressFamily.InterNetwork)
-        {
-            return null;
-        }
-
-        var normalized = new byte[4];
-        for (var index = 0; index < parts.Length; index++)
-        {
-            if (!byte.TryParse(parts[index], NumberStyles.Integer, CultureInfo.InvariantCulture, out normalized[index]))
-            {
-                return null;
-            }
-        }
-
-        return string.Join('.', normalized);
+        var validation = IpAddressValidator.ValidateDeviceAddress(value);
+        return validation.IsValid ? validation.NormalizedAddress : null;
     }
 
     private static bool TryParseNullableInt(string value, out int? result)
