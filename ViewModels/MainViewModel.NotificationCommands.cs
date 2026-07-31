@@ -19,6 +19,7 @@ public sealed partial class MainViewModel
         PendingNotificationCount = counts.Pending;
         FailedNotificationCount = counts.Failed;
         RaiseCommandStates();
+        NotifyFocusedPageState();
     }
 
     private async Task RetrySelectedOutboxAsync(object? parameter)

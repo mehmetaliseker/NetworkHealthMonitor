@@ -1,0 +1,58 @@
+<UserControl x:Class="NetworkHealthMonitor.Views.Notifications.NotificationsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer Style="{StaticResource PageScrollStyle}">
+        <TabControl>
+            <TabItem Header="Bildirim Gecmisi">
+                <StackPanel Margin="0,12,0,0">
+                    <WrapPanel>
+                        <Button Content="Yenile" Command="{Binding Legacy.RefreshOutboxCommand}" Style="{StaticResource ToolbarButtonStyle}" AutomationProperties.Name="Bildirim gecmisini yenile" />
+                        <Button Content="Yeniden Dene" Command="{Binding Legacy.RetrySelectedOutboxCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" AutomationProperties.Name="Secili bildirimi yeniden dene" />
+                    </WrapPanel>
+                    <Border Style="{StaticResource InlineNoticeStyle}" Visibility="{Binding Legacy.HasNoNotifications, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <TextBlock Text="Bildirim gecmisi bos." />
+                    </Border>
+                    <DataGrid ItemsSource="{Binding Legacy.NotificationOutboxItems}" SelectedItem="{Binding Legacy.SelectedNotificationOutboxItem}" Style="{StaticResource CompactDataGridStyle}" ColumnHeaderStyle="{StaticResource ModernDataGridHeaderStyle}" MinHeight="340">
+                        <DataGrid.Columns>
+                            <DataGridCheckBoxColumn Header="Sec" Binding="{Binding IsSelected}" Width="58" />
+                            <DataGridTextColumn Header="Kanal" Binding="{Binding ChannelText}" Width="90" />
+                            <DataGridTextColumn Header="Cihaz" Binding="{Binding DeviceName}" Width="1.4*" />
+                            <DataGridTextColumn Header="Olay" Binding="{Binding EventTypeText}" Width="180" />
+                            <DataGridTextColumn Header="Tarih" Binding="{Binding CreatedAtText}" Width="160" />
+                            <DataGridTextColumn Header="Durum" Binding="{Binding StatusText}" Width="120" />
+                            <DataGridTextColumn Header="Hata" Binding="{Binding LastError}" Width="*" ElementStyle="{StaticResource ReadableCellTextStyle}" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </StackPanel>
+            </TabItem>
+            <TabItem Header="Bildirim Kurallari">
+                <Border Style="{StaticResource PanelSectionStyle}" Margin="0,12,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Bildirim kurallari" Style="{StaticResource SectionHeadingStyle}" />
+                        <WrapPanel>
+                            <CheckBox Content="ntfy etkin" IsChecked="{Binding Legacy.NotificationEnabled}" Margin="0,0,18,12" AutomationProperties.Name="ntfy etkin" />
+                            <CheckBox Content="SMTP etkin" IsChecked="{Binding Legacy.EmailEnabled}" Margin="0,0,18,12" AutomationProperties.Name="SMTP etkin" />
+                            <CheckBox Content="Ilk erisilememe bildirimi" IsChecked="{Binding Legacy.NotificationNotifyOnDown}" Margin="0,0,18,12" AutomationProperties.Name="Ilk erisilememe bildirimi" />
+                            <CheckBox Content="Uzun sureli kesinti escalation" IsChecked="{Binding Legacy.NotificationNotifyOnEscalated}" Margin="0,0,18,12" AutomationProperties.Name="Uzun sureli kesinti escalation" />
+                        </WrapPanel>
+
+                        <Expander Header="Gelismis SMTP ayarlari" IsExpanded="False">
+                            <UniformGrid Columns="2" Margin="0,10,0,0">
+                                <StackPanel Margin="0,0,12,10"><TextBlock Text="SMTP host" Style="{StaticResource FieldLabelStyle}" /><TextBox Text="{Binding Legacy.SmtpHost}" Style="{StaticResource ModernTextBoxStyle}" /></StackPanel>
+                                <StackPanel Margin="0,0,12,10"><TextBlock Text="Port" Style="{StaticResource FieldLabelStyle}" /><TextBox Text="{Binding Legacy.SmtpPort}" Style="{StaticResource ModernTextBoxStyle}" /></StackPanel>
+                                <StackPanel Margin="0,0,12,10"><TextBlock Text="Kullanici" Style="{StaticResource FieldLabelStyle}" /><TextBox Text="{Binding Legacy.SmtpUsername}" Style="{StaticResource ModernTextBoxStyle}" /></StackPanel>
+                                <StackPanel Margin="0,0,12,10"><TextBlock Text="Gonderen" Style="{StaticResource FieldLabelStyle}" /><TextBox Text="{Binding Legacy.SenderEmail}" Style="{StaticResource ModernTextBoxStyle}" /></StackPanel>
+                            </UniformGrid>
+                        </Expander>
+
+                        <WrapPanel Margin="0,12,0,0">
+                            <Button Content="Kaydet" Command="{Binding Legacy.SaveSettingsCommand}" Style="{StaticResource ToolbarButtonStyle}" AutomationProperties.Name="Bildirim kurallarini kaydet" />
+                            <Button Content="Test Bildirimi" Command="{Binding Legacy.SendTestNotificationCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" AutomationProperties.Name="Test bildirimi gonder" />
+                            <Button Content="SMTP Testi" Command="{Binding Legacy.TestSmtpConnectionCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" AutomationProperties.Name="SMTP baglantisini test et" />
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+            </TabItem>
+        </TabControl>
+    </ScrollViewer>
+</UserControl>

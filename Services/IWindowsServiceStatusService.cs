@@ -8,6 +8,10 @@ public interface IWindowsServiceStatusService
 
     Task<OperationResult> SetStartupTypeAsync(bool startWithWindows, CancellationToken cancellationToken = default);
 
+    Task<OperationResult> InstallAsync(CancellationToken cancellationToken = default);
+
+    Task<OperationResult> UninstallAsync(CancellationToken cancellationToken = default);
+
     Task<OperationResult> StartAsync(CancellationToken cancellationToken = default);
 
     Task<OperationResult> StopAsync(CancellationToken cancellationToken = default);

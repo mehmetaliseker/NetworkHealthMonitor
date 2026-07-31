@@ -1,0 +1,24 @@
+<UserControl x:Class="NetworkHealthMonitor.Views.Shell.GlobalDialogHost"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:dialogs="clr-namespace:NetworkHealthMonitor.Views.Dialogs">
+    <Grid IsHitTestVisible="False">
+        <Grid Background="#66000000"
+              Visibility="{Binding Legacy.IsDeviceFormVisible, Converter={StaticResource BooleanToVisibilityConverter}}"
+              Panel.ZIndex="20"
+              IsHitTestVisible="True">
+            <dialogs:AddEditDeviceDialog HorizontalAlignment="Center"
+                                         VerticalAlignment="Center"
+                                         DataContext="{Binding Legacy}" />
+        </Grid>
+
+        <Grid Background="#66000000"
+              Visibility="{Binding Legacy.IsSchedulePlanFormVisible, Converter={StaticResource BooleanToVisibilityConverter}}"
+              Panel.ZIndex="19"
+              IsHitTestVisible="True">
+            <dialogs:AddEditScheduleDialog HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           DataContext="{Binding Legacy}" />
+        </Grid>
+    </Grid>
+</UserControl>

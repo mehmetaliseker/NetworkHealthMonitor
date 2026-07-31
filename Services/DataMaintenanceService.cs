@@ -1,5 +1,5 @@
-using System.IO;
 using System.Globalization;
+using System.IO;
 using Microsoft.Data.Sqlite;
 using NetworkHealthMonitor.Data;
 using NetworkHealthMonitor.Models;
@@ -21,6 +21,7 @@ public sealed class DataMaintenanceService
         await _connectionFactory.CheckpointAsync();
         SqliteConnection.ClearAllPools();
         File.Copy(DatabasePaths.DatabaseFilePath, destinationPath, overwrite: true);
+        await VerifyReadableSqliteDatabaseAsync(destinationPath, verifySchema: true);
     }
 
     public async Task<string> RestoreDatabaseAsync(string sourcePath)
@@ -30,22 +31,63 @@ public sealed class DataMaintenanceService
             throw new FileNotFoundException("Geri yüklenecek veritabanı bulunamadı.", sourcePath);
         }
 
+        try
+        {
+            await VerifyReadableSqliteDatabaseAsync(sourcePath, verifySchema: true);
+        }
+        catch (Exception ex) when (ex is not FileNotFoundException)
+        {
+            throw new InvalidOperationException("Seçilen yedek geçerli bir NetworkHealthMonitor veritabanı değil.", ex);
+        }
         await _connectionFactory.CheckpointAsync();
         SqliteConnection.ClearAllPools();
 
         Directory.CreateDirectory(DatabasePaths.DataDirectory);
+        Directory.CreateDirectory(DatabasePaths.BackupDirectory);
         var automaticBackupPath = Path.Combine(
             DatabasePaths.BackupDirectory,
             $"network_health_monitor-before-restore-{DateTime.Now:yyyyMMdd-HHmmss}.db");
+        var restoreTempPath = Path.Combine(
+            DatabasePaths.DataDirectory,
+            $"network_health_monitor-restore-{Guid.NewGuid():N}.db");
 
-        if (File.Exists(DatabasePaths.DatabaseFilePath))
+        try
         {
-            File.Copy(DatabasePaths.DatabaseFilePath, automaticBackupPath, overwrite: true);
-        }
+            if (File.Exists(DatabasePaths.DatabaseFilePath))
+            {
+                File.Copy(DatabasePaths.DatabaseFilePath, automaticBackupPath, overwrite: true);
+            }
 
-        File.Copy(sourcePath, DatabasePaths.DatabaseFilePath, overwrite: true);
-        await _connectionFactory.InitializeAsync();
-        return automaticBackupPath;
+            File.Copy(sourcePath, restoreTempPath, overwrite: true);
+            DeleteSqliteSidecars(DatabasePaths.DatabaseFilePath);
+            File.Copy(restoreTempPath, DatabasePaths.DatabaseFilePath, overwrite: true);
+            DeleteSqliteSidecars(DatabasePaths.DatabaseFilePath);
+
+            await _connectionFactory.InitializeAsync();
+            await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
+            await DatabaseSchemaContract.VerifyAsync(connection);
+            return automaticBackupPath;
+        }
+        catch (Exception ex)
+        {
+            SqliteConnection.ClearAllPools();
+            if (File.Exists(automaticBackupPath))
+            {
+                DeleteSqliteSidecars(DatabasePaths.DatabaseFilePath);
+                File.Copy(automaticBackupPath, DatabasePaths.DatabaseFilePath, overwrite: true);
+                DeleteSqliteSidecars(DatabasePaths.DatabaseFilePath);
+                await _connectionFactory.InitializeAsync();
+            }
+
+            throw new InvalidOperationException("Veritabanı geri yüklenemedi; mevcut veritabanı korundu.", ex);
+        }
+        finally
+        {
+            if (File.Exists(restoreTempPath))
+            {
+                File.Delete(restoreTempPath);
+            }
+        }
     }
 
     public Task ExportSettingsAsync(string destinationPath)
@@ -146,5 +188,52 @@ public sealed class DataMaintenanceService
 
         command.Parameters.AddWithValue("@ThresholdUtc", thresholdUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
         return await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task VerifyReadableSqliteDatabaseAsync(string databasePath, bool verifySchema)
+    {
+        var connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = databasePath,
+            Mode = SqliteOpenMode.ReadOnly,
+            Pooling = false
+        }.ToString();
+
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+        await using (var integrity = connection.CreateCommand())
+        {
+            integrity.CommandText = "PRAGMA integrity_check;";
+            var result = Convert.ToString(await integrity.ExecuteScalarAsync(), CultureInfo.InvariantCulture);
+            if (!string.Equals(result, "ok", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException($"Seçilen veritabanı tutarlı değil: {result}");
+            }
+        }
+
+        await using var foreignKeys = connection.CreateCommand();
+        foreignKeys.CommandText = "PRAGMA foreign_key_check;";
+        await using var reader = await foreignKeys.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            throw new InvalidOperationException($"Seçilen veritabanında foreign key hatası var: {reader.GetString(0)} rowid {reader.GetInt64(1)}");
+        }
+
+        if (verifySchema)
+        {
+            await DatabaseSchemaContract.VerifyAsync(connection);
+        }
+    }
+
+    private static void DeleteSqliteSidecars(string databasePath)
+    {
+        foreach (var suffix in new[] { "-wal", "-shm" })
+        {
+            var path = databasePath + suffix;
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
     }
 }

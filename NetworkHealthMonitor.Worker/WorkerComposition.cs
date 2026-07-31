@@ -86,7 +86,7 @@ public static class WorkerComposition
             deviceGroupRepository,
             pingLogRepository,
             outageRepository,
-            new PingService(),
+            PingServiceFactory.Create(settingsService),
             deviceCheckPolicyService,
             new DeviceHealthEvaluator(),
             settingsService,

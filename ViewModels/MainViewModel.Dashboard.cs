@@ -12,15 +12,15 @@ public sealed partial class MainViewModel
             EnsureSummaryCards();
         }
 
-        var activeDevices = Devices.Count(device => !device.IsDeleted && device.IsActive && device.IsEnabled);
+        var activeDevices = Devices.Count(device => !device.IsDeleted);
         var statusGroups = AvailabilityItems.GroupBy(item => item.CurrentAvailabilityStatus).ToDictionary(group => group.Key, group => group.Count());
 
         SummaryCards[0].Value = activeDevices.ToString(CultureInfo.CurrentCulture);
         SummaryCards[1].Value = statusGroups.GetValueOrDefault(AvailabilityStatus.Up).ToString(CultureInfo.CurrentCulture);
         SummaryCards[2].Value = statusGroups.GetValueOrDefault(AvailabilityStatus.Down).ToString(CultureInfo.CurrentCulture);
         SummaryCards[3].Value = statusGroups.GetValueOrDefault(AvailabilityStatus.Unknown).ToString(CultureInfo.CurrentCulture);
-        SummaryCards[4].Value = statusGroups.GetValueOrDefault(AvailabilityStatus.Maintenance).ToString(CultureInfo.CurrentCulture);
-        SummaryCards[5].Value = OpenOutages.Count.ToString(CultureInfo.CurrentCulture);
+        SummaryCards[4].Value = OpenOutages.Count.ToString(CultureInfo.CurrentCulture);
+        SummaryCards[5].Value = WorkerHealthText;
         SummaryCards[6].Value = FormatPercent(_dashboardAvailability24Hours);
         SummaryCards[7].Value = FormatPercent(_dashboardAvailability7Days);
         SummaryCards[8].Value = FormatPercent(_dashboardAvailability30Days);
@@ -37,18 +37,19 @@ public sealed partial class MainViewModel
             .Take(10));
         UpdateTypeDistributionRows();
         NotifyShellMetrics();
+        NotifyFocusedPageState();
     }
 
     private void EnsureSummaryCards()
     {
         var cards = new[]
         {
-            new SummaryCardViewModel("Toplam aktif cihaz", "0", "#2563EB"),
-            new SummaryCardViewModel("Erişilebilir", "0", "#16A34A"),
+            new SummaryCardViewModel("Toplam Cihaz", "0", "#2563EB"),
+            new SummaryCardViewModel("Çevrimiçi", "0", "#16A34A"),
             new SummaryCardViewModel("Erişilemiyor", "0", "#DC2626"),
-            new SummaryCardViewModel("Kontrol edilmedi", "0", "#64748B"),
-            new SummaryCardViewModel("Bakımda", "0", "#0F766E"),
-            new SummaryCardViewModel("Açık kesinti", "0", "#EA580C"),
+            new SummaryCardViewModel("Kontrol Bekleyen", "0", "#EA580C"),
+            new SummaryCardViewModel("Açık Kesinti", "0", "#EA580C"),
+            new SummaryCardViewModel("Worker Durumu", "Bilinmiyor", "#2563EB"),
             new SummaryCardViewModel("24 saat erişilebilirlik", "-", "#0F766E"),
             new SummaryCardViewModel("7 gün erişilebilirlik", "-", "#0F766E"),
             new SummaryCardViewModel("30 gün erişilebilirlik", "-", "#0F766E"),

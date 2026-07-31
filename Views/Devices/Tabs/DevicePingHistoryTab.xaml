@@ -1,0 +1,16 @@
+<UserControl x:Class="NetworkHealthMonitor.Views.Devices.Tabs.DevicePingHistoryTab"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <DataGrid ItemsSource="{Binding Legacy.SelectedDevicePingLogs}"
+              Style="{StaticResource CompactDataGridStyle}"
+              ColumnHeaderStyle="{StaticResource ModernDataGridHeaderStyle}"
+              Margin="0,12,0,0"
+              MaxHeight="420">
+        <DataGrid.Columns>
+            <DataGridTextColumn Header="Tarih" Binding="{Binding CheckedAtText}" Width="160" />
+            <DataGridTextColumn Header="Sonuc" Binding="{Binding StatusText}" Width="140" />
+            <DataGridTextColumn Header="Yanit Suresi" Binding="{Binding LatencyText}" Width="120" />
+            <DataGridTextColumn Header="Kontrol Turu" Binding="{Binding TriggerTypeText}" Width="150" />
+        </DataGrid.Columns>
+    </DataGrid>
+</UserControl>

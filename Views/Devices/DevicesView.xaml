@@ -1,0 +1,143 @@
+<UserControl x:Class="NetworkHealthMonitor.Views.Devices.DevicesView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer Style="{StaticResource PageScrollStyle}">
+        <StackPanel>
+            <Border Style="{StaticResource PanelSectionStyle}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Cihazlar" Style="{StaticResource SectionHeadingStyle}" />
+                        <TextBlock Text="Agda izlenecek cihazlari buradan ekleyebilir, duzenleyebilir ve yonetebilirsiniz."
+                                   Style="{StaticResource BodyMutedTextStyle}" />
+                    </StackPanel>
+                    <WrapPanel Grid.Column="1" HorizontalAlignment="Right">
+                        <Button Content="+ Yeni Cihaz"
+                                Command="{Binding Legacy.NavigateDeviceEditCommand}"
+                                Style="{StaticResource ToolbarButtonStyle}"
+                                AutomationProperties.Name="Yeni cihaz ekle" />
+                        <Button Content="CSV Ice Aktar"
+                                Command="{Binding Legacy.ImportDevicesCommand}"
+                                Style="{StaticResource SmallActionButtonStyle}"
+                                AutomationProperties.Name="CSV ice aktar" />
+                        <Button Content="CSV Disa Aktar"
+                                Command="{Binding Legacy.ExportDevicesCommand}"
+                                Style="{StaticResource SmallActionButtonStyle}"
+                                AutomationProperties.Name="CSV disa aktar" />
+                        <Button Content="Aktif Yap"
+                                Command="{Binding Legacy.ActivateSelectedDevicesCommand}"
+                                Style="{StaticResource SmallActionButtonStyle}"
+                                AutomationProperties.Name="Secilen cihazlari aktif yap" />
+                        <Button Content="Pasif Yap"
+                                Command="{Binding Legacy.DeactivateSelectedDevicesCommand}"
+                                Style="{StaticResource SmallActionButtonStyle}"
+                                AutomationProperties.Name="Secilen cihazlari pasif yap" />
+                        <Button Content="Sil"
+                                Command="{Binding Legacy.DeleteSelectedDevicesBulkCommand}"
+                                Style="{StaticResource DangerToolbarButtonStyle}"
+                                AutomationProperties.Name="Secilen cihazlari sil" />
+                    </WrapPanel>
+                </Grid>
+            </Border>
+
+            <Border Style="{StaticResource PanelSectionStyle}">
+                <WrapPanel>
+                    <TextBox Width="260"
+                             Text="{Binding Legacy.DeviceSearchText, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource ModernTextBoxStyle}"
+                             ToolTip="Cihaz adi veya IP ara"
+                             AutomationProperties.Name="Cihaz adi veya IP ara" />
+                    <ComboBox Width="150"
+                              ItemsSource="{Binding Legacy.DeviceTypeFilterOptions}"
+                              SelectedItem="{Binding Legacy.DeviceTypeFilter}"
+                              Style="{StaticResource ModernComboBoxStyle}"
+                              ToolTip="Tur filtresi"
+                              AutomationProperties.Name="Tur filtresi" />
+                    <ComboBox Width="150"
+                              ItemsSource="{Binding Legacy.DeviceStatusFilterOptions}"
+                              SelectedItem="{Binding Legacy.DeviceStatusFilter}"
+                              Style="{StaticResource ModernComboBoxStyle}"
+                              ToolTip="Durum filtresi"
+                              AutomationProperties.Name="Durum filtresi" />
+                    <ComboBox Width="150"
+                              ItemsSource="{Binding Legacy.DeviceActivityFilterOptions}"
+                              SelectedItem="{Binding Legacy.DeviceActivityFilter}"
+                              Style="{StaticResource ModernComboBoxStyle}"
+                              ToolTip="Aktiflik filtresi"
+                              AutomationProperties.Name="Aktiflik filtresi" />
+                    <ComboBox Width="170"
+                              ItemsSource="{Binding Legacy.DeviceGroupFilterOptions}"
+                              SelectedItem="{Binding Legacy.DeviceGroupFilter}"
+                              Style="{StaticResource ModernComboBoxStyle}"
+                              ToolTip="Grup filtresi"
+                              AutomationProperties.Name="Grup filtresi" />
+                    <Button Content="Filtreleri Temizle"
+                            Command="{Binding Legacy.ClearDeviceFiltersCommand}"
+                            Style="{StaticResource SmallActionButtonStyle}"
+                            AutomationProperties.Name="Cihaz filtrelerini temizle" />
+                </WrapPanel>
+            </Border>
+
+            <Border Style="{StaticResource InlineNoticeStyle}"
+                    Visibility="{Binding Legacy.HasNoDevices, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel>
+                    <TextBlock Text="Henuz cihaz eklenmemis." FontWeight="SemiBold" />
+                    <Button Content="Yeni Cihaz Ekle"
+                            Command="{Binding Legacy.NavigateDeviceEditCommand}"
+                            Style="{StaticResource ToolbarButtonStyle}"
+                            Margin="0,12,0,0"
+                            HorizontalAlignment="Left"
+                            AutomationProperties.Name="Ilk cihazi ekle" />
+                </StackPanel>
+            </Border>
+
+            <DataGrid ItemsSource="{Binding Legacy.DevicesView}"
+                      SelectedItem="{Binding Legacy.SelectedDevice, Mode=TwoWay}"
+                      Style="{StaticResource CompactDataGridStyle}"
+                      ColumnHeaderStyle="{StaticResource ModernDataGridHeaderStyle}"
+                      Visibility="{Binding Legacy.HasNoDevices, Converter={StaticResource InverseBooleanToVisibilityConverter}}"
+                      MinHeight="420">
+                <DataGrid.Columns>
+                    <DataGridCheckBoxColumn Header="Sec" Binding="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="58" />
+                    <DataGridTextColumn Header="Cihaz Adi" Binding="{Binding Name}" Width="2*" MinWidth="180" ElementStyle="{StaticResource ReadableCellTextStyle}" IsReadOnly="True" />
+                    <DataGridTextColumn Header="IP / Hostname" Binding="{Binding IpAddress}" Width="170" MinWidth="140" ElementStyle="{StaticResource IpAddressCellTextStyle}" IsReadOnly="True" />
+                    <DataGridTextColumn Header="Tur" Binding="{Binding DeviceTypeText}" Width="120" IsReadOnly="True" />
+                    <DataGridTextColumn Header="Grup" Binding="{Binding GroupName}" Width="150" IsReadOnly="True" />
+                    <DataGridTextColumn Header="Durum" Binding="{Binding LastStatusText}" Width="130" IsReadOnly="True" />
+                    <DataGridTextColumn Header="Son Kontrol" Binding="{Binding LastCheckedAtText}" Width="150" IsReadOnly="True" />
+                    <DataGridTemplateColumn Header="Islemler" Width="220" IsReadOnly="True">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <WrapPanel>
+                                    <Button Content="Detay"
+                                            Command="{Binding DataContext.Shell.OpenDeviceDetailsCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                            CommandParameter="{Binding}"
+                                            Style="{StaticResource SmallActionButtonStyle}"
+                                            AutomationProperties.Name="Cihaz detaylarını aç" />
+                                    <Button Content="Duzenle"
+                                            Command="{Binding DataContext.Legacy.EditDeviceCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                            CommandParameter="{Binding}"
+                                            Style="{StaticResource SmallActionButtonStyle}"
+                                            AutomationProperties.Name="Cihazı düzenle" />
+                                    <Button Content="Ping"
+                                            Command="{Binding DataContext.Legacy.PingDeviceCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                            CommandParameter="{Binding}"
+                                            Style="{StaticResource SmallActionButtonStyle}"
+                                            AutomationProperties.Name="Cihazı şimdi kontrol et" />
+                                    <Button Content="Sil"
+                                            Command="{Binding DataContext.Legacy.DeleteDeviceCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                            CommandParameter="{Binding}"
+                                            Style="{StaticResource SmallActionButtonStyle}"
+                                            AutomationProperties.Name="Cihazı sil" />
+                                </WrapPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

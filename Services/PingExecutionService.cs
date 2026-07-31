@@ -103,6 +103,12 @@ public sealed class PingExecutionService : IPingExecutionService
 
         if (activeLeases.Count == 0)
         {
+            foreach (var device in acquired)
+            {
+                _runningDeviceIds.TryRemove(device.Device.Id, out _);
+                device.Dispose();
+            }
+
             return new PingExecutionResult(Array.Empty<PingDeviceResult>(), Array.Empty<PingLog>(), skipped);
         }
 
@@ -183,15 +189,18 @@ public sealed class PingExecutionService : IPingExecutionService
         foreach (var group in devices.GroupBy(device => policies[device.Id].PingTimeoutMs).OrderBy(group => group.Key))
         {
             var groupDevices = group.ToList();
+            var completedBase = completedOffset;
+            var successBase = successOffset;
+            var failureBase = failureOffset;
             var groupProgress = progress is null
                 ? null
                 : new Progress<PingProgress>(item =>
                 {
                     progress.Report(new PingProgress(
                         total,
-                        completedOffset + item.Completed,
-                        successOffset + item.Success,
-                        failureOffset + item.Failure,
+                        completedBase + item.Completed,
+                        successBase + item.Success,
+                        failureBase + item.Failure,
                         item.DeviceId,
                         item.DeviceStatus,
                         item.LatencyMs,

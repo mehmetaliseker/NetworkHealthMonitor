@@ -1,0 +1,14 @@
+<UserControl x:Class="NetworkHealthMonitor.Views.Shell.ToastHost"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border Background="{StaticResource ShellSurfaceBrush}"
+            BorderBrush="{StaticResource ShellBorderBrush}"
+            BorderThickness="1"
+            CornerRadius="8"
+            Padding="12,9"
+            MaxWidth="420">
+        <TextBlock Text="{Binding StatusMessage}"
+                   Foreground="{StaticResource ShellMutedTextBrush}"
+                   TextWrapping="Wrap" />
+    </Border>
+</UserControl>

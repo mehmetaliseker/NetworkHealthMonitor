@@ -1,0 +1,21 @@
+<UserControl x:Class="NetworkHealthMonitor.Views.SystemHealth.Tabs.SchedulerHealthTab"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border Style="{StaticResource PanelSectionStyle}" Margin="0,12,0,0">
+        <StackPanel>
+            <UniformGrid Columns="2">
+                <StackPanel Margin="0,0,18,10"><TextBlock Text="Scheduler durumu" Style="{StaticResource FieldLabelStyle}" /><TextBlock Text="{Binding Legacy.SchedulerStatusText}" /></StackPanel>
+                <StackPanel Margin="0,0,18,10"><TextBlock Text="Son calisma" Style="{StaticResource FieldLabelStyle}" /><TextBlock Text="{Binding Legacy.WorkerLastSchedulerCycleText}" /></StackPanel>
+                <StackPanel Margin="0,0,18,10"><TextBlock Text="Sonraki calisma" Style="{StaticResource FieldLabelStyle}" /><TextBlock Text="{Binding Legacy.WorkerLastScheduledPingText}" /></StackPanel>
+                <StackPanel Margin="0,0,18,10"><TextBlock Text="Bekleyen isler" Style="{StaticResource FieldLabelStyle}" /><TextBlock Text="{Binding Legacy.PendingNotificationCount}" /></StackPanel>
+            </UniformGrid>
+            <DataGrid ItemsSource="{Binding Legacy.ServiceDiagnostics}" Style="{StaticResource CompactDataGridStyle}" ColumnHeaderStyle="{StaticResource ModernDataGridHeaderStyle}" MaxHeight="260" Margin="0,12,0,0">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Kontrol" Binding="{Binding Name}" Width="1.6*" />
+                    <DataGridTextColumn Header="Durum" Binding="{Binding LevelText}" Width="130" />
+                    <DataGridTextColumn Header="Açıklama" Binding="{Binding Detail}" Width="2*" />
+                </DataGrid.Columns>
+            </DataGrid>
+        </StackPanel>
+    </Border>
+</UserControl>

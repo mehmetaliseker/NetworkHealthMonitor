@@ -1,0 +1,17 @@
+<UserControl x:Class="NetworkHealthMonitor.Views.Devices.Tabs.DeviceNotificationsTab"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <DataGrid ItemsSource="{Binding Legacy.SelectedDeviceNotifications}"
+              Style="{StaticResource CompactDataGridStyle}"
+              ColumnHeaderStyle="{StaticResource ModernDataGridHeaderStyle}"
+              Margin="0,12,0,0"
+              MaxHeight="420">
+        <DataGrid.Columns>
+            <DataGridTextColumn Header="Kanal" Binding="{Binding ChannelText}" Width="100" />
+            <DataGridTextColumn Header="Olay" Binding="{Binding EventTypeText}" Width="180" />
+            <DataGridTextColumn Header="Tarih" Binding="{Binding CreatedAtText}" Width="160" />
+            <DataGridTextColumn Header="Durum" Binding="{Binding StatusText}" Width="120" />
+            <DataGridTextColumn Header="Hata" Binding="{Binding LastError}" Width="*" ElementStyle="{StaticResource ReadableCellTextStyle}" />
+        </DataGrid.Columns>
+    </DataGrid>
+</UserControl>

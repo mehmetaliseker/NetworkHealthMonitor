@@ -1,0 +1,103 @@
+<UserControl x:Class="NetworkHealthMonitor.Views.Settings.SettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer Style="{StaticResource PageScrollStyle}">
+        <TabControl>
+            <TabItem Header="Genel">
+                <Border Style="{StaticResource PanelSectionStyle}" Margin="0,12,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Genel" Style="{StaticResource SectionHeadingStyle}" />
+                        <WrapPanel>
+                            <StackPanel Width="220" Margin="0,0,16,12">
+                                <TextBlock Text="Tarih/saat bicimi" Style="{StaticResource FieldLabelStyle}" />
+                                <TextBlock Text="Yerel Windows bicimi kullanilir." Style="{StaticResource BodyMutedTextStyle}" />
+                            </StackPanel>
+                            <StackPanel Width="220" Margin="0,0,16,12">
+                                <TextBlock Text="CSV ayirici" Style="{StaticResource FieldLabelStyle}" />
+                                <TextBox Text="{Binding Legacy.CsvDelimiter}" Style="{StaticResource ModernTextBoxStyle}" />
+                            </StackPanel>
+                            <StackPanel Width="320" Margin="0,0,16,12">
+                                <TextBlock Text="Disa aktarim klasoru" Style="{StaticResource FieldLabelStyle}" />
+                                <TextBox Text="{Binding Legacy.ExportDirectory}" Style="{StaticResource ModernTextBoxStyle}" />
+                            </StackPanel>
+                        </WrapPanel>
+                        <Button Content="Kaydet" Command="{Binding Legacy.SaveSettingsCommand}" Style="{StaticResource ToolbarButtonStyle}" HorizontalAlignment="Left" AutomationProperties.Name="Genel ayarlari kaydet" />
+                    </StackPanel>
+                </Border>
+            </TabItem>
+
+            <TabItem Header="Kontrol Ayarlari">
+                <Border Style="{StaticResource PanelSectionStyle}" Margin="0,12,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Kontrol Ayarlari" Style="{StaticResource SectionHeadingStyle}" />
+                        <WrapPanel>
+                            <StackPanel Width="220" Margin="0,0,16,12"><TextBlock Text="Varsayılan zaman aşımı" Style="{StaticResource FieldLabelStyle}" /><TextBox Text="{Binding Legacy.PingTimeoutMs}" Style="{StaticResource ModernTextBoxStyle}" /></StackPanel>
+                            <StackPanel Width="220" Margin="0,0,16,12"><TextBlock Text="Maksimum paralel ping" Style="{StaticResource FieldLabelStyle}" /><TextBox Text="{Binding Legacy.MaxParallelPings}" Style="{StaticResource ModernTextBoxStyle}" /></StackPanel>
+                            <StackPanel Width="220" Margin="0,0,16,12"><TextBlock Text="Tekrar kontrol suresi" Style="{StaticResource FieldLabelStyle}" /><TextBox Text="{Binding Legacy.DefaultFailureRetryIntervalSeconds}" Style="{StaticResource ModernTextBoxStyle}" /></StackPanel>
+                            <StackPanel Width="220" Margin="0,0,16,12"><TextBlock Text="Scheduler poll" Style="{StaticResource FieldLabelStyle}" /><TextBox Text="{Binding Legacy.SchedulerPollIntervalSeconds}" Style="{StaticResource ModernTextBoxStyle}" /></StackPanel>
+                        </WrapPanel>
+                        <Button Content="Kaydet" Command="{Binding Legacy.SaveSettingsCommand}" Style="{StaticResource ToolbarButtonStyle}" HorizontalAlignment="Left" AutomationProperties.Name="Kontrol ayarlarini kaydet" />
+                    </StackPanel>
+                </Border>
+            </TabItem>
+
+            <TabItem Header="Bildirim Ayarlari">
+                <Border Style="{StaticResource PanelSectionStyle}" Margin="0,12,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Bildirim Ayarlari" Style="{StaticResource SectionHeadingStyle}" />
+                        <TextBlock Text="Kural ve kanal ayrintilari Bildirimler sayfasindaki Bildirim Kurallari sekmesinden yonetilir." Style="{StaticResource BodyMutedTextStyle}" />
+                        <Button Content="Bildirim Kurallarina Git" Command="{Binding Shell.NavigateNotificationsCommand}" Style="{StaticResource ToolbarButtonStyle}" HorizontalAlignment="Left" Margin="0,12,0,0" AutomationProperties.Name="Bildirim kurallarina git" />
+                    </StackPanel>
+                </Border>
+            </TabItem>
+
+            <TabItem Header="Veri ve Yedekleme">
+                <Border Style="{StaticResource PanelSectionStyle}" Margin="0,12,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Veri ve Yedekleme" Style="{StaticResource SectionHeadingStyle}" />
+                        <WrapPanel>
+                            <StackPanel Width="420" Margin="0,0,16,12"><TextBlock Text="Veritabani yolu" Style="{StaticResource FieldLabelStyle}" /><TextBlock Text="{Binding Legacy.DatabaseLocation}" TextWrapping="Wrap" /></StackPanel>
+                            <StackPanel Width="220" Margin="0,0,16,12"><TextBlock Text="Retention" Style="{StaticResource FieldLabelStyle}" /><TextBox Text="{Binding Legacy.LogRetentionDays}" Style="{StaticResource ModernTextBoxStyle}" /></StackPanel>
+                        </WrapPanel>
+                        <WrapPanel>
+                            <Button Content="Backup Al" Command="{Binding Legacy.BackupDatabaseCommand}" Style="{StaticResource ToolbarButtonStyle}" AutomationProperties.Name="Veritabani backup al" />
+                            <Button Content="Restore" Command="{Binding Legacy.RestoreDatabaseCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" AutomationProperties.Name="Veritabani restore" />
+                            <Button Content="Optimize Et" Command="{Binding Legacy.OptimizeDatabaseCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" AutomationProperties.Name="Veritabanini optimize et" />
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+            </TabItem>
+
+            <TabItem Header="Gorunum">
+                <Border Style="{StaticResource PanelSectionStyle}" Margin="0,12,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Gorunum" Style="{StaticResource SectionHeadingStyle}" />
+                        <StackPanel Width="240">
+                            <TextBlock Text="Tema" Style="{StaticResource FieldLabelStyle}" />
+                            <ComboBox ItemsSource="{Binding Legacy.ThemeOptions}" SelectedItem="{Binding Legacy.Theme}" Style="{StaticResource ModernComboBoxStyle}" />
+                        </StackPanel>
+                        <Button Content="Kaydet" Command="{Binding Legacy.SaveSettingsCommand}" Style="{StaticResource ToolbarButtonStyle}" HorizontalAlignment="Left" Margin="0,12,0,0" AutomationProperties.Name="Gorunum ayarlarini kaydet" />
+                    </StackPanel>
+                </Border>
+            </TabItem>
+
+            <TabItem Header="Gelismis">
+                <StackPanel Margin="0,12,0,0">
+                    <Border Style="{StaticResource WarningNoticeStyle}">
+                        <TextBlock Text="Gelismis ayarlar teknik ve riskli davranislari etkileyebilir. Degisiklikten sonra sistem sagligini kontrol edin." TextWrapping="Wrap" />
+                    </Border>
+                    <Border Style="{StaticResource PanelSectionStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Gelismis" Style="{StaticResource SectionHeadingStyle}" />
+                            <WrapPanel>
+                                <Button Content="Ayarlari Disa Aktar" Command="{Binding Legacy.ExportSettingsCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" AutomationProperties.Name="Ayarlari disa aktar" />
+                                <Button Content="Ayarlari Ice Aktar" Command="{Binding Legacy.ImportSettingsCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" AutomationProperties.Name="Ayarlari ice aktar" />
+                                <Button Content="Varsayilana Don" Command="{Binding Legacy.ResetSettingsCommand}" Style="{StaticResource DangerToolbarButtonStyle}" AutomationProperties.Name="Ayarlari varsayilana dondur" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </TabItem>
+        </TabControl>
+    </ScrollViewer>
+</UserControl>

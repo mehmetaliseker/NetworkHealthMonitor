@@ -1,0 +1,21 @@
+<UserControl x:Class="NetworkHealthMonitor.Views.SystemHealth.SystemHealthView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:tabs="clr-namespace:NetworkHealthMonitor.Views.SystemHealth.Tabs">
+    <ScrollViewer Style="{StaticResource PageScrollStyle}">
+        <TabControl>
+            <TabItem Header="Genel Saglik">
+                <tabs:GeneralHealthTab />
+            </TabItem>
+            <TabItem Header="Veritabani">
+                <tabs:DatabaseHealthTab />
+            </TabItem>
+            <TabItem Header="Scheduler">
+                <tabs:SchedulerHealthTab />
+            </TabItem>
+            <TabItem Header="Loglar">
+                <tabs:LogsTab />
+            </TabItem>
+        </TabControl>
+    </ScrollViewer>
+</UserControl>

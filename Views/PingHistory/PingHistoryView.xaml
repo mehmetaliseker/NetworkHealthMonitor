@@ -1,0 +1,46 @@
+<UserControl x:Class="NetworkHealthMonitor.Views.PingHistory.PingHistoryView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer Style="{StaticResource PageScrollStyle}">
+        <StackPanel>
+            <Border Style="{StaticResource PanelSectionStyle}">
+                <WrapPanel>
+                    <DatePicker SelectedDate="{Binding Legacy.LogStartDate}" Width="150" AutomationProperties.Name="Baslangic tarihi" />
+                    <DatePicker SelectedDate="{Binding Legacy.LogEndDate}" Width="150" AutomationProperties.Name="Bitis tarihi" />
+                    <TextBox Width="180" Text="{Binding Legacy.LogDeviceNameFilter, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBoxStyle}" ToolTip="Cihaz" AutomationProperties.Name="Ping gecmisi cihaz filtresi" />
+                    <ComboBox Width="160" ItemsSource="{Binding Legacy.DeviceGroupFilterOptions}" SelectedItem="{Binding Legacy.LogGroupFilter}" Style="{StaticResource ModernComboBoxStyle}" ToolTip="Grup" AutomationProperties.Name="Ping gecmisi grup filtresi" />
+                    <ComboBox Width="160" ItemsSource="{Binding Legacy.DeviceStatusFilterOptions}" SelectedItem="{Binding Legacy.LogStatusFilter}" Style="{StaticResource ModernComboBoxStyle}" ToolTip="Durum" AutomationProperties.Name="Ping gecmisi durum filtresi" />
+                    <Button Content="Filtrele" Command="{Binding Legacy.RefreshLogsCommand}" Style="{StaticResource ToolbarButtonStyle}" AutomationProperties.Name="Ping gecmisini filtrele" />
+                    <Button Content="CSV Disa Aktar" Command="{Binding Legacy.ExportLogsCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" AutomationProperties.Name="Ping gecmisini CSV disa aktar" />
+                    <Button Content="Filtreleri Temizle" Command="{Binding Legacy.ClearLogFiltersCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" AutomationProperties.Name="Ping filtrelerini temizle" />
+                </WrapPanel>
+            </Border>
+
+            <Border Style="{StaticResource InlineNoticeStyle}" Visibility="{Binding Legacy.HasNoLogs, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <TextBlock Text="Secili filtrelerle ping kaydi bulunamadi." />
+            </Border>
+
+            <DataGrid ItemsSource="{Binding Legacy.LogsView}"
+                      SelectedItem="{Binding Legacy.SelectedLog}"
+                      Style="{StaticResource CompactDataGridStyle}"
+                      ColumnHeaderStyle="{StaticResource ModernDataGridHeaderStyle}"
+                      MinHeight="360">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Tarih" Binding="{Binding CheckedAtText}" Width="160" />
+                    <DataGridTextColumn Header="Cihaz" Binding="{Binding DeviceName}" Width="1.5*" />
+                    <DataGridTextColumn Header="IP / Hostname" Binding="{Binding IpAddress}" Width="160" />
+                    <DataGridTextColumn Header="Sonuc" Binding="{Binding StatusText}" Width="130" />
+                    <DataGridTextColumn Header="Yanit Suresi" Binding="{Binding LatencyText}" Width="120" />
+                    <DataGridTextColumn Header="Kontrol Turu" Binding="{Binding TriggerTypeText}" Width="150" />
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <Border Style="{StaticResource PanelSectionStyle}" Margin="0,12,0,0" Visibility="{Binding Legacy.HasSelectedLog, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel>
+                    <TextBlock Text="Kayıt Detayı" Style="{StaticResource SectionHeadingStyle}" />
+                    <TextBlock Text="{Binding Legacy.SelectedLog.ResponseOrErrorText}" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -7,6 +7,7 @@ using NetworkHealthMonitor.Data;
 using NetworkHealthMonitor.Infrastructure;
 using NetworkHealthMonitor.Services;
 using NetworkHealthMonitor.ViewModels;
+using NetworkHealthMonitor.ViewModels.Shell;
 using WpfApplication = System.Windows.Application;
 using WpfMessageBox = System.Windows.MessageBox;
 
@@ -15,7 +16,8 @@ namespace NetworkHealthMonitor;
 public partial class MainWindow : Window
 {
     private readonly SqliteConnectionFactory _connectionFactory;
-    private readonly MainViewModel _viewModel;
+    private readonly MainViewModel _legacyViewModel;
+    private readonly ShellViewModel _shellViewModel;
     private bool _loaded;
     private bool _closingHandled;
 
@@ -29,11 +31,11 @@ public partial class MainWindow : Window
         var pingLogRepository = new PingLogRepository(_connectionFactory);
         var schedulePlanRepository = new SchedulePlanRepository(_connectionFactory);
         var outageRepository = new OutageRepository(_connectionFactory);
-        var pingService = new PingService();
+        var appSettingsService = new AppSettingsService();
+        var pingService = PingServiceFactory.Create(appSettingsService);
         var schedulePlanTargetResolver = new SchedulePlanTargetResolver();
         var deviceCheckPolicyService = new DeviceCheckPolicyService();
         var deviceHealthEvaluator = new DeviceHealthEvaluator();
-        var appSettingsService = new AppSettingsService();
         var alertPolicyService = new AlertPolicyService();
         var notificationOutboxRepository = new NotificationOutboxRepository(_connectionFactory);
         var heartbeatRepository = new WorkerHeartbeatRepository(_connectionFactory);
@@ -68,7 +70,7 @@ public partial class MainWindow : Window
             appSettingsService,
             availabilityRepository: availabilityRepository);
 
-        _viewModel = new MainViewModel(
+        _legacyViewModel = new MainViewModel(
             deviceRepository,
             deviceGroupRepository,
             pingLogRepository,
@@ -96,13 +98,14 @@ public partial class MainWindow : Window
             null,
             new DeviceConnectionTestService(pingService));
 
-        DataContext = _viewModel;
+        _shellViewModel = new ShellViewModel(_legacyViewModel);
+
+        DataContext = _shellViewModel;
         Loaded += MainWindowLoaded;
         Closing += MainWindowClosing;
         SizeChanged += MainWindow_SizeChanged;
-        DevicesGrid.MouseDoubleClick += DevicesGrid_MouseDoubleClick;
 
-        _viewModel.IsCompactLayout = Width < 1280;
+        _legacyViewModel.IsCompactLayout = Width < 1280;
     }
 
     private async void MainWindowLoaded(object sender, RoutedEventArgs e)
@@ -117,7 +120,8 @@ public partial class MainWindow : Window
         try
         {
             await _connectionFactory.InitializeAsync();
-            await _viewModel.InitializeAsync();
+            await _legacyViewModel.InitializeAsync();
+            await _shellViewModel.InitializeAsync();
         }
         catch (Exception ex)
         {
@@ -176,7 +180,8 @@ public partial class MainWindow : Window
                     MessageBoxImage.Information);
             }
 
-            await _viewModel.DisposeAsync();
+            await _shellViewModel.DisposeAsync();
+            await _legacyViewModel.DisposeAsync();
         }
         catch (Exception ex)
         {
@@ -250,19 +255,6 @@ public partial class MainWindow : Window
 #endif
     private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        _viewModel.IsCompactLayout = ActualWidth < 1280;
-    }
-
-    private void DevicesGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
-    {
-        if (_viewModel.SelectedDevice is null || _viewModel.IsBusy)
-        {
-            return;
-        }
-
-        if (_viewModel.EditDeviceCommand.CanExecute(_viewModel.SelectedDevice))
-        {
-            _viewModel.EditDeviceCommand.Execute(_viewModel.SelectedDevice);
-        }
+        _legacyViewModel.IsCompactLayout = ActualWidth < 1280;
     }
 }
