@@ -1,0 +1,17 @@
+<UserControl x:Class="NetworkHealthMonitor.Views.Devices.Tabs.DeviceIncidentsTab"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <DataGrid ItemsSource="{Binding Legacy.SelectedDeviceOutages}"
+              SelectedItem="{Binding Legacy.SelectedOutage}"
+              Style="{StaticResource CompactDataGridStyle}"
+              ColumnHeaderStyle="{StaticResource ModernDataGridHeaderStyle}"
+              Margin="0,12,0,0"
+              MaxHeight="420">
+        <DataGrid.Columns>
+            <DataGridTextColumn Header="Başlangıç" Binding="{Binding StartedAtText}" Width="160" />
+            <DataGridTextColumn Header="Cozulme" Binding="{Binding EndedAtText}" Width="160" />
+            <DataGridTextColumn Header="Sure" Binding="{Binding DurationText}" Width="120" />
+            <DataGridTextColumn Header="Durum" Binding="{Binding StatusText}" Width="120" />
+        </DataGrid.Columns>
+    </DataGrid>
+</UserControl>

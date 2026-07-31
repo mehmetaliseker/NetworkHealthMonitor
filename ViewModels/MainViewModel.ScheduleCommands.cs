@@ -48,6 +48,7 @@ public sealed partial class MainViewModel
             }
 
             StatusMessage = result.Message;
+            IsSchedulePlanFormVisible = false;
             ClearSchedulePlanForm();
             await ReloadAllAsync();
         }
@@ -88,6 +89,7 @@ public sealed partial class MainViewModel
         PlanFormDescription = plan.Description;
         OnPropertyChanged(nameof(PlanFormTitle));
         OnPropertyChanged(nameof(PlanFormActionText));
+        IsSchedulePlanFormVisible = true;
     }
 
     private void ClearSchedulePlanForm()
@@ -292,6 +294,7 @@ public sealed partial class MainViewModel
 
         SchedulerStatusText = $"{status.DisplayText} / {WorkerHealthText}";
         IsSchedulerRunning = status.Code == "Running" && WorkerHealthText == "Çalışıyor";
+        NotifyFocusedPageState();
     }
 
     private void ApplyWorkerAutostartFromStatus(bool enabled)

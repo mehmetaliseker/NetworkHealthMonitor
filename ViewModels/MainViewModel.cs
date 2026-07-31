@@ -15,10 +15,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private const string SectionDeviceEdit = "Cihaz Formu";
     private const string SectionGroups = "Cihaz Grupları";
     private const string SectionSchedules = "Kontrol Planları";
-    private const string SectionAvailability = "Kesintiler";
-    private const string SectionEvents = "Olaylar";
-    private const string SectionReports = "Raporlar / Uptime";
-    private const string SectionLogs = "Ping Kayıtları";
+    private const string SectionAvailability = "Erişilebilirlik";
+    private const string SectionEvents = "Kesintiler";
+    private const string SectionReports = "Raporlar";
+    private const string SectionLogs = "Ping Geçmişi";
     private const string SectionNotifications = "Bildirimler";
     private const string SectionSettings = "Ayarlar";
     private const string SettingsGeneral = "Genel";
@@ -830,6 +830,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 OnPropertyChanged(nameof(IsGroupsNavSelected));
                 OnPropertyChanged(nameof(IsMaintenanceNavSelected));
                 OnPropertyChanged(nameof(IsCalendarsNavSelected));
+                NotifyExtendedNavigationState();
+                NotifyFocusedPageState();
             }
         }
     }
@@ -871,6 +873,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public string SectionTitle => CurrentSection switch
     {
         SectionDeviceEdit => SectionDevices,
+        SectionDeviceDetails => SelectedDevice?.Name ?? SectionDeviceDetails,
         _ => CurrentSection
     };
 
@@ -879,17 +882,23 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         SectionDashboard => "İzleme servisi durumu, cihaz özeti ve açık kesintileri tek bakışta görün.",
         SectionDevices => "Ağdaki cihazları görüntüleyin, filtreleyin ve yönetin.",
         SectionDeviceEdit => "Cihaz bilgilerini girin veya güncelleyin.",
+        SectionDeviceDetails => "Seçili cihaza ait genel bilgiler, geçmiş, kesinti ve bildirim kayıtlarını inceleyin.",
         SectionGroups => "Kullanıcı tanımlı grupları yönetin ve grup bazlı kontrol çalıştırın.",
+        SectionLiveStatus => "Cihazların anlık erişilebilirlik durumunu düzenleme araçlarından bağımsız izleyin.",
         SectionSchedules => "Cihaz, tip, grup veya kritik cihaz bazlı otomatik kontrol planları oluşturun.",
         SectionAvailability => "Erişilebilirlik metriklerini ve kesinti sürelerini inceleyin.",
         SectionEvents => "Açık ve kapanan kesinti olaylarını, bildirim durumlarıyla birlikte izleyin.",
         SectionReports => "Uptime, kapsama ve erişilebilirlik raporlarını tarih aralığına göre inceleyin.",
+        SectionWorkerService => "Worker servisinin gerçek Windows Service durumunu ve başlangıç davranışını yönetin.",
+        SectionSystemHealth => "UI, Worker, SQLite, scheduler ve log sağlığını sade teknik özetlerle kontrol edin.",
         SectionMaintenance => "Planlı bakım pencerelerini ve hedeflerini yönetin.",
         SectionCalendars => "İzleme takvimleri, gün/saat kuralları ve cihaz/grup atamalarını yönetin.",
         SectionReadiness => "İzleme servisi, heartbeat, bildirim kuyruğu ve sistem kontrollerini doğrulayın.",
         SectionLogs => "Ping geçmişini filtreleyin, temizleyin ve CSV olarak dışa aktarın.",
         SectionSettings => "Genel, ping, ntfy, e-posta, alıcılar, şablonlar ve veri saklama ayarlarını yönetin.",
         SectionNotifications => "Kanal ve alıcı bazlı bildirim kuyruğunu, hataları ve tekrar denemeleri izleyin.",
+        SectionHelp => "Temel kullanım adımlarını ve destek dosyalarını görüntüleyin.",
+        SectionAbout => "Uygulama bilgileri ve çalışma ortamı özetini görüntüleyin.",
         _ => string.Empty
     };
 
@@ -906,7 +915,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public bool IsNotificationsSection => CurrentSection == SectionNotifications;
     public bool IsSettingsSection => CurrentSection == SectionSettings;
     public bool IsDashboardNavSelected => IsDashboardSection;
-    public bool IsDevicesNavSelected => IsDeviceWorkspaceVisible;
+    public bool IsDevicesNavSelected => IsDeviceWorkspaceVisible || IsDeviceDetailsSection;
     public bool IsSchedulesNavSelected => IsSchedulesSection;
     public bool IsLogsNavSelected => IsLogsSection;
     public bool IsAvailabilityNavSelected => IsReportsSection;
@@ -942,6 +951,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             if (SetProperty(ref _isBusy, value))
             {
+                OnPropertyChanged(nameof(UiStatusText));
                 RaiseCommandStates();
             }
         }
@@ -974,6 +984,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (SetProperty(ref _selectedDevice, value))
             {
                 RaiseCommandStates();
+                OpenSelectedDeviceDetailsCommand.NotifyCanExecuteChanged();
+                OnPropertyChanged(nameof(SectionTitle));
+                OnPropertyChanged(nameof(BreadcrumbText));
+                OnPropertyChanged(nameof(HasSelectedDeviceDetails));
+                OnPropertyChanged(nameof(HasNoSelectedDeviceDetails));
+                RefreshSelectedDeviceCollections();
                 _ = RefreshSelectedDeviceAvailabilityAsync();
             }
         }
@@ -987,6 +1003,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (SetProperty(ref _selectedGroup, value))
             {
                 RaiseCommandStates();
+                RefreshSelectedGroupDevices();
             }
         }
     }

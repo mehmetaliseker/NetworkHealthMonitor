@@ -86,6 +86,8 @@ public sealed class AppSettings
 
     public NotificationSettings Notifications { get; set; } = new();
 
+    public AcceptanceTestSettings AcceptanceTest { get; set; } = new();
+
     public string Theme { get; set; } = "Açık";
 
     public static AppSettings Default => new();

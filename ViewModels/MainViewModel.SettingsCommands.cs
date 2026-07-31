@@ -146,7 +146,7 @@ public sealed partial class MainViewModel
 
     private async Task BackupDatabaseAsync()
     {
-        var path = _dialogService.GetSaveDatabaseFilePath($"network-health-monitor-{DateTime.Now:yyyyMMdd-HHmm}.db");
+        var path = _dialogService.GetSaveDatabaseFilePath($"NetworkHealthMonitor-{DateTime.Now:yyyyMMdd-HHmmss}.db");
         if (path is null)
         {
             return;

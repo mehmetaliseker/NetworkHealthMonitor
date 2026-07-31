@@ -1,0 +1,86 @@
+<UserControl x:Class="NetworkHealthMonitor.Views.Shell.SidebarNavigation"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border Background="{StaticResource ShellNavigationBrush}">
+        <DockPanel LastChildFill="True">
+            <Grid DockPanel.Dock="Top" Margin="10,12,10,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Width="36" Height="36" CornerRadius="8" Background="{StaticResource ShellPrimaryBrush}">
+                        <TextBlock Text="N"
+                                   Foreground="White"
+                                   FontWeight="Bold"
+                                   FontSize="17"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                    <StackPanel Margin="10,0,0,0"
+                                Visibility="{Binding IsNavigationCollapsed, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                        <TextBlock Text="NetworkHealthMonitor" Foreground="White" FontWeight="SemiBold" FontSize="14" />
+                        <TextBlock Text="Ag izleme yonetimi" Foreground="#A7B2C4" FontSize="12" />
+                    </StackPanel>
+                </StackPanel>
+                <Button Grid.Column="1"
+                        Width="34"
+                        Height="34"
+                        MinHeight="34"
+                        Padding="0"
+                        Command="{Binding ToggleNavigationCommand}"
+                        Style="{StaticResource NavigationButtonStyle}"
+                        ToolTip="{Binding NavigationToggleText}"
+                        AutomationProperties.Name="{Binding NavigationToggleText}">
+                    <TextBlock Text="≡" HorizontalAlignment="Center" />
+                </Button>
+            </Grid>
+
+            <StackPanel DockPanel.Dock="Bottom" Margin="0,0,0,12">
+                <ItemsControl ItemsSource="{Binding SecondaryNavigationItems}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Command="{Binding Command}"
+                                    Tag="{Binding IsSelected}"
+                                    ToolTip="{Binding ToolTip}"
+                                    Style="{StaticResource NavigationSubButtonStyle}"
+                                    AutomationProperties.Name="{Binding AutomationName}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Number}" Style="{StaticResource NavGlyphStyle}" />
+                                    <TextBlock Text="{Binding Label}"
+                                               Margin="12,0,0,0"
+                                               VerticalAlignment="Center"
+                                               TextWrapping="NoWrap"
+                                               Visibility="{Binding DataContext.IsNavigationCollapsed, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
+                                </StackPanel>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,4,0,8">
+                <ItemsControl ItemsSource="{Binding PrimaryNavigationItems}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Command="{Binding Command}"
+                                    Tag="{Binding IsSelected}"
+                                    ToolTip="{Binding ToolTip}"
+                                    Style="{StaticResource NavigationButtonStyle}"
+                                    AutomationProperties.Name="{Binding AutomationName}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Number}" Style="{StaticResource NavGlyphStyle}" />
+                                    <TextBlock Text="{Binding Label}"
+                                               Margin="12,0,0,0"
+                                               VerticalAlignment="Center"
+                                               TextWrapping="NoWrap"
+                                               Visibility="{Binding DataContext.IsNavigationCollapsed, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
+                                </StackPanel>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </DockPanel>
+    </Border>
+</UserControl>

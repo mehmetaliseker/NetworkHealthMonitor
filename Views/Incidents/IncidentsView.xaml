@@ -1,0 +1,62 @@
+<UserControl x:Class="NetworkHealthMonitor.Views.Incidents.IncidentsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer Style="{StaticResource PageScrollStyle}">
+        <StackPanel>
+            <TabControl>
+                <TabItem Header="Acik Kesintiler">
+                    <StackPanel Margin="0,12,0,0">
+                        <WrapPanel>
+                            <Button Content="Yenile" Command="{Binding Legacy.RefreshAvailabilityCommand}" Style="{StaticResource ToolbarButtonStyle}" AutomationProperties.Name="Kesintileri yenile" />
+                            <Button Content="CSV Disa Aktar" Command="{Binding Legacy.ExportAvailabilityIncidentsCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" AutomationProperties.Name="Kesintileri CSV disa aktar" />
+                        </WrapPanel>
+                        <Border Style="{StaticResource InlineNoticeStyle}" Visibility="{Binding Legacy.HasNoOpenOutages, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <TextBlock Text="Açık kesinti bulunmuyor." />
+                        </Border>
+                        <DataGrid ItemsSource="{Binding Legacy.OpenOutages}" SelectedItem="{Binding Legacy.SelectedOutage}" Style="{StaticResource CompactDataGridStyle}" ColumnHeaderStyle="{StaticResource ModernDataGridHeaderStyle}" MinHeight="320">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Cihaz" Binding="{Binding DeviceName}" Width="1.5*" />
+                                <DataGridTextColumn Header="Başlangıç Zamanı" Binding="{Binding StartedAtText}" Width="170" />
+                                <DataGridTextColumn Header="Gecen Sure" Binding="{Binding DurationText}" Width="120" />
+                                <DataGridTextColumn Header="Son Kontrol" Binding="{Binding EndedAtText}" Width="150" />
+                                <DataGridTextColumn Header="Bildirim Durumu" Binding="{Binding StatusText}" Width="150" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </StackPanel>
+                </TabItem>
+                <TabItem Header="Cozulen Kesintiler">
+                    <DataGrid ItemsSource="{Binding Legacy.ResolvedOutages}" SelectedItem="{Binding Legacy.SelectedOutage}" Style="{StaticResource CompactDataGridStyle}" ColumnHeaderStyle="{StaticResource ModernDataGridHeaderStyle}" Margin="0,12,0,0" MinHeight="320">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Cihaz" Binding="{Binding DeviceName}" Width="1.5*" />
+                            <DataGridTextColumn Header="Başlangıç" Binding="{Binding StartedAtText}" Width="160" />
+                            <DataGridTextColumn Header="Cozulme" Binding="{Binding EndedAtText}" Width="160" />
+                            <DataGridTextColumn Header="Toplam Sure" Binding="{Binding DurationText}" Width="130" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </TabItem>
+                <TabItem Header="Tum Gecmis">
+                    <DataGrid ItemsSource="{Binding Legacy.RecentOutages}" SelectedItem="{Binding Legacy.SelectedOutage}" Style="{StaticResource CompactDataGridStyle}" ColumnHeaderStyle="{StaticResource ModernDataGridHeaderStyle}" Margin="0,12,0,0" MinHeight="320">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Cihaz" Binding="{Binding DeviceName}" Width="1.5*" />
+                            <DataGridTextColumn Header="Başlangıç" Binding="{Binding StartedAtText}" Width="160" />
+                            <DataGridTextColumn Header="Cozulme" Binding="{Binding EndedAtText}" Width="160" />
+                            <DataGridTextColumn Header="Durum" Binding="{Binding StatusText}" Width="130" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </TabItem>
+            </TabControl>
+
+            <Border Style="{StaticResource PanelSectionStyle}" Margin="0,12,0,0" Visibility="{Binding Legacy.HasSelectedOutage, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel>
+                    <TextBlock Text="Kesinti Detayi" Style="{StaticResource SectionHeadingStyle}" />
+                    <WrapPanel>
+                        <StackPanel Width="220" Margin="0,0,18,12"><TextBlock Text="Başlangıç" Style="{StaticResource FieldLabelStyle}" /><TextBlock Text="{Binding Legacy.SelectedOutage.StartedAtText}" /></StackPanel>
+                        <StackPanel Width="220" Margin="0,0,18,12"><TextBlock Text="Cozulme" Style="{StaticResource FieldLabelStyle}" /><TextBlock Text="{Binding Legacy.SelectedOutage.EndedAtText}" /></StackPanel>
+                        <StackPanel Width="180" Margin="0,0,18,12"><TextBlock Text="Toplam sure" Style="{StaticResource FieldLabelStyle}" /><TextBlock Text="{Binding Legacy.SelectedOutage.DurationText}" /></StackPanel>
+                        <StackPanel Width="180" Margin="0,0,18,12"><TextBlock Text="Tekrar sayısı" Style="{StaticResource FieldLabelStyle}" /><TextBlock Text="{Binding Legacy.SelectedOutage.FailureCount}" /></StackPanel>
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

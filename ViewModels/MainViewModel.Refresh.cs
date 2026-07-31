@@ -125,6 +125,7 @@ public sealed partial class MainViewModel
         OnPropertyChanged(nameof(HasNoDevices));
         OnPropertyChanged(nameof(HasDevicesButNoFilteredDevices));
         OnPropertyChanged(nameof(HasNoFilteredDevices));
+        NotifyFocusedPageState();
     }
 
     private async Task LoadGroupsAsync()
@@ -155,6 +156,7 @@ public sealed partial class MainViewModel
         ReplaceCollection(DeviceGroups, groups);
         RefreshGroupOptions();
         UpdatePlanTargetOptions(keepCurrentValue: true);
+        NotifyFocusedPageState();
     }
 
     private async Task LoadSchedulePlansAsync()
@@ -168,6 +170,7 @@ public sealed partial class MainViewModel
         ReplaceCollection(SchedulePlans, plans);
         RefreshSchedulePlanOptions();
         UpdatePlanTargetOptions(keepCurrentValue: true);
+        NotifyFocusedPageState();
     }
 
     private async Task LoadAvailabilityAsync()
@@ -182,7 +185,11 @@ public sealed partial class MainViewModel
 
     private async Task LoadOpenOutagesAsync()
     {
-        ReplaceCollection(OpenOutages, await _outageRepository.GetOpenAsync());
+        var recent = await _outageRepository.GetRecentAsync();
+        ReplaceCollection(RecentOutages, recent);
+        ReplaceCollection(OpenOutages, recent.Where(outage => !outage.IsResolved));
+        ReplaceCollection(ResolvedOutages, recent.Where(outage => outage.IsResolved));
+        NotifyFocusedPageState();
     }
 
     private async Task LoadLogsAsync()
@@ -204,6 +211,7 @@ public sealed partial class MainViewModel
         LogsView.Refresh();
         UpdateDashboard();
         RaiseCommandStates();
+        NotifyFocusedPageState();
     }
 
     private bool FilterDevice(object item)
@@ -501,6 +509,12 @@ public sealed partial class MainViewModel
         StopSchedulerCommand?.NotifyCanExecuteChanged();
         RestartWorkerServiceCommand?.NotifyCanExecuteChanged();
         RefreshWorkerServiceStatusCommand?.NotifyCanExecuteChanged();
+        InstallWorkerServiceCommand?.NotifyCanExecuteChanged();
+        UninstallWorkerServiceCommand?.NotifyCanExecuteChanged();
+        OpenSelectedDeviceDetailsCommand?.NotifyCanExecuteChanged();
+        OpenSchedulePlanFormCommand?.NotifyCanExecuteChanged();
+        CloseSchedulePlanFormCommand?.NotifyCanExecuteChanged();
+        PingGroupSummaryCommand?.NotifyCanExecuteChanged();
         RefreshLogsCommand?.NotifyCanExecuteChanged();
         RefreshDevicesCommand?.NotifyCanExecuteChanged();
         ClearLogsCommand?.NotifyCanExecuteChanged();

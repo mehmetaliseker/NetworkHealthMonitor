@@ -1,0 +1,70 @@
+<UserControl x:Class="NetworkHealthMonitor.Views.Devices.DeviceDetailsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:tabs="clr-namespace:NetworkHealthMonitor.Views.Devices.Tabs">
+    <ScrollViewer Style="{StaticResource PageScrollStyle}">
+        <StackPanel>
+            <Border Style="{StaticResource InlineNoticeStyle}"
+                    Visibility="{Binding Legacy.HasNoSelectedDeviceDetails, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel>
+                    <TextBlock Text="Detay gösterilecek cihaz seçilmedi." FontWeight="SemiBold" />
+                    <Button Content="Cihazlara Don"
+                            Command="{Binding Shell.NavigateDevicesCommand}"
+                            Style="{StaticResource ToolbarButtonStyle}"
+                            Margin="0,12,0,0"
+                            HorizontalAlignment="Left"
+                            AutomationProperties.Name="Cihazlar sayfasina don" />
+                </StackPanel>
+            </Border>
+
+            <StackPanel Visibility="{Binding Legacy.HasSelectedDeviceDetails, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Border Style="{StaticResource PanelSectionStyle}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="{Binding Legacy.SelectedDevice.Name}" Style="{StaticResource SectionHeadingStyle}" />
+                            <TextBlock Text="{Binding Legacy.SelectedDevice.IpAddress}" Style="{StaticResource BodyMutedTextStyle}" />
+                            <WrapPanel Margin="0,10,0,0">
+                                <TextBlock Text="Durum: " Style="{StaticResource MicroLabelTextStyle}" />
+                                <TextBlock Text="{Binding Legacy.SelectedDevice.LastStatusText}" FontWeight="SemiBold" Margin="0,0,18,0" />
+                                <TextBlock Text="Son kontrol: " Style="{StaticResource MicroLabelTextStyle}" />
+                                <TextBlock Text="{Binding Legacy.SelectedDevice.LastCheckedAtText}" />
+                            </WrapPanel>
+                        </StackPanel>
+                        <WrapPanel Grid.Column="1">
+                            <Button Content="Cihazlara Don"
+                                    Command="{Binding Shell.NavigateDevicesCommand}"
+                                    Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                    AutomationProperties.Name="Cihazlar sayfasina don" />
+                            <Button Content="Duzenle"
+                                    Command="{Binding Legacy.EditSelectedDeviceCommand}"
+                                    Style="{StaticResource ToolbarButtonStyle}"
+                                    AutomationProperties.Name="Secili cihazi duzenle" />
+                        </WrapPanel>
+                    </Grid>
+                </Border>
+
+                <TabControl>
+                    <TabItem Header="Genel">
+                        <tabs:DeviceGeneralTab />
+                    </TabItem>
+                    <TabItem Header="Kontrol Gecmisi">
+                        <tabs:DevicePingHistoryTab />
+                    </TabItem>
+                    <TabItem Header="Kesintiler">
+                        <tabs:DeviceIncidentsTab />
+                    </TabItem>
+                    <TabItem Header="Bildirimler">
+                        <tabs:DeviceNotificationsTab />
+                    </TabItem>
+                    <TabItem Header="Ayarlar">
+                        <tabs:DeviceSettingsTab />
+                    </TabItem>
+                </TabControl>
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

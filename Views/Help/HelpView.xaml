@@ -1,0 +1,17 @@
+<UserControl x:Class="NetworkHealthMonitor.Views.Help.HelpView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer Style="{StaticResource PageScrollStyle}">
+        <Border Style="{StaticResource PanelSectionStyle}">
+            <StackPanel>
+                <TextBlock Text="Yardim" Style="{StaticResource SectionHeadingStyle}" />
+                <TextBlock Text="Cihaz ekleme, ping kontrolu, kesinti takibi, bildirimler, raporlar ve worker yonetimi sol menudeki ayri sayfalardan yapilir."
+                           Style="{StaticResource BodyMutedTextStyle}" />
+                <WrapPanel Margin="0,14,0,0">
+                    <Button Content="Cihazlara Git" Command="{Binding Shell.NavigateDevicesCommand}" Style="{StaticResource ToolbarButtonStyle}" AutomationProperties.Name="Cihazlara git" />
+                    <Button Content="Sistem Sagligina Git" Command="{Binding Shell.NavigateSystemHealthCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" AutomationProperties.Name="Sistem sagligina git" />
+                </WrapPanel>
+            </StackPanel>
+        </Border>
+    </ScrollViewer>
+</UserControl>

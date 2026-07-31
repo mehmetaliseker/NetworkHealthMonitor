@@ -1,0 +1,10 @@
+<UserControl x:Class="NetworkHealthMonitor.Views.Dialogs.DeleteConfirmationDialog"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border Width="420" Background="{StaticResource ShellSurfaceBrush}" BorderBrush="{StaticResource ShellBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="18">
+        <StackPanel>
+            <TextBlock Text="Silme Onayi" FontSize="18" FontWeight="SemiBold" />
+            <TextBlock Text="Bu dialog altyapisi merkezi host icin ayrildi. Mevcut silme onaylari WpfDialogService uzerinden calisir." Style="{StaticResource BodyMutedTextStyle}" Margin="0,8,0,0" />
+        </StackPanel>
+    </Border>
+</UserControl>

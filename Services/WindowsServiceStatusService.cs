@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using NetworkHealthMonitor.Models;
 
 namespace NetworkHealthMonitor.Services;
@@ -66,6 +67,63 @@ public sealed class WindowsServiceStatusService : IWindowsServiceStatusService
         return OperationResult.Ok(startWithWindows
             ? "Worker, Windows açıldığında otomatik başlayacak."
             : "Worker otomatik başlangıcı kapatıldı. Bilgisayar açıldığında manuel olarak başlatılacak.");
+    }
+
+    public async Task<OperationResult> InstallAsync(CancellationToken cancellationToken = default)
+    {
+        var workerPath = ResolveWorkerExecutablePath();
+        if (string.IsNullOrWhiteSpace(workerPath) || !File.Exists(workerPath))
+        {
+            return OperationResult.Fail($"Worker uygulaması bulunamadı: {workerPath}");
+        }
+
+        var existing = await GetStatusAsync(cancellationToken);
+        if (existing.IsInstalled)
+        {
+            return OperationResult.Ok("Worker servisi zaten kurulu.");
+        }
+
+        var command = string.Join(
+            "; ",
+            "$ErrorActionPreference = 'Stop'",
+            $"New-Service -Name '{ServiceName}' -BinaryPathName '{EscapePowerShellSingleQuoted(workerPath)}' -DisplayName 'Network Health Monitor Worker' -StartupType Manual",
+            $"sc.exe failure '{ServiceName}' reset= 86400 actions= restart/60000/restart/120000/\"\"/0 | Out-Null");
+        var install = await RunElevatedPowerShellAsync(command, cancellationToken);
+        if (!install.Success)
+        {
+            return install;
+        }
+
+        var status = await GetStatusAsync(cancellationToken);
+        return status.IsInstalled
+            ? OperationResult.Ok("Worker servisi kuruldu. Başlangıç tipi Manual olarak ayarlandı.")
+            : OperationResult.Fail("Worker servisi kuruldu ancak durum doğrulanamadı.");
+    }
+
+    public async Task<OperationResult> UninstallAsync(CancellationToken cancellationToken = default)
+    {
+        var existing = await GetStatusAsync(cancellationToken);
+        if (!existing.IsInstalled)
+        {
+            return OperationResult.Ok("Worker servisi zaten kurulu değil.");
+        }
+
+        var command = string.Join(
+            "; ",
+            "$ErrorActionPreference = 'Stop'",
+            $"$service = Get-Service -Name '{ServiceName}' -ErrorAction SilentlyContinue",
+            "if ($null -ne $service -and $service.Status -ne 'Stopped') { Stop-Service -Name $service.Name -ErrorAction Stop; $service.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30)) }",
+            $"sc.exe delete '{ServiceName}' | Out-Null");
+        var uninstall = await RunElevatedPowerShellAsync(command, cancellationToken);
+        if (!uninstall.Success)
+        {
+            return uninstall;
+        }
+
+        var status = await GetStatusAsync(cancellationToken);
+        return !status.IsInstalled
+            ? OperationResult.Ok("Worker servisi kaldırıldı.")
+            : OperationResult.Fail("Worker servisi kaldırıldı ancak durum doğrulanamadı.");
     }
 
     public async Task<OperationResult> StartAsync(CancellationToken cancellationToken = default)
@@ -209,6 +267,25 @@ public sealed class WindowsServiceStatusService : IWindowsServiceStatusService
         {
             return OperationResult.Fail($"Yönetici işlemi başlatılamadı: {ex.Message}");
         }
+    }
+
+    private static string ResolveWorkerExecutablePath()
+    {
+        var baseDirectory = AppContext.BaseDirectory;
+        var candidates = new[]
+        {
+            Path.Combine(baseDirectory, "NetworkHealthMonitor.Worker.exe"),
+            Path.Combine(baseDirectory, "Worker", "NetworkHealthMonitor.Worker.exe"),
+            Path.GetFullPath(Path.Combine(baseDirectory, "..", "..", "..", "NetworkHealthMonitor.Worker", "bin", "Release", "net10.0-windows", "NetworkHealthMonitor.Worker.exe")),
+            Path.GetFullPath(Path.Combine(baseDirectory, "..", "..", "..", "NetworkHealthMonitor.Worker", "bin", "Debug", "net10.0-windows", "NetworkHealthMonitor.Worker.exe"))
+        };
+
+        return candidates.FirstOrDefault(File.Exists) ?? candidates[0];
+    }
+
+    private static string EscapePowerShellSingleQuoted(string value)
+    {
+        return value.Replace("'", "''", StringComparison.Ordinal);
     }
 
     private static bool IsAccessDenied((int ExitCode, string Output, string Error) result)
