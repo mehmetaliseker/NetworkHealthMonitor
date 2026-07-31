@@ -16,6 +16,11 @@ public sealed class NetworkHealthMonitorTests
         Assert.True(IpAddressValidator.IsValidIpv4("127.0.0.1"));
         Assert.False(IpAddressValidator.IsValidIpv4("999.1.1.1"));
         Assert.False(IpAddressValidator.IsValidIpv4("example.local"));
+        Assert.True(IpAddressValidator.ValidateDeviceAddress("camera-01").IsValid);
+        Assert.True(IpAddressValidator.ValidateDeviceAddress("server.local").IsValid);
+        Assert.Equal("server.local", IpAddressValidator.ValidateDeviceAddress("SERVER.LOCAL").NormalizedAddress);
+        Assert.False(IpAddressValidator.ValidateDeviceAddress("999.999.999.999").IsValid);
+        Assert.False(IpAddressValidator.ValidateDeviceAddress("http://192.168.1.10").IsValid);
     }
 
     [Fact]
@@ -30,6 +35,157 @@ public sealed class NetworkHealthMonitorTests
 
         Assert.True(first.Success);
         Assert.False(duplicate.Success);
+    }
+
+    [Fact]
+    public async Task Device_service_accepts_hostname_and_worker_candidates_read_same_row()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var repository = new DeviceRepository(store.ConnectionFactory);
+        var service = new DeviceService(repository);
+
+        var result = await service.SaveAsync(CreateDevice("Camera Host", "CAMERA-01", DeviceType.Camera));
+
+        Assert.True(result.Success);
+        var saved = Assert.Single(await repository.GetAllAsync());
+        Assert.Equal("camera-01", saved.IpAddress);
+        Assert.Single(await repository.GetAutoCheckCandidatesAsync());
+    }
+
+    [Fact]
+    public async Task Device_service_rejects_blank_name_invalid_ip_url_and_duplicate_hostname()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var repository = new DeviceRepository(store.ConnectionFactory);
+        var service = new DeviceService(repository);
+
+        Assert.False((await service.SaveAsync(CreateDevice("   ", "192.0.2.20"))).Success);
+        Assert.False((await service.SaveAsync(CreateDevice("Bad IP", "999.999.999.999"))).Success);
+        Assert.False((await service.SaveAsync(CreateDevice("URL", "https://server.local/path"))).Success);
+
+        Assert.True((await service.SaveAsync(CreateDevice("Host 1", "server.local"))).Success);
+        Assert.False((await service.SaveAsync(CreateDevice("Host 2", "SERVER.LOCAL"))).Success);
+    }
+
+    [Fact]
+    public async Task Device_service_updates_existing_with_own_address_and_active_state()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var repository = new DeviceRepository(store.ConnectionFactory);
+        var service = new DeviceService(repository);
+        var device = CreateDevice("Editable", "192.0.2.21");
+        Assert.True((await service.SaveAsync(device)).Success);
+
+        device.Name = "Editable Updated";
+        device.IpAddress = "192.0.2.21";
+        device.IsActive = false;
+        device.IsEnabled = false;
+        var update = await service.SaveAsync(device);
+
+        Assert.True(update.Success);
+        var saved = Assert.Single(await repository.GetAllAsync());
+        Assert.Equal("Editable Updated", saved.Name);
+        Assert.False(saved.IsActive);
+        Assert.False(saved.IsEnabled);
+        Assert.Empty(await repository.GetAutoCheckCandidatesAsync());
+    }
+
+    [Fact]
+    public async Task Device_service_reports_missing_update_and_delete()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var service = new DeviceService(new DeviceRepository(store.ConnectionFactory));
+
+        var update = await service.SaveAsync(CreateDevice("Present", "192.0.2.22"));
+        Assert.True(update.Success);
+
+        var missing = CreateDevice("Missing Update", "192.0.2.23");
+        missing.Id = 9999;
+        Assert.False((await service.SaveAsync(missing)).Success);
+        Assert.False((await service.DeleteAsync(missing)).Success);
+    }
+
+    [Fact]
+    public async Task Device_repository_add_read_update_soft_delete_and_duplicate_constraint_work()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var repository = new DeviceRepository(store.ConnectionFactory);
+        var device = CreateDevice("Repo", "192.0.2.24", DeviceType.Switch);
+        device.Id = await repository.AddAsync(device);
+
+        var loaded = await repository.GetByIdAsync(device.Id);
+        Assert.NotNull(loaded);
+        Assert.Equal("Repo", loaded.Name);
+
+        loaded.Name = "Repo Updated";
+        loaded.Location = "Rack";
+        await repository.UpdateAsync(loaded);
+        Assert.Contains(await repository.GetAllAsync(), item => item.Name == "Repo Updated" && item.Location == "Rack");
+        Assert.True(await repository.ExistsByIpAsync("192.0.2.24"));
+
+        await Assert.ThrowsAsync<SqliteException>(() => repository.AddAsync(CreateDevice("Duplicate", "192.0.2.24")));
+        await repository.DeleteAsync(device.Id);
+        Assert.Empty(await repository.GetAllAsync());
+        Assert.Single(await repository.GetAllAsync(onlyDeleted: true));
+        Assert.False(await repository.ExistsByIpAsync("192.0.2.24"));
+    }
+
+    [Fact]
+    public async Task Device_service_reuses_soft_deleted_address_for_new_manual_device()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var repository = new DeviceRepository(store.ConnectionFactory);
+        var service = new DeviceService(repository);
+
+        var original = CreateDevice("Original", "192.0.2.25");
+        Assert.True((await service.SaveAsync(original)).Success);
+        await repository.DeleteAsync(original.Id);
+
+        var replacement = CreateDevice("Replacement", "192.0.2.25", DeviceType.Switch);
+        var result = await service.SaveAsync(replacement);
+
+        Assert.True(result.Success);
+        var saved = Assert.Single(await repository.GetAllAsync());
+        Assert.Equal(original.Id, saved.Id);
+        Assert.Equal("Replacement", saved.Name);
+        Assert.Equal(DeviceType.Switch, saved.DeviceType);
+        Assert.False(saved.IsDeleted);
+        Assert.True(saved.IsActive);
+        Assert.True(saved.IsEnabled);
+        Assert.Single(await repository.GetAutoCheckCandidatesAsync());
+    }
+
+    [Fact]
+    public async Task Csv_import_accepts_hostname_and_blocks_duplicate_hostname()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var repository = new DeviceRepository(store.ConnectionFactory);
+        var service = CreateImportService(store);
+        var path = await WriteCsvAsync("Name;IpAddress;DeviceType\nHost;SERVER.LOCAL;Server");
+        var options = new CsvImportOptions(CsvImportMode.AddOnly, CsvImportScope.AllActiveDevices, null, "", Path.GetFileName(path), "test");
+
+        var preview = await service.ReadImportPreviewAsync(path, await repository.GetAllAsync(includeDeleted: true), options);
+        var result = await service.ApplyImportAsync(preview, options);
+
+        Assert.Equal(1, result.Added);
+        Assert.Contains(await repository.GetAllAsync(), device => device.IpAddress == "server.local");
+
+        var duplicatePath = await WriteCsvAsync("Name;IpAddress;DeviceType\nDuplicate;server.local;Server");
+        var duplicatePreview = await service.ReadImportPreviewAsync(duplicatePath, await repository.GetAllAsync(includeDeleted: true), options);
+        Assert.False(duplicatePreview.HasBlockingErrors);
+        Assert.Equal(1, duplicatePreview.SkipCount);
+    }
+
+    [Fact]
+    public async Task Device_connection_test_service_uses_ping_without_persisting()
+    {
+        var ping = new FakePingService(true);
+        var service = new DeviceConnectionTestService(ping);
+
+        var result = await service.TestAsync("127.0.0.1", 1000);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, ping.PingCount);
     }
 
     [Fact]
