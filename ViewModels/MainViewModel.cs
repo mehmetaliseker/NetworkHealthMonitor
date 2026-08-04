@@ -94,6 +94,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private bool _isBusy;
     private bool _isPinging;
     private bool _isNavigationCollapsed;
+    private bool _suppressNavigationPersistence;
     private string _currentSection = SectionDashboard;
     private string _currentSettingsSection = SettingsGeneral;
     private string _statusMessage = "Başlatılıyor...";
@@ -496,7 +497,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         PingSelectedDeviceCommand = new AsyncRelayCommand(() => SelectedDevice is null ? Task.CompletedTask : RunManualPingAsync(new[] { SelectedDevice }, PingTriggerType.SelectedDeviceManual), () => SelectedDevice is not null && !IsBusy);
         PingDeviceCommand = new AsyncRelayCommand<Device>(device => device is null ? Task.CompletedTask : RunManualPingAsync(new[] { device }, PingTriggerType.SelectedDeviceManual), device => device is not null && !IsBusy);
         PingSelectedTypeCommand = new AsyncRelayCommand(PingSelectedTypeAsync, () => DeviceTypeFilter != AllDeviceTypesText && !IsBusy);
-        PingSelectedDevicesBulkCommand = new AsyncRelayCommand<object>(parameter => RunManualPingAsync(GetSelectedDevices(parameter), PingTriggerType.SelectedDeviceManual), CanUseSelectedDevices);
+        PingSelectedDevicesBulkCommand = new AsyncRelayCommand<object>(PingSelectedDevicesBulkAsync, CanUseSelectedDevices);
         EnableAutoCheckSelectedCommand = new AsyncRelayCommand<object>(parameter => BulkSetAutoCheckAsync(parameter, true), CanUseSelectedDevices);
         DisableAutoCheckSelectedCommand = new AsyncRelayCommand<object>(parameter => BulkSetAutoCheckAsync(parameter, false), CanUseSelectedDevices);
         AssignSelectedDevicesToGroupCommand = new AsyncRelayCommand<object>(BulkAssignGroupAsync, CanUseSelectedDevices);
@@ -864,6 +865,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (SetProperty(ref _isNavigationCollapsed, value))
             {
                 OnPropertyChanged(nameof(NavigationToggleText));
+                if (!_suppressNavigationPersistence)
+                {
+                    _ = PersistNavigationCollapsedAsync(value);
+                }
             }
         }
     }
@@ -2379,9 +2384,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 OnPropertyChanged(nameof(ShowDeviceListPane));
                 OnPropertyChanged(nameof(ShowDeviceFormPane));
                 OnPropertyChanged(nameof(DeviceWorkspaceColumns));
+                OnPropertyChanged(nameof(IsAnyDialogVisible));
             }
         }
     }
+
+    public bool IsAnyDialogVisible => IsDeviceFormVisible || IsSchedulePlanFormVisible;
 
     public bool IsCompactLayout
     {

@@ -268,7 +268,13 @@ public sealed partial class MainViewModel
     public bool IsSchedulePlanFormVisible
     {
         get => _isSchedulePlanFormVisible;
-        set => SetProperty(ref _isSchedulePlanFormVisible, value);
+        set
+        {
+            if (SetProperty(ref _isSchedulePlanFormVisible, value))
+            {
+                OnPropertyChanged(nameof(IsAnyDialogVisible));
+            }
+        }
     }
 
     public string SelectedReportName

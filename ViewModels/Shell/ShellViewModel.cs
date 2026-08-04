@@ -89,24 +89,24 @@ public sealed class ShellViewModel : ObservableObject, IAsyncDisposable
 
         PrimaryNavigationItems = new ObservableCollection<NavigationItemViewModel>
         {
-            CreateNavItem("01", "Genel Bakış", "Genel Bakış sayfasını aç", "Genel Bakış", NavigateDashboardCommand, () => IsDashboardNavSelected),
-            CreateNavItem("02", "Cihazlar", "Cihazlar sayfasını aç", "Cihazlar", NavigateDevicesCommand, () => IsDevicesNavSelected),
-            CreateNavItem("03", "Cihaz Grupları", "Cihaz Grupları sayfasını aç", "Cihaz Grupları", NavigateGroupsCommand, () => IsGroupsNavSelected),
-            CreateNavItem("04", "Canlı Durum", "Canlı Durum sayfasını aç", "Canlı Durum", NavigateLiveStatusCommand, () => IsLiveStatusNavSelected),
-            CreateNavItem("05", "Kontrol Planları", "Kontrol Planları sayfasını aç", "Kontrol Planları", NavigateSchedulesCommand, () => IsSchedulesNavSelected),
-            CreateNavItem("06", "Ping Geçmişi", "Ping Geçmişi sayfasını aç", "Ping Geçmişi", NavigateLogsCommand, () => IsLogsNavSelected),
-            CreateNavItem("07", "Kesintiler", "Kesintiler sayfasını aç", "Kesintiler", NavigateEventsCommand, () => IsEventsNavSelected),
-            CreateNavItem("08", "Bildirimler", "Bildirimler sayfasını aç", "Bildirimler", NavigateNotificationsCommand, () => IsNotificationsNavSelected),
-            CreateNavItem("09", "Raporlar", "Raporlar sayfasını aç", "Raporlar", NavigateReportsCommand, () => IsReportsNavSelected),
-            CreateNavItem("10", WorkerServiceNavigationText, WorkerServiceNavigationAutomationName, WorkerServiceNavigationText, NavigateWorkerServiceCommand, () => IsWorkerServiceNavSelected),
-            CreateNavItem("11", "Sistem Sağlığı", "Sistem Sağlığı sayfasını aç", "Sistem Sağlığı", NavigateSystemHealthCommand, () => IsSystemHealthNavSelected),
-            CreateNavItem("12", "Ayarlar", "Ayarlar sayfasını aç", "Ayarlar", NavigateSettingsCommand, () => IsSettingsNavSelected)
+            CreateNavItem("\uE80F", "Genel Bakış", "Genel Bakış sayfasını aç", "Genel Bakış", NavigateDashboardCommand, () => IsDashboardNavSelected),
+            CreateNavItem("\uE772", "Cihazlar", "Cihazlar sayfasını aç", "Cihazlar", NavigateDevicesCommand, () => IsDevicesNavSelected),
+            CreateNavItem("\uE902", "Cihaz Grupları", "Cihaz Grupları sayfasını aç", "Cihaz Grupları", NavigateGroupsCommand, () => IsGroupsNavSelected),
+            CreateNavItem("\uE93E", "Canlı Durum", "Canlı Durum sayfasını aç", "Canlı Durum", NavigateLiveStatusCommand, () => IsLiveStatusNavSelected),
+            CreateNavItem("\uE787", "Kontrol Planları", "Kontrol Planları sayfasını aç", "Kontrol Planları", NavigateSchedulesCommand, () => IsSchedulesNavSelected),
+            CreateNavItem("\uE81C", "Ping Geçmişi", "Ping Geçmişi sayfasını aç", "Ping Geçmişi", NavigateLogsCommand, () => IsLogsNavSelected),
+            CreateNavItem("\uE7BA", "Kesintiler", "Kesintiler sayfasını aç", "Kesintiler", NavigateEventsCommand, () => IsEventsNavSelected),
+            CreateNavItem("\uEA8F", "Bildirimler", "Bildirimler sayfasını aç", "Bildirimler", NavigateNotificationsCommand, () => IsNotificationsNavSelected),
+            CreateNavItem("\uE9F9", "Raporlar", "Raporlar sayfasını aç", "Raporlar", NavigateReportsCommand, () => IsReportsNavSelected),
+            CreateNavItem("\uE968", WorkerServiceNavigationText, WorkerServiceNavigationAutomationName, WorkerServiceNavigationText, NavigateWorkerServiceCommand, () => IsWorkerServiceNavSelected),
+            CreateNavItem("\uE95E", "Sistem Sağlığı", "Sistem Sağlığı sayfasını aç", "Sistem Sağlığı", NavigateSystemHealthCommand, () => IsSystemHealthNavSelected),
+            CreateNavItem("\uE713", "Ayarlar", "Ayarlar sayfasını aç", "Ayarlar", NavigateSettingsCommand, () => IsSettingsNavSelected)
         };
 
         SecondaryNavigationItems = new ObservableCollection<NavigationItemViewModel>
         {
-            CreateNavItem("?", "Yardım", "Yardım sayfasını aç", "Yardım", NavigateHelpCommand, () => IsHelpNavSelected),
-            CreateNavItem("i", "Hakkında", "Hakkında sayfasını aç", "Hakkında", NavigateAboutCommand, () => IsAboutNavSelected)
+            CreateNavItem("\uE897", "Yardım", "Yardım sayfasını aç", "Yardım", NavigateHelpCommand, () => IsHelpNavSelected),
+            CreateNavItem("\uE946", "Hakkında", "Hakkında sayfasını aç", "Hakkında", NavigateAboutCommand, () => IsAboutNavSelected)
         };
 
         Legacy.PropertyChanged += LegacyPropertyChanged;
@@ -294,7 +294,7 @@ public sealed class ShellViewModel : ObservableObject, IAsyncDisposable
     }
 
     private static NavigationItemViewModel CreateNavItem(
-        string number,
+        string iconGlyph,
         string label,
         string automationName,
         string toolTip,
@@ -303,7 +303,7 @@ public sealed class ShellViewModel : ObservableObject, IAsyncDisposable
     {
         return new NavigationItemViewModel
         {
-            Number = number,
+            IconGlyph = iconGlyph,
             Label = label,
             AutomationName = automationName,
             ToolTip = toolTip,

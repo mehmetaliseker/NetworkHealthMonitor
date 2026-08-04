@@ -173,10 +173,11 @@ public sealed partial class MainViewModel
             return;
         }
 
+        var selectedCount = devices.Count;
         var title = isActive ? "Seçili cihazlar aktif hale getirilsin mi?" : "Seçili cihazlar pasifleştirilsin mi?";
         var message = isActive
-            ? $"{devices.Count} cihaz tekrar aktif listeye alınacak. Otomatik kontrol ayarı açık olanlar Worker tarafından kullanılabilir."
-            : $"{devices.Count} cihaz otomatik kontrol ve manuel toplu işlemler dışında kalacak. Cihaz kayıtları silinmez.";
+            ? $"{selectedCount} cihaz tekrar aktif listeye alınacak. Otomatik kontrol ayarı açık olanlar Worker tarafından kullanılabilir."
+            : $"{selectedCount} cihaz otomatik kontrol ve manuel toplu işlemler dışında kalacak. Cihaz kayıtları silinmez.";
 
         if (!_dialogService.Confirm(title, message))
         {
@@ -188,7 +189,11 @@ public sealed partial class MainViewModel
         {
             var affected = await _deviceRepository.BulkSetActiveAsync(devices.Select(device => device.Id), isActive);
             await ReloadAllAsync();
-            StatusMessage = isActive ? $"{affected} cihaz aktif hale getirildi." : $"{affected} cihaz pasifleştirildi.";
+            var summary = isActive
+                ? $"{selectedCount} cihaz seçildi. {affected} cihaz aktif hale getirildi."
+                : $"{selectedCount} cihaz seçildi. {affected} cihaz pasifleştirildi.";
+            StatusMessage = summary;
+            _dialogService.ShowInfo(isActive ? "Toplu aktif sonucu" : "Toplu pasif sonucu", summary);
         }
         finally
         {
@@ -201,10 +206,11 @@ public sealed partial class MainViewModel
         var devices = GetSelectedDevices(parameter).Where(device => !device.IsDeleted).ToList();
         if (devices.Count == 0)
         {
-            _dialogService.ShowWarning("Cihaz secilmedi", "Silinecek aktif cihaz secin.");
+            _dialogService.ShowWarning("Cihaz seçilmedi", "Silinecek aktif cihaz seçin.");
             return;
         }
 
+        var selectedCount = devices.Count;
         var names = string.Join(", ", devices.Take(5).Select(device => $"{device.Name} ({device.IpAddress})"));
         if (devices.Count > 5)
         {
@@ -212,8 +218,8 @@ public sealed partial class MainViewModel
         }
 
         if (!_dialogService.Confirm(
-                "Secilen cihazlar silinsin mi?",
-                $"{devices.Count} cihaz otomatik kontrollerden cikarilacak.\n{names}\n\nGecmis ping ve kesinti kayitlari korunacaktir."))
+                "Seçilen cihazlar silinsin mi?",
+                $"{selectedCount} cihaz otomatik kontrollerden çıkarılacak.\n{names}\n\nGeçmiş ping ve kesinti kayıtları korunacaktır."))
         {
             return;
         }
@@ -223,7 +229,9 @@ public sealed partial class MainViewModel
         {
             var result = await _deviceService.BulkDeleteAsync(devices);
             await ReloadAllAsync();
-            StatusMessage = result.Message;
+            var summary = $"{selectedCount} cihaz seçildi. {result.Message}";
+            StatusMessage = summary;
+            _dialogService.ShowInfo("Toplu silme sonucu", summary);
         }
         finally
         {

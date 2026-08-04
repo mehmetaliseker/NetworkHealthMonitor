@@ -90,5 +90,7 @@ public sealed class AppSettings
 
     public string Theme { get; set; } = "Açık";
 
+    public bool IsNavigationCollapsed { get; set; }
+
     public static AppSettings Default => new();
 }

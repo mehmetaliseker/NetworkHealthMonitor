@@ -106,7 +106,8 @@ public sealed class AppSettingsService
             DeviceTypePolicies = DeviceTypePolicy.NormalizeCollection(settings.DeviceTypePolicies),
             Notifications = NormalizeNotifications(settings.Notifications),
             AcceptanceTest = NormalizeAcceptanceTest(settings.AcceptanceTest),
-            Theme = string.IsNullOrWhiteSpace(settings.Theme) ? "Açık" : settings.Theme
+            Theme = string.IsNullOrWhiteSpace(settings.Theme) ? "Açık" : settings.Theme,
+            IsNavigationCollapsed = settings.IsNavigationCollapsed
         };
     }
 
