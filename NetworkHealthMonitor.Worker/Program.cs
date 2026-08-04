@@ -24,6 +24,13 @@ if (options.RunOnce)
     return;
 }
 
+using var singleInstanceGuard = new SingleInstanceGuard(SingleInstanceNames.Worker);
+if (!singleInstanceGuard.IsFirstInstance)
+{
+    Environment.ExitCode = 2;
+    return;
+}
+
 var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddSingleton(options);
 builder.Services.AddHostedService<WorkerService>();

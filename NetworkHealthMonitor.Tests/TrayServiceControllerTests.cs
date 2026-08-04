@@ -113,6 +113,14 @@ public sealed class TrayServiceControllerTests
     }
 
     [Fact]
+    public void Worker_single_instance_name_is_dedicated()
+    {
+        Assert.False(string.IsNullOrWhiteSpace(SingleInstanceNames.Worker));
+        Assert.NotEqual(SingleInstanceNames.ManagementUi, SingleInstanceNames.Worker);
+        Assert.NotEqual(SingleInstanceNames.Tray, SingleInstanceNames.Worker);
+    }
+
+    [Fact]
     public void Menu_state_disables_start_when_running()
     {
         var menu = TrayMenuStateBuilder.Build(new WorkerServiceStatus(WorkerServiceState.Running, "Çalışıyor"));

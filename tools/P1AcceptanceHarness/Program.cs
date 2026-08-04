@@ -15,15 +15,29 @@ const string ServiceName = WorkerServiceConstants.ServiceName;
 
 var artifactsRoot = args.FirstOrDefault(arg => arg.StartsWith("--artifacts=", StringComparison.OrdinalIgnoreCase))?.Split('=', 2)[1]
     ?? Path.Combine("artifacts", "p1-runtime");
+var dataRoot = args.FirstOrDefault(arg => arg.StartsWith("--data-dir=", StringComparison.OrdinalIgnoreCase))?.Split('=', 2)[1];
+var consoleWorker = args.Any(arg => string.Equals(arg, "--console-worker", StringComparison.OrdinalIgnoreCase));
+var workerExeOverride = args.FirstOrDefault(arg => arg.StartsWith("--worker-exe=", StringComparison.OrdinalIgnoreCase))?.Split('=', 2)[1];
 Directory.CreateDirectory(artifactsRoot);
+if (!string.IsNullOrWhiteSpace(dataRoot))
+{
+    dataRoot = Path.GetFullPath(dataRoot);
+}
 
-DatabasePaths.Configure(new ProgramDataApplicationPathProvider(), null);
+DatabasePaths.Configure(
+    string.IsNullOrWhiteSpace(dataRoot)
+        ? new ProgramDataApplicationPathProvider()
+        : new FixedApplicationPathProvider(dataRoot),
+    null);
 var report = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
 {
     ["startedAtUtc"] = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
     ["databasePath"] = DatabasePaths.DatabaseFilePath,
-    ["settingsPath"] = DatabasePaths.SettingsFilePath
+    ["settingsPath"] = DatabasePaths.SettingsFilePath,
+    ["dataRoot"] = DatabasePaths.RootDirectory
 };
+ServiceState? initialService = null;
+Process? consoleWorkerProcess = null;
 
 var queryOnly = args.Any(arg => string.Equals(arg, "--query-only", StringComparison.OrdinalIgnoreCase));
 var cleanupOnly = args.Any(arg => string.Equals(arg, "--cleanup-only", StringComparison.OrdinalIgnoreCase));
@@ -89,12 +103,33 @@ try
     await CleanupAcceptanceDataAsync(connectionFactory);
     await ConfigureAcceptanceSettingsAsync(httpServer.Url, smtpServer.Port);
 
-    var initialService = await ReadServiceStateAsync();
-    report["initialService"] = initialService;
-    if (!string.Equals(initialService.Status, "Running", StringComparison.OrdinalIgnoreCase))
+    if (consoleWorker)
     {
-        await RunProcessAsync("sc.exe", $"start \"{ServiceName}\"");
-        await WaitForServiceStatusAsync("RUNNING", TimeSpan.FromSeconds(30));
+        var workerExecutablePath = ResolveWorkerExecutablePath(workerExeOverride);
+        report["workerExecutablePath"] = workerExecutablePath;
+        consoleWorkerProcess = StartConsoleWorker(workerExecutablePath, DatabasePaths.RootDirectory);
+        report["consoleWorkerPid"] = consoleWorkerProcess.Id;
+        await WaitUntilAsync(
+            async () => !consoleWorkerProcess.HasExited && await ReadHeartbeatAgeSecondsAsync(connectionFactory) <= 5,
+            TimeSpan.FromSeconds(30),
+            "Console Worker did not write a heartbeat before duplicate process verification.");
+        report["heartbeatAgeBeforeDuplicateSeconds"] = await ReadHeartbeatAgeSecondsAsync(connectionFactory);
+        var duplicateExitCode = await RunDuplicateConsoleWorkerAsync(workerExecutablePath, DatabasePaths.RootDirectory);
+        report["duplicateWorkerExitCode"] = duplicateExitCode;
+        if (duplicateExitCode != 2)
+        {
+            throw new InvalidOperationException($"Duplicate Worker process returned {duplicateExitCode}; expected single-instance exit code 2.");
+        }
+    }
+    else
+    {
+        initialService = await ReadServiceStateAsync();
+        report["initialService"] = initialService;
+        if (!string.Equals(initialService.Status, "Running", StringComparison.OrdinalIgnoreCase))
+        {
+            await RunProcessAsync("sc.exe", $"start \"{ServiceName}\"");
+            await WaitForServiceStatusAsync("RUNNING", TimeSpan.FromSeconds(30));
+        }
     }
 
     var deviceRepository = new DeviceRepository(connectionFactory);
@@ -180,18 +215,40 @@ try
         throw new InvalidOperationException("Acceptance offline device disappeared before recovery test.");
     }
 
-    updatedOffline.IpAddress = "localhost";
-    var updateResult = await deviceService.SaveAsync(updatedOffline);
-    if (!updateResult.Success)
+    var deleteOnlineResult = await deviceService.DeleteAsync(onlineDevice);
+    if (!deleteOnlineResult.Success)
     {
-        throw new InvalidOperationException(updateResult.Message);
+        throw new InvalidOperationException(deleteOnlineResult.Message);
     }
 
-    await WaitUntilAsync(
+    report["onlineDeviceDeletedBeforeRecovery"] = true;
+    await UpdateDeviceAddressDirectAsync(connectionFactory, onlineDevice.Id, "nhr-acceptance-deleted.local");
+    await UpdateDeviceForRecoveryDirectAsync(
+        connectionFactory,
+        updatedOffline.Id,
+        "NHR-ACCEPTANCE-ONLINE-RECOVERED",
+        "127.0.0.1",
+        "P1 runtime acceptance recovery data");
+    updatedOffline.IpAddress = "127.0.0.1";
+
+    var incidentClosed = await WaitUntilOrFalseAsync(
         async () => await CountOpenIncidentsAsync(connectionFactory, offlineDevice.Id) == 0
             && await CountClosedIncidentsAsync(connectionFactory, offlineDevice.Id) >= 1,
-        TimeSpan.FromSeconds(150),
-        "Worker did not close the acceptance incident after the device recovered.");
+        TimeSpan.FromSeconds(150));
+    if (!incidentClosed)
+    {
+        report["logsWhenRecoveryTimedOut"] = await CountLogsForAcceptanceDevicesAsync(connectionFactory);
+        report["offlineStatusWhenRecoveryTimedOut"] = await ReadDeviceStatusAsync(connectionFactory, offlineDevice.Id);
+        report["offlineAddressWhenRecoveryTimedOut"] = await ScalarStringAsync(connectionFactory, "SELECT IpAddress FROM Devices WHERE Id = @DeviceId;", ("@DeviceId", offlineDevice.Id));
+        report["openIncidentCountWhenRecoveryTimedOut"] = await CountOpenIncidentsAsync(connectionFactory, offlineDevice.Id);
+        report["closedIncidentCountWhenRecoveryTimedOut"] = await CountClosedIncidentsAsync(connectionFactory, offlineDevice.Id);
+        report["incidentSnapshotWhenRecoveryTimedOut"] = await BuildIncidentSnapshotAsync(connectionFactory, offlineDevice.Id);
+        report["recentLogsWhenRecoveryTimedOut"] = await BuildRecentPingLogSnapshotAsync(connectionFactory, offlineDevice.Id);
+        report["planStatusWhenRecoveryTimedOut"] = await ScalarStringAsync(connectionFactory, "SELECT LastStatus FROM SchedulePlans WHERE Id = @PlanId;", ("@PlanId", plan.Id));
+        report["planLastRunAtWhenRecoveryTimedOut"] = await ScalarStringAsync(connectionFactory, "SELECT COALESCE(LastRunAt, '') FROM SchedulePlans WHERE Id = @PlanId;", ("@PlanId", plan.Id));
+        report["planNextRunAtWhenRecoveryTimedOut"] = await ScalarStringAsync(connectionFactory, "SELECT COALESCE(NextRunAt, '') FROM SchedulePlans WHERE Id = @PlanId;", ("@PlanId", plan.Id));
+        throw new TimeoutException("Worker did not close the acceptance incident after the device recovered.");
+    }
     report["closedIncidentCount"] = await CountClosedIncidentsAsync(connectionFactory, offlineDevice.Id);
 
     await WaitUntilAsync(
@@ -205,8 +262,18 @@ try
     var restartBlocked = false;
     try
     {
-        await StopWorkerAsync();
-        report["serviceAfterStop"] = await ReadServiceStateAsync();
+        if (consoleWorker)
+        {
+            await StopConsoleWorkerAsync(consoleWorkerProcess);
+            consoleWorkerProcess = null;
+            report["consoleWorkerAfterStop"] = "Stopped";
+        }
+        else
+        {
+            await StopWorkerAsync();
+            report["serviceAfterStop"] = await ReadServiceStateAsync();
+        }
+
         report["heartbeatAgeAfterStopSeconds"] = await ReadHeartbeatAgeSecondsAsync(connectionFactory);
 
         await outboxRepository.AddPendingAsync(
@@ -230,16 +297,34 @@ try
             DateTime.UtcNow);
         report["pendingOutboxInsertedWhileStopped"] = await CountPendingOutboxForAcceptanceAsync(connectionFactory);
 
-        await StartWorkerAsync();
+        if (consoleWorker)
+        {
+            var workerExecutablePath = ResolveWorkerExecutablePath(workerExeOverride);
+            consoleWorkerProcess = StartConsoleWorker(workerExecutablePath, DatabasePaths.RootDirectory);
+            report["consoleWorkerPidAfterRestart"] = consoleWorkerProcess.Id;
+        }
+        else
+        {
+            await StartWorkerAsync();
+        }
+
         await WaitUntilAsync(
             async () => await CountPendingOutboxForAcceptanceAsync(connectionFactory) == 0,
             TimeSpan.FromSeconds(45),
             "Pending outbox was not processed after Worker restart.");
         report["pendingOutboxAfterRestart"] = await CountPendingOutboxForAcceptanceAsync(connectionFactory);
-        report["serviceAfterRestart"] = await ReadServiceStateAsync();
+        if (consoleWorker)
+        {
+            report["consoleWorkerAfterRestartRunning"] = consoleWorkerProcess is not null && !consoleWorkerProcess.HasExited;
+        }
+        else
+        {
+            report["serviceAfterRestart"] = await ReadServiceStateAsync();
+        }
+
         report["heartbeatAgeAfterRestartSeconds"] = await ReadHeartbeatAgeSecondsAsync(connectionFactory);
     }
-    catch (Exception ex) when (IsAccessDenied(ex.Message))
+    catch (Exception ex) when (!consoleWorker && IsAccessDenied(ex.Message))
     {
         restartBlocked = true;
         report["workerRestartStatus"] = "BLOCKED";
@@ -250,7 +335,9 @@ try
 
     report["workerProcessCount"] = await CountWorkerProcessesAsync();
     report["consoleWorkerProcessCount"] = await CountConsoleWorkerProcessesAsync();
-    report["startupTypeAfterRestart"] = (await ReadServiceStateAsync()).StartMode;
+    report["startupTypeAfterRestart"] = consoleWorker
+        ? "NOT_APPLICABLE_CONSOLE_WORKER"
+        : (await ReadServiceStateAsync()).StartMode;
     report["duplicateOpenIncidentCount"] = await CountDuplicateOpenIncidentsAsync(connectionFactory);
     report["duplicateOutboxIdempotencyCount"] = await CountDuplicateOutboxIdempotencyAsync(connectionFactory);
     report["status"] = restartBlocked ? "PARTIAL" : "PASS";
@@ -262,6 +349,16 @@ catch (Exception ex)
 }
 finally
 {
+    try
+    {
+        await StopConsoleWorkerAsync(consoleWorkerProcess);
+        consoleWorkerProcess = null;
+    }
+    catch (Exception ex)
+    {
+        report["consoleWorkerStopError"] = ex.Message;
+    }
+
     try
     {
         var connectionFactory = new SqliteConnectionFactory();
@@ -293,14 +390,26 @@ finally
 
     try
     {
-        if (!string.Equals((await ReadServiceStateAsync()).Status, "Running", StringComparison.OrdinalIgnoreCase))
+        if (!consoleWorker && initialService is not null)
         {
-            await StartWorkerAsync();
+            var currentService = await ReadServiceStateAsync();
+            if (string.Equals(initialService.Status, "Running", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(currentService.Status, "Running", StringComparison.OrdinalIgnoreCase))
+            {
+                await StartWorkerAsync();
+            }
+            else if (!string.Equals(initialService.Status, "Running", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(currentService.Status, "Running", StringComparison.OrdinalIgnoreCase))
+            {
+                await StopWorkerAsync();
+            }
+
+            report["serviceStateAfterRestore"] = await ReadServiceStateAsync();
         }
     }
     catch (Exception ex)
     {
-        report["workerRestartAfterCleanupError"] = ex.Message;
+        report["workerStateRestoreError"] = ex.Message;
     }
 
     report["endedAtUtc"] = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
@@ -423,6 +532,55 @@ static async Task<Device> SaveBulkUiDeviceAsync(DeviceService service, string na
     }
 
     return device;
+}
+
+static async Task UpdateDeviceAddressDirectAsync(SqliteConnectionFactory connectionFactory, int deviceId, string address)
+{
+    await using var connection = await connectionFactory.CreateOpenConnectionAsync();
+    await using var command = connection.CreateCommand();
+    command.CommandText = """
+        UPDATE Devices
+        SET IpAddress = @IpAddress,
+            UpdatedAt = @UpdatedAt
+        WHERE Id = @Id;
+        """;
+    command.Parameters.AddWithValue("@IpAddress", address);
+    command.Parameters.AddWithValue("@UpdatedAt", DateTime.Now.ToString("O", CultureInfo.InvariantCulture));
+    command.Parameters.AddWithValue("@Id", deviceId);
+    var affected = await command.ExecuteNonQueryAsync();
+    if (affected != 1)
+    {
+        throw new InvalidOperationException("Acceptance device address update did not affect exactly one active device.");
+    }
+}
+
+static async Task UpdateDeviceForRecoveryDirectAsync(
+    SqliteConnectionFactory connectionFactory,
+    int deviceId,
+    string name,
+    string address,
+    string description)
+{
+    await using var connection = await connectionFactory.CreateOpenConnectionAsync();
+    await using var command = connection.CreateCommand();
+    command.CommandText = """
+        UPDATE Devices
+        SET Name = @Name,
+            IpAddress = @IpAddress,
+            Description = @Description,
+            UpdatedAt = @UpdatedAt
+        WHERE Id = @Id;
+        """;
+    command.Parameters.AddWithValue("@Name", name);
+    command.Parameters.AddWithValue("@IpAddress", address);
+    command.Parameters.AddWithValue("@Description", description);
+    command.Parameters.AddWithValue("@UpdatedAt", DateTime.Now.ToString("O", CultureInfo.InvariantCulture));
+    command.Parameters.AddWithValue("@Id", deviceId);
+    var affected = await command.ExecuteNonQueryAsync();
+    if (affected != 1)
+    {
+        throw new InvalidOperationException("Acceptance device recovery update did not affect exactly one device.");
+    }
 }
 
 static async Task<Dictionary<string, object?>> RunP2OperationalChecksAsync(
@@ -712,6 +870,81 @@ static async Task<int> CountClosedIncidentsAsync(SqliteConnectionFactory connect
     return await CountAsync(connectionFactory, "SELECT COUNT(1) FROM DeviceIncidents WHERE DeviceId = @DeviceId AND Status = 'Closed';", ("@DeviceId", deviceId));
 }
 
+static async Task<Dictionary<string, object?>> BuildIncidentSnapshotAsync(SqliteConnectionFactory connectionFactory, int deviceId)
+{
+    await using var connection = await connectionFactory.CreateOpenConnectionAsync();
+    await using var command = connection.CreateCommand();
+    command.CommandText = """
+        SELECT Id,
+               Status,
+               CurrentFailureCount,
+               RecoverySuccessCount,
+               COALESCE(LastFailureAtUtc, ''),
+               COALESCE(LastSuccessAtUtc, ''),
+               COALESCE(LastObservedAtUtc, ''),
+               COALESCE(UpdatedAtUtc, '')
+        FROM DeviceIncidents
+        WHERE DeviceId = @DeviceId
+        ORDER BY Id DESC
+        LIMIT 1;
+        """;
+    command.Parameters.AddWithValue("@DeviceId", deviceId);
+    await using var reader = await command.ExecuteReaderAsync();
+    if (!await reader.ReadAsync())
+    {
+        return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["id"] = reader.GetInt64(0),
+        ["status"] = reader.GetString(1),
+        ["currentFailureCount"] = reader.GetInt32(2),
+        ["recoverySuccessCount"] = reader.GetInt32(3),
+        ["lastFailureAtUtc"] = reader.GetString(4),
+        ["lastSuccessAtUtc"] = reader.GetString(5),
+        ["lastObservedAtUtc"] = reader.GetString(6),
+        ["updatedAtUtc"] = reader.GetString(7)
+    };
+}
+
+static async Task<IReadOnlyList<Dictionary<string, object?>>> BuildRecentPingLogSnapshotAsync(SqliteConnectionFactory connectionFactory, int deviceId)
+{
+    await using var connection = await connectionFactory.CreateOpenConnectionAsync();
+    await using var command = connection.CreateCommand();
+    command.CommandText = """
+        SELECT Status,
+               IsReachable,
+               IpAddress,
+               COALESCE(ErrorCode, ''),
+               COALESCE(ErrorMessage, ''),
+               COALESCE(SchedulePlanName, ''),
+               CheckedAt
+        FROM PingLogs
+        WHERE DeviceId = @DeviceId
+        ORDER BY Id DESC
+        LIMIT 8;
+        """;
+    command.Parameters.AddWithValue("@DeviceId", deviceId);
+    await using var reader = await command.ExecuteReaderAsync();
+    var logs = new List<Dictionary<string, object?>>();
+    while (await reader.ReadAsync())
+    {
+        logs.Add(new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["status"] = reader.GetString(0),
+            ["isReachable"] = reader.GetBoolean(1),
+            ["ipAddress"] = reader.GetString(2),
+            ["errorCode"] = reader.GetString(3),
+            ["errorMessage"] = reader.GetString(4),
+            ["schedulePlanName"] = reader.GetString(5),
+            ["checkedAt"] = reader.GetString(6)
+        });
+    }
+
+    return logs;
+}
+
 static async Task<int> CountOutboxForAcceptanceAsync(SqliteConnectionFactory connectionFactory)
 {
     return await CountAsync(connectionFactory, "SELECT COUNT(1) FROM NotificationOutbox WHERE IdempotencyKey LIKE 'nhr-acceptance-%' OR DeviceId IN (SELECT Id FROM Devices WHERE Name LIKE 'NHR-ACCEPTANCE-%');");
@@ -807,6 +1040,99 @@ static async Task<int> ReadHeartbeatAgeSecondsAsync(SqliteConnectionFactory conn
     return heartbeat is null ? int.MaxValue : Math.Max(0, (int)(DateTime.UtcNow - heartbeat.LastSeenAtUtc).TotalSeconds);
 }
 
+static string ResolveWorkerExecutablePath(string? overridePath)
+{
+    if (!string.IsNullOrWhiteSpace(overridePath))
+    {
+        var fullPath = Path.GetFullPath(overridePath);
+        return File.Exists(fullPath)
+            ? fullPath
+            : throw new FileNotFoundException("Worker executable was not found.", fullPath);
+    }
+
+    var candidates = new[]
+    {
+        Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "artifacts", "win-x64", "Worker", "NetworkHealthMonitor.Worker.exe")),
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "artifacts", "win-x64", "Worker", "NetworkHealthMonitor.Worker.exe"))
+    };
+
+    return candidates.FirstOrDefault(File.Exists)
+        ?? throw new FileNotFoundException("Worker executable was not found. Pass --worker-exe=<path>.");
+}
+
+static Process StartConsoleWorker(string workerExecutablePath, string dataRoot)
+{
+    if (!File.Exists(workerExecutablePath))
+    {
+        throw new FileNotFoundException("Worker executable was not found.", workerExecutablePath);
+    }
+
+    var process = new Process
+    {
+        StartInfo = new ProcessStartInfo
+        {
+            FileName = workerExecutablePath,
+            WorkingDirectory = Path.GetDirectoryName(workerExecutablePath) ?? Environment.CurrentDirectory,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        }
+    };
+    process.StartInfo.ArgumentList.Add("--data-dir");
+    process.StartInfo.ArgumentList.Add(dataRoot);
+    process.StartInfo.ArgumentList.Add("--poll-seconds");
+    process.StartInfo.ArgumentList.Add("2");
+
+    return process.Start()
+        ? process
+        : throw new InvalidOperationException("Console Worker process could not be started.");
+}
+
+static async Task<int> RunDuplicateConsoleWorkerAsync(string workerExecutablePath, string dataRoot)
+{
+    using var duplicate = StartConsoleWorker(workerExecutablePath, dataRoot);
+    try
+    {
+        if (!await WaitForProcessExitAsync(duplicate, TimeSpan.FromSeconds(15)))
+        {
+            throw new TimeoutException("Duplicate Worker process did not exit within 15 seconds.");
+        }
+
+        return duplicate.ExitCode;
+    }
+    finally
+    {
+        if (!duplicate.HasExited)
+        {
+            duplicate.Kill(entireProcessTree: true);
+            await duplicate.WaitForExitAsync();
+        }
+    }
+}
+
+static async Task StopConsoleWorkerAsync(Process? process)
+{
+    if (process is null)
+    {
+        return;
+    }
+
+    try
+    {
+        if (!process.HasExited)
+        {
+            process.Kill(entireProcessTree: true);
+            await process.WaitForExitAsync();
+        }
+    }
+    catch (InvalidOperationException)
+    {
+    }
+    finally
+    {
+        process.Dispose();
+    }
+}
+
 static async Task<ServiceState> ReadServiceStateAsync()
 {
     var output = await RunProcessAsync("powershell.exe", $"-NoProfile -Command \"Get-CimInstance Win32_Service -Filter \\\"Name='{ServiceName}'\\\" | ConvertTo-Json -Compress\"");
@@ -851,7 +1177,7 @@ static async Task<int> CountWorkerProcessesAsync()
 
 static async Task<int> CountConsoleWorkerProcessesAsync()
 {
-    var output = await RunProcessAsync("powershell.exe", "-NoProfile -Command \"@(Get-CimInstance Win32_Process -Filter \\\"Name='NetworkHealthMonitor.Worker.exe'\\\" | Where-Object { $_.CommandLine -match '--run-once|--health-check|--database' }).Count\"");
+    var output = await RunProcessAsync("powershell.exe", "-NoProfile -Command \"@(Get-CimInstance Win32_Process -Filter \\\"Name='NetworkHealthMonitor.Worker.exe'\\\" | Where-Object { $_.CommandLine -match '--run-once|--health-check|--database|--data-dir' }).Count\"");
     return int.TryParse(output.Output.Trim(), out var count) ? count : -1;
 }
 
@@ -912,6 +1238,12 @@ static async Task<bool> WaitUntilOrFalseAsync(Func<Task<bool>> condition, TimeSp
     }
 
     return false;
+}
+
+static async Task<bool> WaitForProcessExitAsync(Process process, TimeSpan timeout)
+{
+    var waitTask = process.WaitForExitAsync();
+    return await Task.WhenAny(waitTask, Task.Delay(timeout)) == waitTask;
 }
 
 public sealed record ServiceState(string Status, string StartMode, int ProcessId);
