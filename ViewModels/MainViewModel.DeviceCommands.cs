@@ -504,10 +504,32 @@ public sealed partial class MainViewModel
         await RunManualPingAsync(Devices.Where(device => device.DeviceType == type.Value).ToList(), PingTriggerType.TypeManual);
     }
 
+    private async Task PingSelectedDevicesBulkAsync(object? parameter)
+    {
+        var devices = GetSelectedDevices(parameter);
+        if (devices.Count == 0)
+        {
+            _dialogService.ShowWarning("Cihaz seçilmedi", "Toplu ping için cihaz seçin.");
+            return;
+        }
+
+        var selectedCount = devices.Count;
+        if (!_dialogService.Confirm(
+                "Seçili cihazlar kontrol edilsin mi?",
+                $"{selectedCount} cihaz için manuel ping başlatılacak."))
+        {
+            return;
+        }
+
+        await RunManualPingAsync(devices, PingTriggerType.SelectedDeviceManual, showResultSummary: true, selectedCount: selectedCount);
+    }
+
     private async Task RunManualPingAsync(
         IEnumerable<Device> devices,
         PingTriggerType triggerType,
-        SchedulePlan? schedulePlan = null)
+        SchedulePlan? schedulePlan = null,
+        bool showResultSummary = false,
+        int? selectedCount = null)
     {
         var targets = devices.Where(device => device.IsActive && device.IsEnabled && !device.IsDeleted).DistinctBy(device => device.Id).ToList();
         if (targets.Count == 0)
@@ -536,7 +558,15 @@ public sealed partial class MainViewModel
                 progress,
                 _pingCancellationTokenSource.Token);
 
-            StatusMessage = $"Ping tamamlandı. Başarılı: {result.SuccessCount}, başarısız: {result.FailureCount}, atlanan: {result.SkippedBecauseAlreadyRunning}.";
+            var summary = selectedCount.HasValue
+                ? $"{selectedCount.Value} cihaz seçildi. Ping tamamlandı. Başarılı: {result.SuccessCount}, başarısız: {result.FailureCount}, atlanan: {result.SkippedBecauseAlreadyRunning}."
+                : $"Ping tamamlandı. Başarılı: {result.SuccessCount}, başarısız: {result.FailureCount}, atlanan: {result.SkippedBecauseAlreadyRunning}.";
+            StatusMessage = summary;
+            if (showResultSummary)
+            {
+                _dialogService.ShowInfo("Toplu ping sonucu", summary);
+            }
+
             await ReloadAllAsync();
         }
         catch (OperationCanceledException)

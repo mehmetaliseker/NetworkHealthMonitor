@@ -31,7 +31,22 @@
                         Command="{Binding ToggleNavigationCommand}"
                         Style="{StaticResource NavigationButtonStyle}"
                         ToolTip="{Binding NavigationToggleText}"
-                        AutomationProperties.Name="{Binding NavigationToggleText}">
+                        AutomationProperties.Name="{Binding NavigationToggleText}"
+                        Visibility="{Binding IsNavigationCollapsed, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                    <TextBlock Text="≡" HorizontalAlignment="Center" />
+                </Button>
+                <Button Grid.Column="0"
+                        Grid.ColumnSpan="2"
+                        Width="40"
+                        Height="34"
+                        MinHeight="34"
+                        Padding="0"
+                        HorizontalAlignment="Center"
+                        Command="{Binding ToggleNavigationCommand}"
+                        Style="{StaticResource NavigationButtonStyle}"
+                        ToolTip="{Binding NavigationToggleText}"
+                        AutomationProperties.Name="{Binding NavigationToggleText}"
+                        Visibility="{Binding IsNavigationCollapsed, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <TextBlock Text="≡" HorizontalAlignment="Center" />
                 </Button>
             </Grid>
@@ -45,8 +60,9 @@
                                     ToolTip="{Binding ToolTip}"
                                     Style="{StaticResource NavigationSubButtonStyle}"
                                     AutomationProperties.Name="{Binding AutomationName}">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="{Binding Number}" Style="{StaticResource NavGlyphStyle}" />
+                                <StackPanel Orientation="Horizontal"
+                                            HorizontalAlignment="{Binding DataContext.IsNavigationCollapsed, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource CollapsedCenterAlignmentConverter}}">
+                                    <TextBlock Text="{Binding IconGlyph}" Style="{StaticResource NavGlyphStyle}" />
                                     <TextBlock Text="{Binding Label}"
                                                Margin="12,0,0,0"
                                                VerticalAlignment="Center"
@@ -68,8 +84,9 @@
                                     ToolTip="{Binding ToolTip}"
                                     Style="{StaticResource NavigationButtonStyle}"
                                     AutomationProperties.Name="{Binding AutomationName}">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="{Binding Number}" Style="{StaticResource NavGlyphStyle}" />
+                                <StackPanel Orientation="Horizontal"
+                                            HorizontalAlignment="{Binding DataContext.IsNavigationCollapsed, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource CollapsedCenterAlignmentConverter}}">
+                                    <TextBlock Text="{Binding IconGlyph}" Style="{StaticResource NavGlyphStyle}" />
                                     <TextBlock Text="{Binding Label}"
                                                Margin="12,0,0,0"
                                                VerticalAlignment="Center"

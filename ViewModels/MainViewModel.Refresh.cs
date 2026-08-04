@@ -465,11 +465,15 @@ public sealed partial class MainViewModel
         SaveDeviceCommand?.NotifyCanExecuteChanged();
         ClearDeviceFormCommand?.NotifyCanExecuteChanged();
         EditSelectedDeviceCommand?.NotifyCanExecuteChanged();
+        EditDeviceCommand?.NotifyCanExecuteChanged();
         DeleteSelectedDeviceCommand?.NotifyCanExecuteChanged();
+        DeleteDeviceCommand?.NotifyCanExecuteChanged();
         RestoreSelectedDeviceCommand?.NotifyCanExecuteChanged();
+        RestoreDeviceCommand?.NotifyCanExecuteChanged();
         PingAllCommand?.NotifyCanExecuteChanged();
         PingFilteredDevicesCommand?.NotifyCanExecuteChanged();
         PingSelectedDeviceCommand?.NotifyCanExecuteChanged();
+        PingDeviceCommand?.NotifyCanExecuteChanged();
         PingSelectedTypeCommand?.NotifyCanExecuteChanged();
         PingSelectedDevicesBulkCommand?.NotifyCanExecuteChanged();
         EnableAutoCheckSelectedCommand?.NotifyCanExecuteChanged();

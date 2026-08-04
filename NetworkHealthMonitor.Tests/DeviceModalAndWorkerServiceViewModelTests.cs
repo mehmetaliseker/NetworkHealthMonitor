@@ -7,6 +7,7 @@ using Xunit;
 
 namespace NetworkHealthMonitor.Tests;
 
+[Collection(SequentialDatabaseCollection.Name)]
 public sealed class DeviceModalAndWorkerServiceViewModelTests
 {
     [Fact]

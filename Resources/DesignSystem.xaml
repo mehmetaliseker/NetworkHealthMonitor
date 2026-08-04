@@ -274,6 +274,7 @@
         <Setter Property="BorderBrush" Value="Transparent" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -311,7 +312,7 @@
 
     <Style x:Key="NavigationSubButtonStyle" TargetType="Button" BasedOn="{StaticResource NavigationButtonStyle}">
         <Setter Property="MinHeight" Value="32" />
-        <Setter Property="Margin" Value="18,1,8,1" />
+        <Setter Property="Margin" Value="8,1" />
         <Setter Property="Padding" Value="10,6" />
         <Setter Property="Foreground" Value="#CBD5E1" />
         <Setter Property="FontSize" Value="12" />

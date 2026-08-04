@@ -1,12 +1,18 @@
 <UserControl x:Class="NetworkHealthMonitor.Views.Shell.GlobalDialogHost"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:dialogs="clr-namespace:NetworkHealthMonitor.Views.Dialogs">
-    <Grid IsHitTestVisible="False">
+             xmlns:dialogs="clr-namespace:NetworkHealthMonitor.Views.Dialogs"
+             IsHitTestVisible="{Binding Legacy.IsAnyDialogVisible}">
+    <!--
+      Root IsHitTestVisible only blocks when a dialog is open.
+      Do NOT set IsHitTestVisible=False on a parent with IsHitTestVisible=True children:
+      WPF excludes the entire visual subtree from hit-testing in that case.
+    -->
+    <Grid>
         <Grid Background="#66000000"
               Visibility="{Binding Legacy.IsDeviceFormVisible, Converter={StaticResource BooleanToVisibilityConverter}}"
               Panel.ZIndex="20"
-              IsHitTestVisible="True">
+              FocusManager.IsFocusScope="True">
             <dialogs:AddEditDeviceDialog HorizontalAlignment="Center"
                                          VerticalAlignment="Center"
                                          DataContext="{Binding Legacy}" />
@@ -15,7 +21,7 @@
         <Grid Background="#66000000"
               Visibility="{Binding Legacy.IsSchedulePlanFormVisible, Converter={StaticResource BooleanToVisibilityConverter}}"
               Panel.ZIndex="19"
-              IsHitTestVisible="True">
+              FocusManager.IsFocusScope="True">
             <dialogs:AddEditScheduleDialog HorizontalAlignment="Center"
                                            VerticalAlignment="Center"
                                            DataContext="{Binding Legacy}" />

@@ -83,9 +83,9 @@ public sealed class RowStatusBackgroundConverter : IValueConverter
 
 public sealed class BooleanToGridLengthConverter : IValueConverter
 {
-    public double TrueWidth { get; set; } = 76;
+    public double TrueWidth { get; set; } = 64;
 
-    public double FalseWidth { get; set; } = 276;
+    public double FalseWidth { get; set; } = 232;
 
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
@@ -104,6 +104,22 @@ public sealed class InverseBooleanToVisibilityConverter : IValueConverter
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         return value is bool boolValue && boolValue ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+public sealed class CollapsedCenterAlignmentConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        var isCollapsed = value is bool boolValue && boolValue;
+        return isCollapsed
+            ? System.Windows.HorizontalAlignment.Center
+            : System.Windows.HorizontalAlignment.Left;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

@@ -5,7 +5,7 @@ namespace NetworkHealthMonitor.ViewModels.Shell;
 
 public sealed class NavigationItemViewModel : ObservableObject
 {
-    public required string Number { get; init; }
+    public required string IconGlyph { get; init; }
 
     public required string Label { get; init; }
 
