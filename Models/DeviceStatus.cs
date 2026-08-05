@@ -100,6 +100,6 @@ public static class DeviceStatusExtensions
 
     public static bool IsProblematic(this DeviceStatus status)
     {
-        return status is DeviceStatus.UnderWatch or DeviceStatus.Offline;
+        return status.IsFailureObservation();
     }
 }

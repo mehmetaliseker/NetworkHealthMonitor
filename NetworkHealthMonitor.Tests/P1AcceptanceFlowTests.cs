@@ -243,6 +243,75 @@ public sealed class P1AcceptanceFlowTests
     }
 
     [Fact]
+    public async Task Notification_failure_does_not_stop_scheduler_from_running_later_cycles()
+    {
+        await using var store = await TestStore.CreateAsync();
+        var clock = new MutableClock(new DateTime(2026, 7, 31, 13, 0, 0, DateTimeKind.Utc));
+        await SaveSettingsAsync(settings =>
+        {
+            settings.AutoCheckEnabled = true;
+            settings.Notifications.Enabled = true;
+            settings.Notifications.Topic = "nhm-p1-tests";
+        });
+
+        var services = CreateServices(store, new FakePingService(() => clock.Now, true, true), clock);
+        var device = await SaveDeviceAsync(services.DeviceService, "NHR-ACCEPTANCE-SCHEDULER-AFTER-NOTIFY-FAIL", "scheduler-notify.local");
+        var plan = new SchedulePlan
+        {
+            Name = "NHR-ACCEPTANCE-SCHEDULER-AFTER-NOTIFY-FAIL",
+            TargetType = SchedulePlanTargetType.Device,
+            TargetValue = device.Id.ToString(),
+            ScheduleMode = ScheduleMode.FixedInterval,
+            IntervalValue = 1,
+            IntervalUnit = ScheduleIntervalUnit.Minutes,
+            IntervalMinutes = 1,
+            TimeoutMs = 1000,
+            MaxParallelism = 1,
+            FailureThreshold = 1,
+            IsActive = true,
+            NextRunAt = clock.UtcNow.AddSeconds(-1)
+        };
+        Assert.True((await services.SchedulePlanService.SaveAsync(plan)).Success);
+
+        var outbox = new NotificationOutboxRepository(store.ConnectionFactory);
+        await outbox.AddPendingAsync(
+            new NotificationOutboxCreateRequest
+            {
+                EventType = NotificationEventTypes.Test,
+                Channel = NotificationChannels.Ntfy,
+                Recipient = "nhm-p1-tests",
+                Subject = "NetworkHealthMonitor kabul testi",
+                Body = "Bu bildirim gercek bir cihaz kesintisi degildir.",
+                PayloadJson = "{}",
+                IdempotencyKey = "p1-scheduler-survives-notification-failure"
+            },
+            clock.UtcNow);
+        var dispatcher = new NotificationDispatcherService(
+            outbox,
+            new[]
+            {
+                new FakeNotificationChannel(
+                    NotificationChannels.Ntfy,
+                    _ => NotificationSendResult.PermanentFailure("ntfy endpoint failed"))
+            },
+            new AppSettingsService(),
+            new AlertPolicyService(),
+            "worker-notification-failure",
+            clock: clock);
+
+        await dispatcher.DispatchOnceAsync();
+        var failedItem = Assert.Single(await outbox.GetFilteredAsync(null, null, null, null, null, 10));
+        Assert.Equal(NotificationStatuses.DeadLetter, failedItem.Status);
+
+        await services.Scheduler.RunDuePlansOnceAsync();
+        Assert.Equal(1, await CountPlanLogsAsync(store, plan.Id));
+
+        clock.Advance(TimeSpan.FromMinutes(2));
+        await services.Scheduler.RunDuePlansOnceAsync();
+        Assert.Equal(2, await CountPlanLogsAsync(store, plan.Id));
+    }
+
+    [Fact]
     public async Task Acceptance_ping_adapter_is_disabled_by_default_and_fakes_only_when_enabled()
     {
         await using var store = await TestStore.CreateAsync();

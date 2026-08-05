@@ -42,7 +42,7 @@ public sealed class ModularShellArchitectureTests
             await shell.InitializeAsync();
             Assert.IsType<DashboardViewModel>(shell.CurrentPage);
             Assert.True(shell.IsDashboardNavSelected);
-            Assert.Equal("Genel Bakış", shell.PageTitle);
+            Assert.Equal("Genel", shell.PageTitle);
 
             await shell.NavigateToAsync<DevicesViewModel>();
             Assert.IsType<DevicesViewModel>(shell.CurrentPage);

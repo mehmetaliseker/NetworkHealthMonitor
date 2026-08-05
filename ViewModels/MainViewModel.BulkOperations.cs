@@ -79,10 +79,9 @@ public sealed partial class MainViewModel
 
     private async Task BulkSetAutoCheckAsync(object? parameter, bool enabled)
     {
-        var devices = GetSelectedDevices(parameter);
-        if (devices.Count == 0)
+        var devices = GetSelectedDevicesOrWarn(parameter, "Toplu işlem için cihaz seçin.");
+        if (devices is null)
         {
-            _dialogService.ShowWarning("Cihaz seçilmedi", "Toplu işlem için cihaz seçin.");
             return;
         }
 
@@ -93,25 +92,19 @@ public sealed partial class MainViewModel
             return;
         }
 
-        IsBusy = true;
-        try
+        await RunBulkOperationAsync(async () =>
         {
             var affected = await _deviceRepository.BulkSetAutoCheckAsync(devices.Select(device => device.Id), enabled);
             await ReloadAllAsync();
             StatusMessage = $"{affected} cihaz için otomatik kontrol {(enabled ? "açıldı" : "kapatıldı")}.";
-        }
-        finally
-        {
-            IsBusy = false;
-        }
+        });
     }
 
     private async Task BulkAssignGroupAsync(object? parameter)
     {
-        var devices = GetSelectedDevices(parameter);
-        if (devices.Count == 0)
+        var devices = GetSelectedDevicesOrWarn(parameter, "Toplu işlem için cihaz seçin.");
+        if (devices is null)
         {
-            _dialogService.ShowWarning("Cihaz seçilmedi", "Toplu işlem için cihaz seçin.");
             return;
         }
 
@@ -122,25 +115,19 @@ public sealed partial class MainViewModel
             return;
         }
 
-        IsBusy = true;
-        try
+        await RunBulkOperationAsync(async () =>
         {
             var affected = await _deviceRepository.BulkSetGroupAsync(devices.Select(device => device.Id), BulkTargetGroupId, groupName);
             await ReloadAllAsync();
             StatusMessage = $"{affected} cihaz {(string.IsNullOrWhiteSpace(groupName) ? "grupsuz yapıldı" : $"{groupName} grubuna atandı")}.";
-        }
-        finally
-        {
-            IsBusy = false;
-        }
+        });
     }
 
     private async Task BulkApplyCheckIntervalAsync(object? parameter)
     {
-        var devices = GetSelectedDevices(parameter);
-        if (devices.Count == 0)
+        var devices = GetSelectedDevicesOrWarn(parameter, "Toplu işlem için cihaz seçin.");
+        if (devices is null)
         {
-            _dialogService.ShowWarning("Cihaz seçilmedi", "Toplu işlem için cihaz seçin.");
             return;
         }
 
@@ -152,27 +139,21 @@ public sealed partial class MainViewModel
             return;
         }
 
-        IsBusy = true;
-        try
+        await RunBulkOperationAsync(async () =>
         {
             var affected = await _deviceRepository.BulkSetCheckIntervalAsync(devices.Select(device => device.Id), BulkCheckIntervalSeconds);
             await ReloadAllAsync();
             StatusMessage = BulkCheckIntervalSeconds <= 0
                 ? $"{affected} cihaz için özel kontrol aralığı kaldırıldı; grup/tip/global politika kullanılacak."
                 : $"{affected} cihaz için kontrol aralığı {BulkCheckIntervalSeconds} sn olarak güncellendi.";
-        }
-        finally
-        {
-            IsBusy = false;
-        }
+        });
     }
 
     private async Task BulkSetSuppressionAsync(object? parameter, DeviceSuppressionMode mode)
     {
-        var devices = GetSelectedDevices(parameter);
-        if (devices.Count == 0)
+        var devices = GetSelectedDevicesOrWarn(parameter, "Toplu işlem için cihaz seçin.");
+        if (devices is null)
         {
-            _dialogService.ShowWarning("Cihaz seçilmedi", "Toplu işlem için cihaz seçin.");
             return;
         }
 
@@ -190,8 +171,7 @@ public sealed partial class MainViewModel
             return;
         }
 
-        IsBusy = true;
-        try
+        await RunBulkOperationAsync(async () =>
         {
             var affected = await _deviceRepository.BulkSetSuppressionAsync(
                 devices.Select(device => device.Id),
@@ -202,19 +182,14 @@ public sealed partial class MainViewModel
                 DateTime.UtcNow);
             await ReloadAllAsync();
             StatusMessage = $"{affected} cihaz için {mode.ToDisplayName()} uygulandı.";
-        }
-        finally
-        {
-            IsBusy = false;
-        }
+        });
     }
 
     private async Task BulkClearSuppressionAsync(object? parameter)
     {
-        var devices = GetSelectedDevices(parameter);
-        if (devices.Count == 0)
+        var devices = GetSelectedDevicesOrWarn(parameter, "Toplu işlem için cihaz seçin.");
+        if (devices is null)
         {
-            _dialogService.ShowWarning("Cihaz seçilmedi", "Toplu işlem için cihaz seçin.");
             return;
         }
 
@@ -223,25 +198,19 @@ public sealed partial class MainViewModel
             return;
         }
 
-        IsBusy = true;
-        try
+        await RunBulkOperationAsync(async () =>
         {
             var affected = await _deviceRepository.BulkClearSuppressionAsync(devices.Select(device => device.Id), DateTime.UtcNow);
             await ReloadAllAsync();
             StatusMessage = $"{affected} cihaz normal izlemeye alındı.";
-        }
-        finally
-        {
-            IsBusy = false;
-        }
+        });
     }
 
     private async Task BulkSetActiveAsync(object? parameter, bool isActive)
     {
-        var devices = GetSelectedDevices(parameter);
-        if (devices.Count == 0)
+        var devices = GetSelectedDevicesOrWarn(parameter, "Toplu işlem için cihaz seçin.");
+        if (devices is null)
         {
-            _dialogService.ShowWarning("Cihaz seçilmedi", "Toplu işlem için cihaz seçin.");
             return;
         }
 
@@ -256,8 +225,7 @@ public sealed partial class MainViewModel
             return;
         }
 
-        IsBusy = true;
-        try
+        await RunBulkOperationAsync(async () =>
         {
             var affected = await _deviceRepository.BulkSetActiveAsync(devices.Select(device => device.Id), isActive);
             await ReloadAllAsync();
@@ -266,11 +234,7 @@ public sealed partial class MainViewModel
                 : $"{selectedCount} cihaz seçildi. {affected} cihaz pasifleştirildi.";
             StatusMessage = summary;
             _dialogService.ShowInfo(isActive ? "Toplu aktif sonucu" : "Toplu pasif sonucu", summary);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
+        });
     }
 
     private async Task BulkDeleteAsync(object? parameter)
@@ -296,19 +260,14 @@ public sealed partial class MainViewModel
             return;
         }
 
-        IsBusy = true;
-        try
+        await RunBulkOperationAsync(async () =>
         {
             var result = await _deviceService.BulkDeleteAsync(devices);
             await ReloadAllAsync();
             var summary = $"{selectedCount} cihaz seçildi. {result.Message}";
             StatusMessage = summary;
             _dialogService.ShowInfo("Toplu silme sonucu", summary);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
+        });
     }
 
     private async Task BulkRestoreAsync(object? parameter)
@@ -325,22 +284,42 @@ public sealed partial class MainViewModel
             return;
         }
 
-        IsBusy = true;
-        try
+        await RunBulkOperationAsync(async () =>
         {
             var result = await _deviceService.BulkRestoreAsync(devices);
             await ReloadAllAsync();
             StatusMessage = result.Message;
-        }
-        finally
-        {
-            IsBusy = false;
-        }
+        });
     }
 
     private bool CanUseSelectedDevices(object? parameter)
     {
         return !IsBusy && GetSelectedDevices(parameter).Count > 0;
+    }
+
+    private List<Device>? GetSelectedDevicesOrWarn(object? parameter, string warningMessage)
+    {
+        var devices = GetSelectedDevices(parameter);
+        if (devices.Count > 0)
+        {
+            return devices;
+        }
+
+        _dialogService.ShowWarning("Cihaz seçilmedi", warningMessage);
+        return null;
+    }
+
+    private async Task RunBulkOperationAsync(Func<Task> operation)
+    {
+        IsBusy = true;
+        try
+        {
+            await operation();
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     private void ToggleAllVisibleDevicesSelection()

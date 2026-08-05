@@ -89,12 +89,12 @@ public sealed class ShellViewModel : ObservableObject, IAsyncDisposable
 
         PrimaryNavigationItems = new ObservableCollection<NavigationItemViewModel>
         {
-            CreateNavItem("\uE80F", "Genel Bakış", "Genel Bakış sayfasını aç", "Genel Bakış", NavigateDashboardCommand, () => IsDashboardNavSelected),
+            CreateNavItem("\uE80F", "Genel", "Genel sayfasını aç", "Genel", NavigateDashboardCommand, () => IsDashboardNavSelected),
             CreateNavItem("\uE772", "Cihazlar", "Cihazlar sayfasını aç", "Cihazlar", NavigateDevicesCommand, () => IsDevicesNavSelected),
+            CreateNavItem("\uE81C", "Loglar", "Loglar sayfasını aç", "Loglar", NavigateLogsCommand, () => IsLogsNavSelected),
             CreateNavItem("\uE902", "Cihaz Grupları", "Cihaz Grupları sayfasını aç", "Cihaz Grupları", NavigateGroupsCommand, () => IsGroupsNavSelected),
             CreateNavItem("\uE93E", "Canlı Durum", "Canlı Durum sayfasını aç", "Canlı Durum", NavigateLiveStatusCommand, () => IsLiveStatusNavSelected),
             CreateNavItem("\uE787", "Kontrol Planları", "Kontrol Planları sayfasını aç", "Kontrol Planları", NavigateSchedulesCommand, () => IsSchedulesNavSelected),
-            CreateNavItem("\uE81C", "Ping Geçmişi", "Ping Geçmişi sayfasını aç", "Ping Geçmişi", NavigateLogsCommand, () => IsLogsNavSelected),
             CreateNavItem("\uE7BA", "Kesintiler", "Kesintiler sayfasını aç", "Kesintiler", NavigateEventsCommand, () => IsEventsNavSelected),
             CreateNavItem("\uEA8F", "Bildirimler", "Bildirimler sayfasını aç", "Bildirimler", NavigateNotificationsCommand, () => IsNotificationsNavSelected),
             CreateNavItem("\uE9F9", "Raporlar", "Raporlar sayfasını aç", "Raporlar", NavigateReportsCommand, () => IsReportsNavSelected),

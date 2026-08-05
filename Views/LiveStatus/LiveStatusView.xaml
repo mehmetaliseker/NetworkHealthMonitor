@@ -39,9 +39,26 @@
                                   Style="{StaticResource CompactDataGridStyle}"
                                   ColumnHeaderStyle="{StaticResource ModernDataGridHeaderStyle}"
                                   MaxHeight="260">
+                            <DataGrid.RowStyle>
+                                <Style TargetType="DataGridRow">
+                                    <Setter Property="Background" Value="{Binding LastStatus, Converter={StaticResource RowStatusBackgroundConverter}}" />
+                                </Style>
+                            </DataGrid.RowStyle>
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Cihaz" Binding="{Binding Name}" Width="*" />
                                 <DataGridTextColumn Header="IP / Hostname" Binding="{Binding IpAddress}" Width="150" />
+                                <DataGridTextColumn Header="Cihaz" Binding="{Binding Name}" Width="*" />
+                                <DataGridTemplateColumn Header="Durum" Width="130" IsReadOnly="True">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource StatusPillStyle}"
+                                                    Background="{Binding LastStatus, Converter={StaticResource StatusBackgroundConverter}}">
+                                                <TextBlock Text="{Binding LastStatusText}"
+                                                           Foreground="{Binding LastStatus, Converter={StaticResource StatusForegroundConverter}}"
+                                                           FontWeight="SemiBold" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
                                 <DataGridTextColumn Header="Son Kontrol" Binding="{Binding LastCheckedAtText}" Width="150" />
                             </DataGrid.Columns>
                         </DataGrid>
@@ -55,9 +72,26 @@
                                   Style="{StaticResource CompactDataGridStyle}"
                                   ColumnHeaderStyle="{StaticResource ModernDataGridHeaderStyle}"
                                   MaxHeight="260">
+                            <DataGrid.RowStyle>
+                                <Style TargetType="DataGridRow">
+                                    <Setter Property="Background" Value="{Binding LastStatus, Converter={StaticResource RowStatusBackgroundConverter}}" />
+                                </Style>
+                            </DataGrid.RowStyle>
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Cihaz" Binding="{Binding Name}" Width="*" />
                                 <DataGridTextColumn Header="IP / Hostname" Binding="{Binding IpAddress}" Width="150" />
+                                <DataGridTextColumn Header="Cihaz" Binding="{Binding Name}" Width="*" />
+                                <DataGridTemplateColumn Header="Durum" Width="130" IsReadOnly="True">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource StatusPillStyle}"
+                                                    Background="{Binding LastStatus, Converter={StaticResource StatusBackgroundConverter}}">
+                                                <TextBlock Text="{Binding LastStatusText}"
+                                                           Foreground="{Binding LastStatus, Converter={StaticResource StatusForegroundConverter}}"
+                                                           FontWeight="SemiBold" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
                                 <DataGridTextColumn Header="Son Kontrol" Binding="{Binding LastCheckedAtText}" Width="150" />
                             </DataGrid.Columns>
                         </DataGrid>
@@ -95,10 +129,27 @@
                                   Style="{StaticResource CompactDataGridStyle}"
                                   ColumnHeaderStyle="{StaticResource ModernDataGridHeaderStyle}"
                                   MaxHeight="260">
+                            <DataGrid.RowStyle>
+                                <Style TargetType="DataGridRow">
+                                    <Setter Property="Background" Value="{Binding Status, Converter={StaticResource RowStatusBackgroundConverter}}" />
+                                </Style>
+                            </DataGrid.RowStyle>
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Tarih" Binding="{Binding CheckedAtText}" Width="150" />
+                                <DataGridTextColumn Header="IP / Hostname" Binding="{Binding IpAddress}" Width="150" />
                                 <DataGridTextColumn Header="Cihaz" Binding="{Binding DeviceName}" Width="*" />
-                                <DataGridTextColumn Header="Durum" Binding="{Binding StatusText}" Width="130" />
+                                <DataGridTemplateColumn Header="Durum" Width="130" IsReadOnly="True">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource StatusPillStyle}"
+                                                    Background="{Binding Status, Converter={StaticResource StatusBackgroundConverter}}">
+                                                <TextBlock Text="{Binding StatusText}"
+                                                           Foreground="{Binding Status, Converter={StaticResource StatusForegroundConverter}}"
+                                                           FontWeight="SemiBold" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
                             </DataGrid.Columns>
                         </DataGrid>
                     </StackPanel>

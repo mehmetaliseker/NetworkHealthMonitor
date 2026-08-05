@@ -22,6 +22,77 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
 
+            <Border Style="{StaticResource PanelSectionStyle}">
+                <StackPanel>
+                    <TextBlock Text="Anlık Kontrol" Style="{StaticResource SectionHeadingStyle}" />
+                    <WrapPanel>
+                        <Button Content="Tüm Cihazlara Ping At"
+                                Command="{Binding Legacy.PingAllCommand}"
+                                Style="{StaticResource ToolbarButtonStyle}"
+                                AutomationProperties.Name="Tüm cihazlara ping at" />
+                        <ComboBox Width="180"
+                                  ItemsSource="{Binding Legacy.DeviceGroups}"
+                                  SelectedItem="{Binding Legacy.SelectedGroup}"
+                                  DisplayMemberPath="Name"
+                                  Style="{StaticResource ModernComboBoxStyle}"
+                                  ToolTip="Grup seç"
+                                  AutomationProperties.Name="Ping için grup seç" />
+                        <Button Content="Seçili Gruba Ping At"
+                                Command="{Binding Legacy.PingSelectedGroupCommand}"
+                                Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                AutomationProperties.Name="Seçili gruba ping at" />
+                        <ComboBox Width="160"
+                                  ItemsSource="{Binding Legacy.DeviceTypeFilterOptions}"
+                                  SelectedItem="{Binding Legacy.DeviceTypeFilter}"
+                                  Style="{StaticResource ModernComboBoxStyle}"
+                                  ToolTip="Tür seç"
+                                  AutomationProperties.Name="Ping için tür seç" />
+                        <Button Content="Seçili Türe Ping At"
+                                Command="{Binding Legacy.PingSelectedTypeCommand}"
+                                Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                AutomationProperties.Name="Seçili türe ping at" />
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource PanelSectionStyle}">
+                <StackPanel>
+                    <TextBlock Text="Yanıt Vermeyenler" Style="{StaticResource SectionHeadingStyle}" />
+                    <TextBlock Text="İlk başarısız kontrolden itibaren burada görünür."
+                               Style="{StaticResource BodyMutedTextStyle}"
+                               Margin="0,0,0,8" />
+                    <DataGrid ItemsSource="{Binding Legacy.LiveOfflineDevices}"
+                              SelectedItem="{Binding Legacy.SelectedDevice}"
+                              Style="{StaticResource CompactDataGridStyle}"
+                              ColumnHeaderStyle="{StaticResource ModernDataGridHeaderStyle}"
+                              MaxHeight="220">
+                        <DataGrid.RowStyle>
+                            <Style TargetType="DataGridRow">
+                                <Setter Property="Background" Value="{Binding LastStatus, Converter={StaticResource RowStatusBackgroundConverter}}" />
+                            </Style>
+                        </DataGrid.RowStyle>
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="IP / Hostname" Binding="{Binding IpAddress}" Width="170" ElementStyle="{StaticResource IpAddressCellTextStyle}" IsReadOnly="True" />
+                            <DataGridTextColumn Header="Cihaz Adı" Binding="{Binding Name}" Width="2*" MinWidth="180" ElementStyle="{StaticResource ReadableCellTextStyle}" IsReadOnly="True" />
+                            <DataGridTemplateColumn Header="Durum" Width="150" IsReadOnly="True">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource StatusPillStyle}"
+                                                Background="{Binding LastStatus, Converter={StaticResource StatusBackgroundConverter}}">
+                                            <TextBlock Text="{Binding LastStatusText}"
+                                                       Foreground="{Binding LastStatus, Converter={StaticResource StatusForegroundConverter}}"
+                                                       FontWeight="SemiBold" />
+                                        </Border>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Son Kontrol" Binding="{Binding LastCheckedAtText}" Width="150" IsReadOnly="True" />
+                            <DataGridTextColumn Header="Ardışık Hata" Binding="{Binding ConsecutiveFailuresText}" Width="110" IsReadOnly="True" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </StackPanel>
+            </Border>
+
             <Grid Margin="0,8,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="1.4*" />
@@ -68,10 +139,6 @@
                                 Command="{Binding Legacy.NavigateDeviceEditCommand}"
                                 Style="{StaticResource ToolbarButtonStyle}"
                                 AutomationProperties.Name="Yeni cihaz ekle" />
-                        <Button Content="Tüm Cihazları Kontrol Et"
-                                Command="{Binding Legacy.PingAllCommand}"
-                                Style="{StaticResource SecondaryToolbarButtonStyle}"
-                                AutomationProperties.Name="Tüm cihazları kontrol et" />
                         <Button Content="{Binding Legacy.WorkerServiceQuickActionText}"
                                 Command="{Binding Shell.NavigateWorkerServiceCommand}"
                                 Style="{StaticResource SecondaryToolbarButtonStyle}"
