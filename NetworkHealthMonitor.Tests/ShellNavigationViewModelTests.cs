@@ -163,6 +163,40 @@ public sealed class ShellNavigationViewModelTests
         });
     }
 
+    [Fact]
+    public Task Live_unreachable_devices_include_first_failure_states()
+    {
+        return RunOnStaAsync(async () =>
+        {
+            await using var store = await TestStore.CreateAsync();
+            var repository = new DeviceRepository(store.ConnectionFactory);
+            var warning = CreateDevice("Erken Uyari", "192.0.2.61", DeviceType.Switch);
+            warning.LastStatus = DeviceStatus.Warning;
+            warning.ConsecutiveFailures = 1;
+            warning.LastCheckedAt = DateTime.Now;
+            warning.Id = await repository.AddAsync(warning);
+
+            var noReply = CreateDevice("Yanit Yok", "192.0.2.62", DeviceType.Server);
+            noReply.LastStatus = DeviceStatus.PingBlockedOrNoReply;
+            noReply.ConsecutiveFailures = 1;
+            noReply.LastCheckedAt = DateTime.Now;
+            noReply.Id = await repository.AddAsync(noReply);
+
+            var online = CreateDevice("Calisan", "192.0.2.63");
+            online.LastStatus = DeviceStatus.Online;
+            online.LastCheckedAt = DateTime.Now;
+            online.Id = await repository.AddAsync(online);
+
+            var vm = await CreateViewModelAsync(store);
+
+            Assert.Contains(vm.LiveOfflineDevices, device => device.Id == warning.Id);
+            Assert.Contains(vm.LiveOfflineDevices, device => device.Id == noReply.Id);
+            Assert.DoesNotContain(vm.LiveOfflineDevices, device => device.Id == online.Id);
+
+            await vm.DisposeAsync();
+        });
+    }
+
     private static async Task<MainViewModel> CreateViewModelAsync(
         TestStore store,
         IWindowsServiceStatusService? serviceStatusService = null)

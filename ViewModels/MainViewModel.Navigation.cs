@@ -639,7 +639,7 @@ public sealed partial class MainViewModel
             .ToList();
 
         ReplaceCollection(LiveOnlineDevices, devices.Where(device => device.LastStatus == DeviceStatus.Online));
-        ReplaceCollection(LiveOfflineDevices, devices.Where(device => device.LastStatus == DeviceStatus.Offline));
+        ReplaceCollection(LiveOfflineDevices, devices.Where(device => device.LastStatus.IsFailureObservation()));
         ReplaceCollection(LiveCheckedDevices, devices.Where(device => device.LastStatus == DeviceStatus.Checking || device.LastCheckedAt.HasValue).Take(100));
         ReplaceCollection(LiveRecentChanges, Logs
             .Where(log => devices.Any(device => device.Id == log.DeviceId))

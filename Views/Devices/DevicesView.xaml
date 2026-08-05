@@ -109,13 +109,29 @@
                       ColumnHeaderStyle="{StaticResource ModernDataGridHeaderStyle}"
                       Visibility="{Binding Legacy.HasNoDevices, Converter={StaticResource InverseBooleanToVisibilityConverter}}"
                       MinHeight="420">
+                <DataGrid.RowStyle>
+                    <Style TargetType="DataGridRow">
+                        <Setter Property="Background" Value="{Binding LastStatus, Converter={StaticResource RowStatusBackgroundConverter}}" />
+                    </Style>
+                </DataGrid.RowStyle>
                 <DataGrid.Columns>
                     <DataGridCheckBoxColumn Header="Sec" Binding="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="58" />
-                    <DataGridTextColumn Header="Cihaz Adi" Binding="{Binding Name}" Width="2*" MinWidth="180" ElementStyle="{StaticResource ReadableCellTextStyle}" IsReadOnly="True" />
                     <DataGridTextColumn Header="IP / Hostname" Binding="{Binding IpAddress}" Width="170" MinWidth="140" ElementStyle="{StaticResource IpAddressCellTextStyle}" IsReadOnly="True" />
+                    <DataGridTextColumn Header="Cihaz Adi" Binding="{Binding Name}" Width="2*" MinWidth="180" ElementStyle="{StaticResource ReadableCellTextStyle}" IsReadOnly="True" />
+                    <DataGridTemplateColumn Header="Durum" Width="150" IsReadOnly="True">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Border Style="{StaticResource StatusPillStyle}"
+                                        Background="{Binding LastStatus, Converter={StaticResource StatusBackgroundConverter}}">
+                                    <TextBlock Text="{Binding LastStatusText}"
+                                               Foreground="{Binding LastStatus, Converter={StaticResource StatusForegroundConverter}}"
+                                               FontWeight="SemiBold" />
+                                </Border>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
                     <DataGridTextColumn Header="Tur" Binding="{Binding DeviceTypeText}" Width="120" IsReadOnly="True" />
                     <DataGridTextColumn Header="Grup" Binding="{Binding GroupName}" Width="150" IsReadOnly="True" />
-                    <DataGridTextColumn Header="Durum" Binding="{Binding LastStatusText}" Width="130" IsReadOnly="True" />
                     <DataGridTextColumn Header="Son Kontrol" Binding="{Binding LastCheckedAtText}" Width="150" IsReadOnly="True" />
                     <DataGridTemplateColumn Header="Islemler" Width="220" IsReadOnly="True">
                         <DataGridTemplateColumn.CellTemplate>

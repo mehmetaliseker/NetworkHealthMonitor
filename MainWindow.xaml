@@ -51,6 +51,7 @@
             <converters:CollapsedCenterAlignmentConverter x:Key="CollapsedCenterAlignmentConverter" />
             <converters:StatusBackgroundConverter x:Key="StatusBackgroundConverter" />
             <converters:StatusForegroundConverter x:Key="StatusForegroundConverter" />
+            <converters:RowStatusBackgroundConverter x:Key="RowStatusBackgroundConverter" />
 
             <Style x:Key="NavGlyphStyle" TargetType="TextBlock">
                 <Setter Property="Width" Value="24" />

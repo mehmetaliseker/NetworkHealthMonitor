@@ -1,5 +1,6 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:converters="clr-namespace:NetworkHealthMonitor.Converters">
     <SolidColorBrush x:Key="ShellBackgroundBrush" Color="#F4F7FB" />
     <SolidColorBrush x:Key="ShellSurfaceBrush" Color="#FFFFFF" />
     <SolidColorBrush x:Key="ShellSurfaceAltBrush" Color="#F8FAFC" />
@@ -23,6 +24,9 @@
     <SolidColorBrush x:Key="ShellInfoBorderBrush" Color="#93C5FD" />
     <SolidColorBrush x:Key="ShellSecondaryHoverBrush" Color="#E8F2FF" />
     <SolidColorBrush x:Key="ShellFocusBrush" Color="#2563EB" />
+    <converters:StatusBackgroundConverter x:Key="StatusBackgroundConverter" />
+    <converters:StatusForegroundConverter x:Key="StatusForegroundConverter" />
+    <converters:RowStatusBackgroundConverter x:Key="RowStatusBackgroundConverter" />
 
     <Thickness x:Key="ShellGapTiny">4</Thickness>
     <Thickness x:Key="ShellGapSmall">8</Thickness>

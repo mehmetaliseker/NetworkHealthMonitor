@@ -25,11 +25,27 @@
                       Style="{StaticResource CompactDataGridStyle}"
                       ColumnHeaderStyle="{StaticResource ModernDataGridHeaderStyle}"
                       MinHeight="360">
+                <DataGrid.RowStyle>
+                    <Style TargetType="DataGridRow">
+                        <Setter Property="Background" Value="{Binding Status, Converter={StaticResource RowStatusBackgroundConverter}}" />
+                    </Style>
+                </DataGrid.RowStyle>
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="Tarih" Binding="{Binding CheckedAtText}" Width="160" />
-                    <DataGridTextColumn Header="Cihaz" Binding="{Binding DeviceName}" Width="1.5*" />
                     <DataGridTextColumn Header="IP / Hostname" Binding="{Binding IpAddress}" Width="160" />
-                    <DataGridTextColumn Header="Sonuc" Binding="{Binding StatusText}" Width="130" />
+                    <DataGridTextColumn Header="Cihaz" Binding="{Binding DeviceName}" Width="1.5*" />
+                    <DataGridTemplateColumn Header="Sonuc" Width="130" IsReadOnly="True">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Border Style="{StaticResource StatusPillStyle}"
+                                        Background="{Binding Status, Converter={StaticResource StatusBackgroundConverter}}">
+                                    <TextBlock Text="{Binding StatusText}"
+                                               Foreground="{Binding Status, Converter={StaticResource StatusForegroundConverter}}"
+                                               FontWeight="SemiBold" />
+                                </Border>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
                     <DataGridTextColumn Header="Yanit Suresi" Binding="{Binding LatencyText}" Width="120" />
                     <DataGridTextColumn Header="Kontrol Turu" Binding="{Binding TriggerTypeText}" Width="150" />
                 </DataGrid.Columns>

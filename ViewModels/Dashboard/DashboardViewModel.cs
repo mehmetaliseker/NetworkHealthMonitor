@@ -6,7 +6,7 @@ namespace NetworkHealthMonitor.ViewModels.Dashboard;
 public sealed class DashboardViewModel : LegacyPageViewModelBase
 {
     public DashboardViewModel(MainViewModel legacy, ShellViewModel shell)
-        : base(legacy, shell, "Genel Bakış", "Sistemin genel durumunu ve son önemli olayları gösterir.")
+        : base(legacy, shell, "Genel", "Doğrudan ping, cihaz özeti ve yanıt vermeyenleri gösterir.")
     {
     }
 

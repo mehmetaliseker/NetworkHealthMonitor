@@ -10,7 +10,7 @@ namespace NetworkHealthMonitor.ViewModels;
 
 public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 {
-    private const string SectionDashboard = "Genel Bakış";
+    private const string SectionDashboard = "Genel";
     private const string SectionDevices = "Cihazlar";
     private const string SectionDeviceEdit = "Cihaz Formu";
     private const string SectionGroups = "Cihaz Grupları";
@@ -18,7 +18,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private const string SectionAvailability = "Erişilebilirlik";
     private const string SectionEvents = "Kesintiler";
     private const string SectionReports = "Raporlar";
-    private const string SectionLogs = "Ping Geçmişi";
+    private const string SectionLogs = "Loglar";
     private const string SectionNotifications = "Bildirimler";
     private const string SectionSettings = "Ayarlar";
     private const string SettingsGeneral = "Genel";
@@ -884,7 +884,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public string SectionSubtitle => CurrentSection switch
     {
-        SectionDashboard => "İzleme servisi durumu, cihaz özeti ve açık kesintileri tek bakışta görün.",
+        SectionDashboard => "Doğrudan ping atın, cihaz özetini ve yanıt vermeyenleri tek bakışta görün.",
         SectionDevices => "Ağdaki cihazları görüntüleyin, filtreleyin ve yönetin.",
         SectionDeviceEdit => "Cihaz bilgilerini girin veya güncelleyin.",
         SectionDeviceDetails => "Seçili cihaza ait genel bilgiler, geçmiş, kesinti ve bildirim kayıtlarını inceleyin.",

@@ -6,7 +6,7 @@ namespace NetworkHealthMonitor.ViewModels.PingHistory;
 public sealed class PingHistoryViewModel : LegacyPageViewModelBase
 {
     public PingHistoryViewModel(MainViewModel legacy, ShellViewModel shell)
-        : base(legacy, shell, "Ping Geçmişi", "Ping kayıtlarını tarih, cihaz, grup ve durumla filtreleyin.")
+        : base(legacy, shell, "Loglar", "Ping kayıtlarını tarih, cihaz, grup ve durumla filtreleyin.")
     {
     }
 

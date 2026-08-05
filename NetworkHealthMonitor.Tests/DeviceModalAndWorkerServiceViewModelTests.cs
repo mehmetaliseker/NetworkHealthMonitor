@@ -3,6 +3,7 @@ using NetworkHealthMonitor.Infrastructure;
 using NetworkHealthMonitor.Models;
 using NetworkHealthMonitor.Services;
 using NetworkHealthMonitor.ViewModels;
+using System.Windows.Threading;
 using Xunit;
 
 namespace NetworkHealthMonitor.Tests;
@@ -123,10 +124,58 @@ public sealed class DeviceModalAndWorkerServiceViewModelTests
         });
     }
 
+    [Fact]
+    public Task Bulk_deactivate_selected_devices_updates_repository_and_status()
+    {
+        return RunOnStaAsync(async () =>
+        {
+            await using var store = await TestStore.CreateAsync();
+            var repository = new DeviceRepository(store.ConnectionFactory);
+            var deviceService = new DeviceService(repository);
+            await SaveDeviceAsync(deviceService, "Toplu Pasif 1", "192.0.2.111");
+            await SaveDeviceAsync(deviceService, "Toplu Pasif 2", "192.0.2.112");
+            var vm = await CreateViewModelAsync(store, new FakeWindowsServiceStatusService());
+            await vm.InitializeAsync();
+
+            vm.DeactivateSelectedDevicesCommand.Execute(vm.Devices.ToList());
+            await WaitForAsync(() => !vm.IsBusy && vm.StatusMessage.Contains("pasifleştirildi", StringComparison.OrdinalIgnoreCase));
+
+            var devices = await repository.GetAllAsync();
+            Assert.All(devices, device =>
+            {
+                Assert.False(device.IsActive);
+                Assert.False(device.IsEnabled);
+            });
+        });
+    }
+
+    [Fact]
+    public Task Bulk_ping_selected_devices_writes_logs_and_reports_summary()
+    {
+        return RunOnStaAsync(async () =>
+        {
+            await using var store = await TestStore.CreateAsync();
+            var repository = new DeviceRepository(store.ConnectionFactory);
+            var deviceService = new DeviceService(repository);
+            await SaveDeviceAsync(deviceService, "Toplu Ping 1", "192.0.2.121");
+            await SaveDeviceAsync(deviceService, "Toplu Ping 2", "192.0.2.122");
+            var ping = new FakePingService(true, false);
+            var vm = await CreateViewModelAsync(store, new FakeWindowsServiceStatusService(), pingService: ping);
+            await vm.InitializeAsync();
+
+            vm.PingSelectedDevicesBulkCommand.Execute(vm.Devices.ToList());
+            await WaitForAsync(() => !vm.IsBusy && ping.PingCount == 2);
+
+            Assert.Equal(2, ping.PingCount);
+            Assert.Equal(2, await CountPingLogsAsync(store));
+        });
+    }
+
     private static async Task<MainViewModel> CreateViewModelAsync(
         TestStore store,
         IWindowsServiceStatusService serviceStatusService,
-        IDeviceConnectionTestService? connectionTestService = null)
+        IDeviceConnectionTestService? connectionTestService = null,
+        IPingService? pingService = null)
     {
         await new AppSettingsService().SaveAsync(AppSettings.Default);
         var devices = new DeviceRepository(store.ConnectionFactory);
@@ -142,7 +191,7 @@ public sealed class DeviceModalAndWorkerServiceViewModelTests
             groups,
             logs,
             outages,
-            new FakePingService(true),
+            pingService ?? new FakePingService(true),
             checkPolicy,
             new DeviceHealthEvaluator(),
             settings);
@@ -171,20 +220,53 @@ public sealed class DeviceModalAndWorkerServiceViewModelTests
             deviceConnectionTestService: connectionTestService ?? new DeviceConnectionTestService(new FakePingService(true)));
     }
 
+    private static async Task SaveDeviceAsync(DeviceService service, string name, string address)
+    {
+        var result = await service.SaveAsync(new Device
+        {
+            Name = name,
+            IpAddress = address,
+            DeviceType = DeviceType.Server,
+            IsActive = true,
+            IsEnabled = true,
+            AutoCheckEnabled = true
+        });
+        Assert.True(result.Success, result.Message);
+    }
+
+    private static async Task<int> CountPingLogsAsync(TestStore store)
+    {
+        await using var connection = await store.ConnectionFactory.CreateOpenConnectionAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(1) FROM PingLogs;";
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
     private static Task RunOnStaAsync(Func<Task> action)
     {
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var thread = new Thread(async () =>
+        var thread = new Thread(() =>
         {
-            try
+            var dispatcher = Dispatcher.CurrentDispatcher;
+            SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(dispatcher));
+            dispatcher.InvokeAsync(async () =>
             {
-                await action();
-                completion.SetResult();
-            }
-            catch (Exception ex)
-            {
-                completion.SetException(ex);
-            }
+                try
+                {
+                    await action();
+                    completion.SetResult();
+                }
+                catch (Exception ex)
+                {
+                    completion.SetException(ex);
+                }
+                finally
+                {
+                    dispatcher.BeginInvokeShutdown(DispatcherPriority.Background);
+                }
+            });
+
+            Dispatcher.Run();
         });
 
         thread.SetApartmentState(ApartmentState.STA);
