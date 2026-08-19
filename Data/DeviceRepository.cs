@@ -53,6 +53,29 @@ public sealed class DeviceRepository
         return devices.FirstOrDefault();
     }
 
+    public async Task<Device?> GetByIpAsync(string ipAddress, bool includeDeleted = false)
+    {
+        var devices = new List<Device>();
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT {DeviceSelectColumns}
+            FROM Devices
+            WHERE LOWER(TRIM(IpAddress)) = LOWER(TRIM(@IpAddress))
+              {(includeDeleted ? string.Empty : "AND IsDeleted = 0")}
+            LIMIT 1;
+            """;
+        AddParameter(command, "@IpAddress", ipAddress);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            devices.Add(ReadDevice(reader));
+        }
+
+        return devices.FirstOrDefault();
+    }
+
     public async Task<Device?> GetActiveByIdAsync(int id)
     {
         var devices = await GetDevicesAsync($"""
@@ -189,7 +212,13 @@ public sealed class DeviceRepository
 
         AddDeviceParameters(command, device);
         AddParameter(command, "@Id", device.Id);
-        await command.ExecuteNonQueryAsync();
+        var affected = await command.ExecuteNonQueryAsync();
+        if (affected == 0)
+        {
+            transaction.Rollback();
+            throw new InvalidOperationException($"Device {device.Id} was not found.");
+        }
+
         transaction.Commit();
     }
 
@@ -837,7 +866,8 @@ public sealed class DeviceRepository
         command.CommandText = """
             SELECT COUNT(1)
             FROM Devices
-            WHERE IpAddress = @IpAddress
+            WHERE LOWER(TRIM(IpAddress)) = LOWER(TRIM(@IpAddress))
+              AND IsDeleted = 0
               AND (@ExcludeId IS NULL OR Id <> @ExcludeId);
             """;
 
@@ -1369,6 +1399,7 @@ public sealed class DeviceRepository
     {
         return value.ToString("O", CultureInfo.InvariantCulture);
     }
+
 
     private static DateTime FromStorageDate(string value)
     {

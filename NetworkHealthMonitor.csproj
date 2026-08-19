@@ -7,6 +7,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
 
   <ItemGroup>
@@ -25,9 +27,16 @@
     <Compile Remove="Infrastructure\AppErrorLogger.cs" />
     <Compile Remove="Infrastructure\ObservableObject.cs" />
     <Compile Remove="NetworkHealthMonitor.Core\**\*.cs" />
+    <Compile Remove="NetworkHealthMonitor.Tray\**\*.cs" />
     <Compile Remove="NetworkHealthMonitor.Worker\**\*.cs" />
     <Compile Remove="NetworkHealthMonitor.Tests\**\*.cs" />
+    <Compile Remove="tools\**\*.cs" />
     <Compile Include="Services\WpfDialogService.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ApplicationDefinition Remove="NetworkHealthMonitor.Tray\App.xaml" />
+    <Page Remove="NetworkHealthMonitor.Tray\**\*.xaml" />
   </ItemGroup>
 
 </Project>

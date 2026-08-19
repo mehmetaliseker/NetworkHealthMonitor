@@ -1,4 +1,5 @@
 ﻿using System.IO;
+using NetworkHealthMonitor.Infrastructure;
 using NetworkHealthMonitor.Models;
 
 namespace NetworkHealthMonitor.ViewModels;
@@ -146,7 +147,7 @@ public sealed partial class MainViewModel
 
     private async Task BackupDatabaseAsync()
     {
-        var path = _dialogService.GetSaveDatabaseFilePath($"network-health-monitor-{DateTime.Now:yyyyMMdd-HHmm}.db");
+        var path = _dialogService.GetSaveDatabaseFilePath($"NetworkHealthMonitor-{DateTime.Now:yyyyMMdd-HHmmss}.db");
         if (path is null)
         {
             return;
@@ -302,7 +303,8 @@ public sealed partial class MainViewModel
                     IsHtml = EmailTemplatesAreHtml
                 }
             },
-            Theme = Theme
+            Theme = Theme,
+            IsNavigationCollapsed = IsNavigationCollapsed
         };
     }
 
@@ -715,6 +717,16 @@ public sealed partial class MainViewModel
             : "-";
         NotificationLastError = settings.Notifications.LastNotificationError;
         Theme = settings.Theme;
+        _suppressNavigationPersistence = true;
+        try
+        {
+            IsNavigationCollapsed = settings.IsNavigationCollapsed;
+        }
+        finally
+        {
+            _suppressNavigationPersistence = false;
+        }
+
         PlanFormTimeoutMs = settings.PingTimeoutMs;
         PlanFormMaxParallelism = Math.Min(settings.MaxParallelPings, AppSettings.DefaultSchedulePlanMaxParallelism);
         PlanFormFailureThreshold = settings.DefaultFailureThreshold;
@@ -722,6 +734,36 @@ public sealed partial class MainViewModel
         FormFailureRetryIntervalSeconds = 0;
         FormFailureRetryLimit = 0;
         FormFailureThreshold = 0;
+    }
+
+    private async Task PersistNavigationCollapsedAsync(bool isCollapsed)
+    {
+        try
+        {
+            for (var attempt = 0; attempt < 5; attempt++)
+            {
+                try
+                {
+                    var settings = await _settingsService.LoadAsync();
+                    if (settings.IsNavigationCollapsed == isCollapsed)
+                    {
+                        return;
+                    }
+
+                    settings.IsNavigationCollapsed = isCollapsed;
+                    await _settingsService.SaveAsync(settings);
+                    return;
+                }
+                catch (IOException) when (attempt < 4)
+                {
+                    await Task.Delay(50 * (attempt + 1));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            AppErrorLogger.Log(ex, "Sidebar durumu kaydedilemedi.");
+        }
     }
 }
 

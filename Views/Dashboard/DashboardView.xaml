@@ -1,0 +1,193 @@
+<UserControl x:Class="NetworkHealthMonitor.Views.Dashboard.DashboardView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer Style="{StaticResource PageScrollStyle}">
+        <StackPanel>
+            <ItemsControl ItemsSource="{Binding Legacy.OverviewSummaryCards}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Style="{StaticResource MetricTileStyle}" Width="170">
+                            <StackPanel>
+                                <TextBlock Text="{Binding Title}" Style="{StaticResource MicroLabelTextStyle}" />
+                                <TextBlock Text="{Binding Value}" FontSize="22" FontWeight="SemiBold" Margin="0,6,0,2" />
+                                <TextBlock Text="{Binding Detail}" Style="{StaticResource BodyMutedTextStyle}" />
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Border Style="{StaticResource PanelSectionStyle}">
+                <StackPanel>
+                    <TextBlock Text="Anlık Kontrol" Style="{StaticResource SectionHeadingStyle}" />
+                    <WrapPanel>
+                        <Button Content="Tüm Cihazlara Ping At"
+                                Command="{Binding Legacy.PingAllCommand}"
+                                Style="{StaticResource ToolbarButtonStyle}"
+                                AutomationProperties.Name="Tüm cihazlara ping at" />
+                        <ComboBox Width="180"
+                                  ItemsSource="{Binding Legacy.DeviceGroups}"
+                                  SelectedItem="{Binding Legacy.SelectedGroup}"
+                                  DisplayMemberPath="Name"
+                                  Style="{StaticResource ModernComboBoxStyle}"
+                                  ToolTip="Grup seç"
+                                  AutomationProperties.Name="Ping için grup seç" />
+                        <Button Content="Seçili Gruba Ping At"
+                                Command="{Binding Legacy.PingSelectedGroupCommand}"
+                                Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                AutomationProperties.Name="Seçili gruba ping at" />
+                        <ComboBox Width="160"
+                                  ItemsSource="{Binding Legacy.DeviceTypeFilterOptions}"
+                                  SelectedItem="{Binding Legacy.DeviceTypeFilter}"
+                                  Style="{StaticResource ModernComboBoxStyle}"
+                                  ToolTip="Tür seç"
+                                  AutomationProperties.Name="Ping için tür seç" />
+                        <Button Content="Seçili Türe Ping At"
+                                Command="{Binding Legacy.PingSelectedTypeCommand}"
+                                Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                AutomationProperties.Name="Seçili türe ping at" />
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource PanelSectionStyle}">
+                <StackPanel>
+                    <TextBlock Text="Yanıt Vermeyenler" Style="{StaticResource SectionHeadingStyle}" />
+                    <TextBlock Text="İlk başarısız kontrolden itibaren burada görünür."
+                               Style="{StaticResource BodyMutedTextStyle}"
+                               Margin="0,0,0,8" />
+                    <DataGrid ItemsSource="{Binding Legacy.LiveOfflineDevices}"
+                              SelectedItem="{Binding Legacy.SelectedDevice}"
+                              Style="{StaticResource CompactDataGridStyle}"
+                              ColumnHeaderStyle="{StaticResource ModernDataGridHeaderStyle}"
+                              MaxHeight="220">
+                        <DataGrid.RowStyle>
+                            <Style TargetType="DataGridRow">
+                                <Setter Property="Background" Value="{Binding LastStatus, Converter={StaticResource RowStatusBackgroundConverter}}" />
+                            </Style>
+                        </DataGrid.RowStyle>
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="IP / Hostname" Binding="{Binding IpAddress}" Width="170" ElementStyle="{StaticResource IpAddressCellTextStyle}" IsReadOnly="True" />
+                            <DataGridTextColumn Header="Cihaz Adı" Binding="{Binding Name}" Width="2*" MinWidth="180" ElementStyle="{StaticResource ReadableCellTextStyle}" IsReadOnly="True" />
+                            <DataGridTemplateColumn Header="Durum" Width="150" IsReadOnly="True">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource StatusPillStyle}"
+                                                Background="{Binding LastStatus, Converter={StaticResource StatusBackgroundConverter}}">
+                                            <TextBlock Text="{Binding LastStatusText}"
+                                                       Foreground="{Binding LastStatus, Converter={StaticResource StatusForegroundConverter}}"
+                                                       FontWeight="SemiBold" />
+                                        </Border>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Son Kontrol" Binding="{Binding LastCheckedAtText}" Width="150" IsReadOnly="True" />
+                            <DataGridTextColumn Header="Ardışık Hata" Binding="{Binding ConsecutiveFailuresText}" Width="110" IsReadOnly="True" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </StackPanel>
+            </Border>
+
+            <Grid Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.4*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Style="{StaticResource PanelSectionStyle}" Margin="0,0,12,0">
+                    <StackPanel>
+                        <TextBlock Text="Son Uyarılar" Style="{StaticResource SectionHeadingStyle}" />
+                        <TextBlock Text="Kritik olay bulunmuyor."
+                                   Style="{StaticResource BodyMutedTextStyle}"
+                                   Visibility="{Binding Legacy.HasNoRecentAlerts, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <ItemsControl ItemsSource="{Binding Legacy.RecentAlerts}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border BorderBrush="{StaticResource ShellBorderBrush}"
+                                            BorderThickness="0,0,0,1"
+                                            Padding="0,8">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Event}" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding Detail}" Style="{StaticResource BodyMutedTextStyle}" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="1"
+                                                       Text="{Binding TimeText}"
+                                                       Style="{StaticResource MicroLabelTextStyle}"
+                                                       Margin="14,0,0,0" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="1" Style="{StaticResource PanelSectionStyle}">
+                    <StackPanel>
+                        <TextBlock Text="Hızlı İşlemler" Style="{StaticResource SectionHeadingStyle}" />
+                        <Button Content="Yeni Cihaz Ekle"
+                                Command="{Binding Legacy.NavigateDeviceEditCommand}"
+                                Style="{StaticResource ToolbarButtonStyle}"
+                                AutomationProperties.Name="Yeni cihaz ekle" />
+                        <Button Content="{Binding Legacy.WorkerServiceQuickActionText}"
+                                Command="{Binding Shell.NavigateWorkerServiceCommand}"
+                                Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                AutomationProperties.Name="{Binding Legacy.WorkerServiceQuickActionAutomationName}" />
+                        <Button Content="Kesintileri Gör"
+                                Command="{Binding Shell.NavigateEventsCommand}"
+                                Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                AutomationProperties.Name="Kesintiler sayfasını aç" />
+                        <Border Margin="0,10,0,0"
+                                Padding="10"
+                                BorderBrush="{StaticResource ShellBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Visibility="{Binding Legacy.CanShowPingProgress, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <StackPanel>
+                                <TextBlock Text="Toplu kontrol sürüyor" FontWeight="SemiBold" />
+                                <ProgressBar Minimum="0"
+                                             Maximum="100"
+                                             Value="{Binding Legacy.PingProgressPercent, Mode=OneWay}"
+                                             Height="6"
+                                             Margin="0,8,0,8" />
+                                <UniformGrid Columns="4" Margin="0,0,0,8">
+                                    <StackPanel>
+                                        <TextBlock Text="Toplam" Style="{StaticResource MicroLabelTextStyle}" />
+                                        <TextBlock Text="{Binding Legacy.PingTotalCount}" />
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="Tamamlanan" Style="{StaticResource MicroLabelTextStyle}" />
+                                        <TextBlock Text="{Binding Legacy.PingCompletedCount}" />
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="Başarılı" Style="{StaticResource MicroLabelTextStyle}" />
+                                        <TextBlock Text="{Binding Legacy.PingSuccessCount}" />
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="Başarısız" Style="{StaticResource MicroLabelTextStyle}" />
+                                        <TextBlock Text="{Binding Legacy.PingFailureCount}" />
+                                    </StackPanel>
+                                </UniformGrid>
+                                <Button Content="İptal Et"
+                                        Command="{Binding Legacy.CancelPingCommand}"
+                                        Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                        HorizontalAlignment="Left"
+                                        AutomationProperties.Name="Toplu cihaz kontrolünü iptal et" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

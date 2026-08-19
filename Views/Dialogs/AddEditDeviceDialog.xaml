@@ -1,0 +1,248 @@
+<UserControl x:Class="NetworkHealthMonitor.Views.Dialogs.AddEditDeviceDialog"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:converters="clr-namespace:NetworkHealthMonitor.Converters"
+             Focusable="True"
+             IsTabStop="False"
+             FocusManager.FocusedElement="{Binding ElementName=DeviceNameBox}"
+             KeyboardNavigation.TabNavigation="Cycle"
+             KeyboardNavigation.DirectionalNavigation="Contained">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="../../Resources/DesignSystem.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+            <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
+
+            <Style x:Key="DialogFieldLabelStyle" TargetType="TextBlock" BasedOn="{StaticResource MicroLabelTextStyle}">
+                <Setter Property="Margin" Value="0,0,0,4" />
+            </Style>
+
+            <Style x:Key="DialogTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource ModernTextBoxStyle}">
+                <Setter Property="Margin" Value="0,0,0,10" />
+            </Style>
+
+            <Style x:Key="DialogComboBoxStyle" TargetType="ComboBox" BasedOn="{StaticResource ModernComboBoxStyle}">
+                <Setter Property="Margin" Value="0,0,0,10" />
+            </Style>
+
+            <Style x:Key="InvalidDeviceNameTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource DialogTextBoxStyle}">
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding HasDeviceNameValidationMessage}" Value="True">
+                        <Setter Property="BorderBrush" Value="{StaticResource ShellDangerBrush}" />
+                        <Setter Property="BorderThickness" Value="2" />
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="InvalidDeviceAddressTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource DialogTextBoxStyle}">
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding HasDeviceAddressValidationMessage}" Value="True">
+                        <Setter Property="BorderBrush" Value="{StaticResource ShellDangerBrush}" />
+                        <Setter Property="BorderThickness" Value="2" />
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <Border Width="560"
+            MaxHeight="680"
+            Background="{StaticResource ShellSurfaceBrush}"
+            BorderBrush="{StaticResource ShellBorderBrush}"
+            BorderThickness="1"
+            CornerRadius="8"
+            Padding="0"
+            KeyboardNavigation.TabNavigation="Cycle">
+        <Border.InputBindings>
+            <KeyBinding Key="Escape" Command="{Binding CloseDeviceFormCommand}" />
+        </Border.InputBindings>
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0"
+                    BorderBrush="{StaticResource ShellBorderBrush}"
+                    BorderThickness="0,0,0,1"
+                    Padding="18,14">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right"
+                            Width="32"
+                            Height="32"
+                            MinHeight="32"
+                            Padding="0"
+                            Content="X"
+                            Command="{Binding CloseDeviceFormCommand}"
+                            Style="{StaticResource SecondaryToolbarButtonStyle}"
+                            AutomationProperties.Name="Cihaz formunu kapat" />
+                    <StackPanel>
+                        <TextBlock Text="{Binding DeviceFormTitle}" FontSize="18" FontWeight="SemiBold" />
+                        <TextBlock Text="Cihaz bilgilerini girin, gerekirse bağlantıyı test edin ve kaydedin."
+                                   Style="{StaticResource BodyMutedTextStyle}"
+                                   Margin="0,3,16,0" />
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <ScrollViewer Grid.Row="1"
+                          VerticalScrollBarVisibility="Auto"
+                          Padding="18,14,18,8">
+                <StackPanel>
+                    <TextBlock Text="{Binding DeviceFormValidationMessage}"
+                               Foreground="{StaticResource ShellDangerBrush}"
+                               FontWeight="SemiBold"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,10"
+                               Visibility="{Binding HasDeviceFormValidationMessage, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                    <TextBlock Text="Cihaz Bilgileri" FontWeight="SemiBold" Margin="0,0,0,10" />
+
+                    <TextBlock Text="Cihaz Adı *" Style="{StaticResource DialogFieldLabelStyle}" />
+                    <TextBox x:Name="DeviceNameBox"
+                             Text="{Binding FormName, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource InvalidDeviceNameTextBoxStyle}"
+                             AutomationProperties.Name="Cihaz adı" />
+                    <TextBlock Text="{Binding DeviceNameValidationMessage}"
+                               Foreground="{StaticResource ShellDangerBrush}"
+                               TextWrapping="Wrap"
+                               Margin="0,-6,0,10"
+                               Visibility="{Binding HasDeviceNameValidationMessage, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                    <TextBlock Text="IP Adresi veya Hostname *" Style="{StaticResource DialogFieldLabelStyle}" />
+                    <TextBox Text="{Binding FormIpAddress, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource InvalidDeviceAddressTextBoxStyle}"
+                             AutomationProperties.Name="IP adresi veya hostname" />
+                    <TextBlock Text="{Binding DeviceAddressValidationMessage}"
+                               Foreground="{StaticResource ShellDangerBrush}"
+                               TextWrapping="Wrap"
+                               Margin="0,-6,0,10"
+                               Visibility="{Binding HasDeviceAddressValidationMessage, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Margin="0,0,8,0">
+                            <TextBlock Text="Cihaz Türü *" Style="{StaticResource DialogFieldLabelStyle}" />
+                            <ComboBox ItemsSource="{Binding DeviceTypeOptions}"
+                                      DisplayMemberPath="Label"
+                                      SelectedValuePath="Value"
+                                      SelectedValue="{Binding FormDeviceType}"
+                                      Style="{StaticResource DialogComboBoxStyle}"
+                                      AutomationProperties.Name="Cihaz türü" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="Grup" Style="{StaticResource DialogFieldLabelStyle}" />
+                            <ComboBox ItemsSource="{Binding DeviceGroupOptions}"
+                                      DisplayMemberPath="Label"
+                                      SelectedValuePath="Value"
+                                      SelectedValue="{Binding FormGroupId}"
+                                      Style="{StaticResource DialogComboBoxStyle}"
+                                      AutomationProperties.Name="Cihaz grubu" />
+                        </StackPanel>
+                    </Grid>
+
+                    <TextBlock Text="Grup / Konum" Style="{StaticResource DialogFieldLabelStyle}" />
+                    <TextBox Text="{Binding FormLocation, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource DialogTextBoxStyle}"
+                             AutomationProperties.Name="Grup veya konum" />
+
+                    <TextBlock Text="Açıklama" Style="{StaticResource DialogFieldLabelStyle}" />
+                    <TextBox Text="{Binding FormDescription, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource DialogTextBoxStyle}"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             MinHeight="64"
+                             VerticalScrollBarVisibility="Auto"
+                             AutomationProperties.Name="Cihaz açıklaması" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Margin="0,0,8,0">
+                            <TextBlock Text="Ping zaman aşımı" Style="{StaticResource DialogFieldLabelStyle}" />
+                            <DockPanel>
+                                <TextBox Width="120"
+                                         Text="{Binding FormPingTimeoutMs, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource DialogTextBoxStyle}"
+                                         AutomationProperties.Name="Ping zaman aşımı" />
+                                <TextBlock Text="ms" Margin="8,8,0,0" Style="{StaticResource BodyMutedTextStyle}" />
+                            </DockPanel>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="İzleme politikası" Style="{StaticResource DialogFieldLabelStyle}" />
+                            <ComboBox ItemsSource="{Binding SchedulePlanOptions}"
+                                      DisplayMemberPath="Label"
+                                      SelectedValuePath="Value"
+                                      SelectedValue="{Binding FormDefaultSchedulePlanId}"
+                                      Style="{StaticResource DialogComboBoxStyle}"
+                                      AutomationProperties.Name="Ping planı veya politika" />
+                        </StackPanel>
+                    </Grid>
+
+                    <WrapPanel Margin="0,0,0,10">
+                        <CheckBox Content="Aktif"
+                                  IsChecked="{Binding FormIsActive}"
+                                  Margin="0,0,18,8"
+                                  AutomationProperties.Name="Cihaz aktif" />
+                        <CheckBox Content="Bildirimleri etkinleştir"
+                                  IsChecked="{Binding FormAutoCheckEnabled}"
+                                  Margin="0,0,18,8"
+                                  AutomationProperties.Name="Bildirimleri etkinleştir" />
+                        <CheckBox Content="Kritik cihaz"
+                                  IsChecked="{Binding FormIsCritical}"
+                                  Margin="0,0,18,8"
+                                  AutomationProperties.Name="Kritik cihaz" />
+                    </WrapPanel>
+
+                    <Border Background="{StaticResource ShellInfoBackgroundBrush}"
+                            BorderBrush="{StaticResource ShellInfoBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="10"
+                            Margin="0,0,0,10">
+                        <TextBlock Text="{Binding DeviceConnectionStatusText}"
+                                   Foreground="{StaticResource ShellPrimaryBrush}"
+                                   TextWrapping="Wrap" />
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <Border Grid.Row="2"
+                    BorderBrush="{StaticResource ShellBorderBrush}"
+                    BorderThickness="0,1,0,0"
+                    Padding="18,12">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Button Content="Bağlantıyı Test Et"
+                            Command="{Binding TestDeviceConnectionCommand}"
+                            Style="{StaticResource SecondaryToolbarButtonStyle}"
+                            AutomationProperties.Name="Cihaz bağlantısını test et" />
+                    <WrapPanel Grid.Column="1">
+                        <Button Content="İptal"
+                                Command="{Binding CloseDeviceFormCommand}"
+                                IsCancel="True"
+                                Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                AutomationProperties.Name="Cihaz formunu iptal et" />
+                        <Button Content="{Binding DeviceFormActionText}"
+                                Command="{Binding SaveDeviceCommand}"
+                                IsDefault="True"
+                                Style="{StaticResource ToolbarButtonStyle}"
+                                AutomationProperties.Name="Cihazı kaydet" />
+                    </WrapPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</UserControl>

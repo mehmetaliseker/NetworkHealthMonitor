@@ -75,7 +75,7 @@ public sealed class NotificationDispatcherService
             catch (Exception ex)
             {
                 AppErrorLogger.Log(ex, "NotificationDispatcher");
-                await MarkNtfyExceptionAsync(ex.Message, cancellationToken);
+                await MarkNotificationDiagnosticErrorAsync(ex.Message, cancellationToken);
             }
 
             await Task.Delay(TimeSpan.FromSeconds(10), cancellationToken);
@@ -101,63 +101,88 @@ public sealed class NotificationDispatcherService
         foreach (var item in items)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            await DispatchItemAsync(item, settings, cancellationToken);
+        }
+    }
 
-            var channelName = string.IsNullOrWhiteSpace(item.Channel) ? NotificationChannels.Ntfy : item.Channel;
-            if (!_channels.TryGetValue(channelName, out var channel))
-            {
-                await _outboxRepository.MarkDeadLetterAsync(item.Id, item.AttemptCount + 1, $"Unknown notification channel: {channelName}", cancellationToken);
-                continue;
-            }
+    private async Task DispatchItemAsync(
+        NotificationOutboxItem item,
+        NotificationSettings settings,
+        CancellationToken cancellationToken)
+    {
+        var channelName = string.IsNullOrWhiteSpace(item.Channel) ? NotificationChannels.Ntfy : item.Channel;
+        if (!_channels.TryGetValue(channelName, out var channel))
+        {
+            await _outboxRepository.MarkDeadLetterAsync(item.Id, item.AttemptCount + 1, $"Unknown notification channel: {channelName}", cancellationToken);
+            return;
+        }
 
-            if (!channel.IsEnabled(settings))
-            {
-                await _outboxRepository.MarkRetryAsync(
-                    item.Id,
-                    item.AttemptCount,
-                    _clock.UtcNow.AddMinutes(1),
-                    $"{channel.Name} channel is disabled.",
-                    cancellationToken);
-                continue;
-            }
-
-            var result = await channel.SendAsync(item, settings, cancellationToken);
-            if (result.Success)
-            {
-                var sentAtUtc = _clock.UtcNow;
-                await _outboxRepository.MarkSentAsync(item.Id, sentAtUtc, cancellationToken);
-                if (item.IncidentId.HasValue && _incidentRepository is not null)
-                {
-                    await _incidentRepository.MarkNotificationSentAsync(item.IncidentId.Value, item.EventType, sentAtUtc, cancellationToken);
-                }
-
-                if (_heartbeatRepository is not null)
-                {
-                    await _heartbeatRepository.MarkNotificationDispatchAsync(_workerInstanceId, sentAtUtc, cancellationToken);
-                }
-
-                await UpdateNotificationSuccessAsync(cancellationToken);
-                AppErrorLogger.LogInfo($"Notification sent. OutboxId={item.Id}; EventType={item.EventType}; Channel={channel.Name}; DeviceId={item.DeviceId}; IncidentId={item.IncidentId}; Recipient={item.Recipient}");
-                continue;
-            }
-
-            var nextAttempt = item.AttemptCount + 1;
-            if (!result.IsTransient || nextAttempt > channel.MaxRetryCount(settings))
-            {
-                await _outboxRepository.MarkDeadLetterAsync(item.Id, nextAttempt, result.SafeErrorMessage, cancellationToken);
-                await MarkNtfyExceptionAsync(result.SafeErrorMessage, cancellationToken);
-                await UpdateNotificationFailureAsync(result.SafeErrorMessage, cancellationToken);
-                AppErrorLogger.LogInfo($"Notification dead-lettered. OutboxId={item.Id}; EventType={item.EventType}; Channel={channel.Name}; DeviceId={item.DeviceId}; IncidentId={item.IncidentId}; Error={result.SafeErrorMessage}");
-                continue;
-            }
-
+        if (!channel.IsEnabled(settings))
+        {
             await _outboxRepository.MarkRetryAsync(
                 item.Id,
-                nextAttempt,
-                _alertPolicyService.CalculateNextRetryUtc(nextAttempt, channel.InitialRetryDelaySeconds(settings), result.RetryAfter, _clock.UtcNow),
-                result.SafeErrorMessage,
+                item.AttemptCount,
+                _clock.UtcNow.AddMinutes(1),
+                $"{channel.Name} channel is disabled.",
                 cancellationToken);
-            AppErrorLogger.LogInfo($"Notification retry scheduled. OutboxId={item.Id}; EventType={item.EventType}; Channel={channel.Name}; Attempt={nextAttempt}; Error={result.SafeErrorMessage}");
+            return;
         }
+
+        var result = await channel.SendAsync(item, settings, cancellationToken);
+        if (result.Success)
+        {
+            await MarkSendSuccessAsync(item, channel, cancellationToken);
+            return;
+        }
+
+        await MarkSendFailureAsync(item, channel, result, settings, cancellationToken);
+    }
+
+    private async Task MarkSendSuccessAsync(
+        NotificationOutboxItem item,
+        INotificationChannel channel,
+        CancellationToken cancellationToken)
+    {
+        var sentAtUtc = _clock.UtcNow;
+        await _outboxRepository.MarkSentAsync(item.Id, sentAtUtc, cancellationToken);
+        if (item.IncidentId.HasValue && _incidentRepository is not null)
+        {
+            await _incidentRepository.MarkNotificationSentAsync(item.IncidentId.Value, item.EventType, sentAtUtc, cancellationToken);
+        }
+
+        if (_heartbeatRepository is not null)
+        {
+            await _heartbeatRepository.MarkNotificationDispatchAsync(_workerInstanceId, sentAtUtc, cancellationToken);
+        }
+
+        await UpdateNotificationSuccessAsync(cancellationToken);
+        AppErrorLogger.LogInfo($"Notification sent. OutboxId={item.Id}; EventType={item.EventType}; Channel={channel.Name}; DeviceId={item.DeviceId}; IncidentId={item.IncidentId}; Recipient={item.Recipient}");
+    }
+
+    private async Task MarkSendFailureAsync(
+        NotificationOutboxItem item,
+        INotificationChannel channel,
+        NotificationSendResult result,
+        NotificationSettings settings,
+        CancellationToken cancellationToken)
+    {
+        var nextAttempt = item.AttemptCount + 1;
+        if (!result.IsTransient || nextAttempt > channel.MaxRetryCount(settings))
+        {
+            await _outboxRepository.MarkDeadLetterAsync(item.Id, nextAttempt, result.SafeErrorMessage, cancellationToken);
+            await MarkNotificationDiagnosticErrorAsync(result.SafeErrorMessage, cancellationToken);
+            await UpdateNotificationFailureAsync(result.SafeErrorMessage, cancellationToken);
+            AppErrorLogger.LogInfo($"Notification dead-lettered. OutboxId={item.Id}; EventType={item.EventType}; Channel={channel.Name}; DeviceId={item.DeviceId}; IncidentId={item.IncidentId}; Error={result.SafeErrorMessage}");
+            return;
+        }
+
+        await _outboxRepository.MarkRetryAsync(
+            item.Id,
+            nextAttempt,
+            _alertPolicyService.CalculateNextRetryUtc(nextAttempt, channel.InitialRetryDelaySeconds(settings), result.RetryAfter, _clock.UtcNow),
+            result.SafeErrorMessage,
+            cancellationToken);
+        AppErrorLogger.LogInfo($"Notification retry scheduled. OutboxId={item.Id}; EventType={item.EventType}; Channel={channel.Name}; Attempt={nextAttempt}; Error={result.SafeErrorMessage}");
     }
 
     private async Task UpdateNotificationSuccessAsync(CancellationToken cancellationToken)
@@ -175,7 +200,7 @@ public sealed class NotificationDispatcherService
         await _settingsService.SaveAsync(appSettings);
     }
 
-    private async Task MarkNtfyExceptionAsync(string message, CancellationToken cancellationToken)
+    private async Task MarkNotificationDiagnosticErrorAsync(string message, CancellationToken cancellationToken)
     {
         if (_heartbeatRepository is null)
         {

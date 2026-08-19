@@ -86,7 +86,11 @@ public sealed class AppSettings
 
     public NotificationSettings Notifications { get; set; } = new();
 
+    public AcceptanceTestSettings AcceptanceTest { get; set; } = new();
+
     public string Theme { get; set; } = "Açık";
+
+    public bool IsNavigationCollapsed { get; set; }
 
     public static AppSettings Default => new();
 }

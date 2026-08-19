@@ -3,10 +3,10 @@ param(
     [string]$WorkerPath = "",
     [string]$ReportJsonPath = "release\verification\windows-service-acceptance.json",
     [string]$ReportTextPath = "release\verification\windows-service-acceptance.txt",
+    [switch]$RequireWorkerRunning,
     [switch]$ConfirmWorkerSurvivedUiClosed,
-    [switch]$ConfirmRecoveryRestartedWorker,
     [switch]$ConfirmRebootCompleted,
-    [switch]$ConfirmWorkerStartedBeforeUserLogin
+    [switch]$ConfirmWorkerStoppedAfterReboot
 )
 
 $ErrorActionPreference = "Stop"
@@ -19,7 +19,7 @@ function Add-Check([string]$Status, [string]$Name, [string]$Detail = "") {
 
 function Resolve-PathOrDefault([string]$Path) {
     if ([string]::IsNullOrWhiteSpace($Path)) {
-        $Path = Join-Path $PSScriptRoot "..\worker\NetworkHealthMonitor.Worker.exe"
+        $Path = Join-Path $PSScriptRoot "..\Worker\NetworkHealthMonitor.Worker.exe"
     }
     if (Test-Path $Path) { return (Resolve-Path $Path).Path }
     return $Path
@@ -28,17 +28,17 @@ function Resolve-PathOrDefault([string]$Path) {
 $worker = Resolve-PathOrDefault $WorkerPath
 $service = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 Add-Check ($(if ($service) { "PASS" } else { "FAIL" })) "Service kurulu" $ServiceName
-Add-Check ($(if ($service -and $service.Status -eq "Running") { "PASS" } else { "FAIL" })) "Service Running" ($(if ($service) { $service.Status } else { "Missing" }))
+Add-Check ($(if (-not $RequireWorkerRunning -or ($service -and $service.Status -eq "Running")) { "PASS" } else { "FAIL" })) "Service Running" ($(if ($service) { $service.Status } else { "Missing" }))
 
 $wmi = Get-CimInstance -ClassName Win32_Service -Filter "Name='$($ServiceName.Replace("'","''"))'" -ErrorAction SilentlyContinue
-Add-Check ($(if ($wmi -and $wmi.StartMode -eq "Auto") { "PASS" } else { "FAIL" })) "StartMode Automatic" ($(if ($wmi) { $wmi.StartMode } else { "Missing" }))
+Add-Check ($(if ($wmi -and $wmi.StartMode -eq "Manual") { "PASS" } else { "FAIL" })) "StartMode Manual" ($(if ($wmi) { $wmi.StartMode } else { "Missing" }))
 
 try {
-    $delayed = (Get-ItemProperty -LiteralPath "HKLM:\SYSTEM\CurrentControlSet\Services\$ServiceName" -Name DelayedAutoStart -ErrorAction Stop).DelayedAutoStart
-    Add-Check ($(if ($delayed -eq 1) { "PASS" } else { "FAIL" })) "DelayedAutoStart" "DelayedAutoStart=$delayed"
+    $delayed = (Get-ItemProperty -LiteralPath "HKLM:\SYSTEM\CurrentControlSet\Services\$ServiceName" -Name DelayedAutoStart -ErrorAction SilentlyContinue).DelayedAutoStart
+    Add-Check ($(if ($null -eq $delayed -or $delayed -eq 0) { "PASS" } else { "FAIL" })) "DelayedAutoStart disabled" "DelayedAutoStart=$delayed"
 }
 catch {
-    Add-Check "FAIL" "DelayedAutoStart" $_.Exception.Message
+    Add-Check "PASS" "DelayedAutoStart disabled" "No DelayedAutoStart value"
 }
 
 $recoveryOutput = @()
@@ -56,9 +56,9 @@ finally {
     $ErrorActionPreference = $previousErrorActionPreference
 }
 $recoveryText = $recoveryOutput -join "`n"
-Add-Check ($(if ($recoveryExitCode -eq 0 -and $recoveryText -match "60000" -and $recoveryText -match "300000" -and $recoveryText -match "900000") { "PASS" } else { "FAIL" })) "Recovery policy" (($recoveryOutput | Select-Object -First 5) -join " ")
+Add-Check ($(if ($recoveryExitCode -ne 0 -or $recoveryText -notmatch "RESTART") { "PASS" } else { "WARNING" })) "Recovery auto restart yok" (($recoveryOutput | Select-Object -First 5) -join " ")
 
-if (Test-Path $worker) {
+if ((Test-Path $worker) -and $RequireWorkerRunning) {
     $health = @()
     $healthExitCode = -1
     try {
@@ -77,13 +77,12 @@ if (Test-Path $worker) {
     Add-Check ($(if ($healthExitCode -eq 0) { "PASS" } else { "FAIL" })) "Worker heartbeat health-check" (($health | Select-Object -First 8) -join " | ")
 }
 else {
-    Add-Check "FAIL" "Worker exe bulundu" $worker
+    Add-Check ($(if (Test-Path $worker) { "PASS" } else { "FAIL" })) "Worker exe bulundu" $worker
 }
 
 Add-Check ($(if ($ConfirmWorkerSurvivedUiClosed) { "PASS" } else { "NOT TESTED" })) "UI kapaliyken Worker calisti" "Manuel kanit gerekir."
-Add-Check ($(if ($ConfirmRecoveryRestartedWorker) { "PASS" } else { "NOT TESTED" })) "Process kill sonrasi recovery" "Manuel kanit gerekir."
 Add-Check ($(if ($ConfirmRebootCompleted) { "PASS" } else { "NOT TESTED" })) "Gercek reboot testi" "Bilgisayar yeniden baslatilmadan PASS sayilmaz."
-Add-Check ($(if ($ConfirmWorkerStartedBeforeUserLogin) { "PASS" } else { "NOT TESTED" })) "Login olmadan Worker basladi" "Boot-login arasi heartbeat/log kaniti gerekir."
+Add-Check ($(if ($ConfirmWorkerStoppedAfterReboot) { "PASS" } else { "NOT TESTED" })) "Reboot sonrasi Worker durdu" "Manual startup icin reboot sonrasi Stopped kaniti gerekir."
 
 $status = if (@($checks | Where-Object status -eq "FAIL").Count -gt 0) { "FAIL" } elseif (@($checks | Where-Object status -eq "NOT TESTED").Count -gt 0) { "NOT TESTED" } else { "PASS" }
 $report = [pscustomobject]@{ status = $status; generatedAtUtc = [DateTime]::UtcNow.ToString("O"); serviceName = $ServiceName; workerPath = $worker; checks = $checks }

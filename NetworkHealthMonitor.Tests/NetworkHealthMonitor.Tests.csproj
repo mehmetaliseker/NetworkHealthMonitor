@@ -17,8 +17,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\NetworkHealthMonitor.csproj" />
     <ProjectReference Include="..\NetworkHealthMonitor.Core\NetworkHealthMonitor.Core.csproj" />
     <ProjectReference Include="..\NetworkHealthMonitor.Worker\NetworkHealthMonitor.Worker.csproj" />
+    <ProjectReference Include="..\NetworkHealthMonitor.Tray\NetworkHealthMonitor.Tray.csproj" />
   </ItemGroup>
 
 </Project>

@@ -105,7 +105,21 @@ public sealed class AppSettingsService
             ExportDirectory = settings.ExportDirectory?.Trim() ?? string.Empty,
             DeviceTypePolicies = DeviceTypePolicy.NormalizeCollection(settings.DeviceTypePolicies),
             Notifications = NormalizeNotifications(settings.Notifications),
-            Theme = string.IsNullOrWhiteSpace(settings.Theme) ? "Açık" : settings.Theme
+            AcceptanceTest = NormalizeAcceptanceTest(settings.AcceptanceTest),
+            Theme = string.IsNullOrWhiteSpace(settings.Theme) ? "Açık" : settings.Theme,
+            IsNavigationCollapsed = settings.IsNavigationCollapsed
+        };
+    }
+
+    private static AcceptanceTestSettings NormalizeAcceptanceTest(AcceptanceTestSettings? settings)
+    {
+        settings ??= new AcceptanceTestSettings();
+        return new AcceptanceTestSettings
+        {
+            Enabled = settings.Enabled,
+            DeviceNamePrefix = string.IsNullOrWhiteSpace(settings.DeviceNamePrefix)
+                ? AcceptanceTestSettings.DefaultDeviceNamePrefix
+                : settings.DeviceNamePrefix.Trim()
         };
     }
 

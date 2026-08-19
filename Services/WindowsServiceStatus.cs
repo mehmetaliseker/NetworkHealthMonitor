@@ -10,6 +10,8 @@ public sealed record WindowsServiceStatus(string Code, string DisplayText)
 
     public bool IsAutomaticStartup { get; init; }
 
+    public bool IsManualStartup { get; init; }
+
     public bool RecoveryActionsConfigured { get; init; }
 
     public string RawStatus { get; init; } = string.Empty;

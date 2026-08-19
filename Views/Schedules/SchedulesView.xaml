@@ -1,0 +1,78 @@
+<UserControl x:Class="NetworkHealthMonitor.Views.Schedules.SchedulesView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer Style="{StaticResource PageScrollStyle}">
+        <TabControl>
+            <TabItem Header="Ana Kontrol Planlari">
+                <StackPanel Margin="0,12,0,0">
+                    <Border Style="{StaticResource PanelSectionStyle}">
+                        <WrapPanel>
+                            <Button Content="Yeni Plan"
+                                    Command="{Binding Legacy.OpenSchedulePlanFormCommand}"
+                                    Style="{StaticResource ToolbarButtonStyle}"
+                                    AutomationProperties.Name="Yeni kontrol plani ekle" />
+                            <Button Content="Plani Calistir"
+                                    Command="{Binding Legacy.RunSelectedSchedulePlanCommand}"
+                                    Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                    AutomationProperties.Name="Secili plani calistir" />
+                            <Button Content="Yenile"
+                                    Command="{Binding Legacy.RefreshDevicesCommand}"
+                                    Style="{StaticResource SecondaryToolbarButtonStyle}"
+                                    AutomationProperties.Name="Planlari yenile" />
+                        </WrapPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource InlineNoticeStyle}"
+                            Visibility="{Binding Legacy.HasNoSchedulePlans, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <TextBlock Text="Henuz kontrol plani yok." />
+                    </Border>
+
+                    <DataGrid ItemsSource="{Binding Legacy.SchedulePlans}"
+                              SelectedItem="{Binding Legacy.SelectedSchedulePlan}"
+                              Style="{StaticResource CompactDataGridStyle}"
+                              ColumnHeaderStyle="{StaticResource ModernDataGridHeaderStyle}"
+                              MinHeight="360">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Plan adi" Binding="{Binding Name}" Width="1.5*" />
+                            <DataGridTextColumn Header="Kapsam" Binding="{Binding TargetDisplayName}" Width="1.4*" />
+                            <DataGridTextColumn Header="Calisma sikligi" Binding="{Binding IntervalText}" Width="170" />
+                            <DataGridTextColumn Header="Son calisma" Binding="{Binding LastRunAtText}" Width="150" />
+                            <DataGridTextColumn Header="Sonraki calisma" Binding="{Binding NextRunAtText}" Width="150" />
+                            <DataGridTextColumn Header="Aktiflik" Binding="{Binding IsActiveText}" Width="100" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </StackPanel>
+            </TabItem>
+            <TabItem Header="Tekrar Kontrol Kurallari">
+                <Border Style="{StaticResource PanelSectionStyle}" Margin="0,12,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Tekrar kontrol kurallari" Style="{StaticResource SectionHeadingStyle}" />
+                        <WrapPanel>
+                            <StackPanel Width="220" Margin="0,0,16,12">
+                                <TextBlock Text="Erisilemeyen cihaz tekrar suresi" Style="{StaticResource FieldLabelStyle}" />
+                                <TextBox Text="{Binding Legacy.DefaultFailureRetryIntervalSeconds}" Style="{StaticResource ModernTextBoxStyle}" />
+                            </StackPanel>
+                            <StackPanel Width="220" Margin="0,0,16,12">
+                                <TextBlock Text="Maksimum tekrar sayisi" Style="{StaticResource FieldLabelStyle}" />
+                                <TextBox Text="{Binding Legacy.DefaultFailureRetryLimit}" Style="{StaticResource ModernTextBoxStyle}" />
+                            </StackPanel>
+                            <StackPanel Width="220" Margin="0,0,16,12">
+                                <TextBlock Text="Zaman aşımı" Style="{StaticResource FieldLabelStyle}" />
+                                <TextBox Text="{Binding Legacy.PingTimeoutMs}" Style="{StaticResource ModernTextBoxStyle}" />
+                            </StackPanel>
+                        </WrapPanel>
+                        <CheckBox Content="Akilli retry etkin"
+                                  IsChecked="{Binding Legacy.AutoCheckEnabled}"
+                                  Margin="0,8,0,12"
+                                  AutomationProperties.Name="Akilli retry etkin" />
+                        <Button Content="Kaydet"
+                                Command="{Binding Legacy.SaveSettingsCommand}"
+                                Style="{StaticResource ToolbarButtonStyle}"
+                                HorizontalAlignment="Left"
+                                AutomationProperties.Name="Tekrar kontrol ayarlarini kaydet" />
+                    </StackPanel>
+                </Border>
+            </TabItem>
+        </TabControl>
+    </ScrollViewer>
+</UserControl>

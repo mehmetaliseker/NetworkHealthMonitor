@@ -1,0 +1,40 @@
+<UserControl x:Class="NetworkHealthMonitor.Views.Devices.Tabs.DeviceSettingsTab"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border Style="{StaticResource PanelSectionStyle}" Margin="0,12,0,0">
+        <StackPanel>
+            <WrapPanel>
+                <StackPanel Width="220" Margin="0,0,14,10">
+                    <TextBlock Text="Ping zaman aşımı" Style="{StaticResource FieldLabelStyle}" />
+                    <TextBlock Text="{Binding Legacy.SelectedDevice.PingTimeoutText}" />
+                </StackPanel>
+                <StackPanel Width="220" Margin="0,0,14,10">
+                    <TextBlock Text="Bildirim / kontrol" Style="{StaticResource FieldLabelStyle}" />
+                    <TextBlock Text="{Binding Legacy.SelectedDevice.AutoCheckText}" />
+                </StackPanel>
+                <StackPanel Width="220" Margin="0,0,14,10">
+                    <TextBlock Text="Susturma" Style="{StaticResource FieldLabelStyle}" />
+                    <TextBlock Text="{Binding Legacy.SelectedDevice.SuppressionText}" TextWrapping="Wrap" />
+                </StackPanel>
+                <StackPanel Width="220" Margin="0,0,14,10">
+                    <TextBlock Text="Tekrar" Style="{StaticResource FieldLabelStyle}" />
+                    <TextBlock Text="{Binding Legacy.SelectedDevice.FailureRetryLimitText}" />
+                </StackPanel>
+            </WrapPanel>
+            <WrapPanel Margin="0,10,0,0">
+                <Button Content="Duzenle"
+                        Command="{Binding Legacy.EditSelectedDeviceCommand}"
+                        Style="{StaticResource ToolbarButtonStyle}"
+                        AutomationProperties.Name="Secili cihazi duzenle" />
+                <Button Content="Simdi Kontrol Et"
+                        Command="{Binding Legacy.PingSelectedDeviceCommand}"
+                        Style="{StaticResource SecondaryToolbarButtonStyle}"
+                        AutomationProperties.Name="Secili cihazi simdi kontrol et" />
+                <Button Content="Pasif Yap"
+                        Command="{Binding Legacy.DeactivateSelectedDevicesCommand}"
+                        Style="{StaticResource SecondaryToolbarButtonStyle}"
+                        AutomationProperties.Name="Secili cihazi pasif yap" />
+            </WrapPanel>
+        </StackPanel>
+    </Border>
+</UserControl>

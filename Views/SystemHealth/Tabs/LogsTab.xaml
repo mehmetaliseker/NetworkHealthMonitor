@@ -1,0 +1,14 @@
+<UserControl x:Class="NetworkHealthMonitor.Views.SystemHealth.Tabs.LogsTab"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border Style="{StaticResource PanelSectionStyle}" Margin="0,12,0,0">
+        <StackPanel>
+            <TextBlock Text="Son kritik hatalar ve log islemleri" Style="{StaticResource SectionHeadingStyle}" />
+            <TextBlock Text="{Binding Legacy.NotificationLastError}" Style="{StaticResource BodyMutedTextStyle}" TextWrapping="Wrap" />
+            <WrapPanel Margin="0,12,0,0">
+                <Button Content="Log Klasorunu Ac" Command="{Binding Legacy.OpenLogFolderCommand}" Style="{StaticResource ToolbarButtonStyle}" AutomationProperties.Name="Log klasorunu ac" />
+                <Button Content="Loglari Disa Aktar" Command="{Binding Legacy.ExportLogsCommand}" Style="{StaticResource SecondaryToolbarButtonStyle}" AutomationProperties.Name="Loglari disa aktar" />
+            </WrapPanel>
+        </StackPanel>
+    </Border>
+</UserControl>

@@ -1,0 +1,73 @@
+<UserControl x:Class="NetworkHealthMonitor.Views.Devices.DeviceGroupsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer Style="{StaticResource PageScrollStyle}">
+        <StackPanel>
+            <Border Style="{StaticResource InlineNoticeStyle}"
+                    Visibility="{Binding Legacy.HasNoGroups, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <TextBlock Text="Henuz cihaz grubu olusturulmamis." />
+            </Border>
+
+            <ItemsControl ItemsSource="{Binding Legacy.DeviceGroupSummaries}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Style="{StaticResource QuietCardStyle}" Width="260">
+                            <StackPanel>
+                                <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" />
+                                <WrapPanel Margin="0,10,0,6">
+                                    <StackPanel Width="78">
+                                        <TextBlock Text="Cihaz" Style="{StaticResource MicroLabelTextStyle}" />
+                                        <TextBlock Text="{Binding DeviceCount}" FontWeight="SemiBold" />
+                                    </StackPanel>
+                                    <StackPanel Width="78">
+                                        <TextBlock Text="Çevrimiçi" Style="{StaticResource MicroLabelTextStyle}" />
+                                        <TextBlock Text="{Binding OnlineCount}" FontWeight="SemiBold" />
+                                    </StackPanel>
+                                    <StackPanel Width="78">
+                                        <TextBlock Text="Erişilemiyor" Style="{StaticResource MicroLabelTextStyle}" />
+                                        <TextBlock Text="{Binding OfflineCount}" FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </WrapPanel>
+                                <WrapPanel>
+                                    <Button Content="Grubu Ac"
+                                            Command="{Binding DataContext.Legacy.OpenGroupDetailsCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding}"
+                                            Style="{StaticResource SmallActionButtonStyle}"
+                                            AutomationProperties.Name="Grubu ac" />
+                                    <Button Content="Grubu Kontrol Et"
+                                            Command="{Binding DataContext.Legacy.PingGroupSummaryCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding}"
+                                            Style="{StaticResource SmallActionButtonStyle}"
+                                            AutomationProperties.Name="Grubu kontrol et" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Border Style="{StaticResource PanelSectionStyle}" Margin="0,6,0,0">
+                <StackPanel>
+                    <TextBlock Text="{Binding Legacy.SelectedGroup.Name, TargetNullValue='Grup detayi'}" Style="{StaticResource SectionHeadingStyle}" />
+                    <DataGrid ItemsSource="{Binding Legacy.SelectedGroupDevices}"
+                              Style="{StaticResource CompactDataGridStyle}"
+                              ColumnHeaderStyle="{StaticResource ModernDataGridHeaderStyle}"
+                              MaxHeight="320">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Cihaz" Binding="{Binding Name}" Width="2*" />
+                            <DataGridTextColumn Header="IP / Hostname" Binding="{Binding IpAddress}" Width="170" />
+                            <DataGridTextColumn Header="Tur" Binding="{Binding DeviceTypeText}" Width="140" />
+                            <DataGridTextColumn Header="Durum" Binding="{Binding LastStatusText}" Width="150" />
+                            <DataGridTextColumn Header="Son Kontrol" Binding="{Binding LastCheckedAtText}" Width="160" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

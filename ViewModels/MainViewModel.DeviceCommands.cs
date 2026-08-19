@@ -1,4 +1,5 @@
 ﻿using System.Windows;
+using NetworkHealthMonitor.Infrastructure;
 using NetworkHealthMonitor.Models;
 using NetworkHealthMonitor.Services;
 
@@ -8,6 +9,14 @@ public sealed partial class MainViewModel
 {
     private async Task SaveDeviceAsync()
     {
+        FormName = FormName.Trim();
+        FormIpAddress = FormIpAddress.Trim();
+        ClearDeviceValidationMessages();
+        if (!await ValidateDeviceFormAsync())
+        {
+            return;
+        }
+
         var groupName = ResolveGroupName(FormGroupId);
         var device = _editingDeviceId.HasValue
             ? Devices.FirstOrDefault(item => item.Id == _editingDeviceId.Value) ?? new Device { Id = _editingDeviceId.Value }
@@ -38,26 +47,126 @@ public sealed partial class MainViewModel
             var result = await _deviceService.SaveAsync(device);
             if (!result.Success)
             {
-                _dialogService.ShowWarning("Cihaz kaydedilemedi", result.Message);
+                ApplyDeviceSaveFailure(result.Message);
                 return;
             }
 
             StatusMessage = result.Message;
+            IsDeviceFormVisible = false;
             await ReloadAllAsync();
             SelectedDevice = Devices.FirstOrDefault(item => item.Id == device.Id) ?? Devices.FirstOrDefault(item =>
                 string.Equals(item.IpAddress, device.IpAddress, StringComparison.OrdinalIgnoreCase));
-            IsDeviceFormVisible = SelectedDevice is not null && !IsCompactLayout;
-            if (IsCompactLayout)
-            {
-                IsDeviceFormVisible = false;
-            }
-
+            ClearDeviceValidationMessages();
             CurrentSection = SectionDevices;
+        }
+        catch (Exception ex)
+        {
+            AppErrorLogger.Log(ex, "Device save failed.");
+            DeviceFormValidationMessage = "Cihaz kaydedilemedi. Veritabanı işlemi sırasında hata oluştu.";
+            StatusMessage = DeviceFormValidationMessage;
         }
         finally
         {
             IsBusy = false;
         }
+    }
+
+    private async Task TestDeviceConnectionAsync()
+    {
+        _deviceConnectionTestCancellationTokenSource?.Cancel();
+        _deviceConnectionTestCancellationTokenSource?.Dispose();
+        _deviceConnectionTestCancellationTokenSource = new CancellationTokenSource();
+
+        IsTestingDeviceConnection = true;
+        DeviceConnectionTestMessage = "Bağlantı test ediliyor...";
+        var timeout = FormPingTimeoutMs ?? PingTimeoutMs;
+
+        try
+        {
+            var result = await _deviceConnectionTestService.TestAsync(
+                FormIpAddress,
+                timeout,
+                _deviceConnectionTestCancellationTokenSource.Token);
+
+            DeviceConnectionTestMessage = result.Message;
+            StatusMessage = result.Message;
+        }
+        catch (OperationCanceledException)
+        {
+            DeviceConnectionTestMessage = "Bağlantı testi iptal edildi.";
+            StatusMessage = DeviceConnectionTestMessage;
+        }
+        catch (Exception ex)
+        {
+            AppErrorLogger.Log(ex, "Device connection test failed.");
+            DeviceConnectionTestMessage = "Bağlantı testi tamamlanamadı.";
+            StatusMessage = DeviceConnectionTestMessage;
+        }
+        finally
+        {
+            IsTestingDeviceConnection = false;
+        }
+    }
+
+    private async Task<bool> ValidateDeviceFormAsync()
+    {
+        var isValid = true;
+        var name = FormName.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            DeviceNameValidationMessage = "Cihaz adı boş olamaz.";
+            isValid = false;
+        }
+        else if (name.Length > 120)
+        {
+            DeviceNameValidationMessage = "Cihaz adı 120 karakterden uzun olamaz.";
+            isValid = false;
+        }
+
+        var addressValidation = IpAddressValidator.ValidateDeviceAddress(FormIpAddress);
+        if (!addressValidation.IsValid)
+        {
+            DeviceAddressValidationMessage = addressValidation.ErrorMessage;
+            isValid = false;
+        }
+        else if (await _deviceRepository.ExistsByIpAsync(addressValidation.NormalizedAddress, _editingDeviceId))
+        {
+            DeviceAddressValidationMessage = "Bu IP adresi veya hostname zaten başka bir cihazda kayıtlı.";
+            isValid = false;
+        }
+        else
+        {
+            FormIpAddress = addressValidation.NormalizedAddress;
+        }
+
+        if (!isValid)
+        {
+            DeviceFormValidationMessage = "Lütfen işaretli alanları düzeltin.";
+            StatusMessage = DeviceFormValidationMessage;
+        }
+
+        return isValid;
+    }
+
+    private void ApplyDeviceSaveFailure(string message)
+    {
+        var userMessage = string.IsNullOrWhiteSpace(message)
+            ? "Cihaz kaydedilemedi."
+            : message;
+
+        if (userMessage.Contains("Cihaz adı", StringComparison.OrdinalIgnoreCase))
+        {
+            DeviceNameValidationMessage = userMessage;
+        }
+        else if (userMessage.Contains("IP", StringComparison.OrdinalIgnoreCase)
+                 || userMessage.Contains("hostname", StringComparison.OrdinalIgnoreCase)
+                 || userMessage.Contains("kayıtlı", StringComparison.OrdinalIgnoreCase))
+        {
+            DeviceAddressValidationMessage = userMessage;
+        }
+
+        DeviceFormValidationMessage = userMessage;
+        StatusMessage = userMessage;
     }
 
     private void StartEditDevice(Device? device)
@@ -68,6 +177,9 @@ public sealed partial class MainViewModel
         }
 
         _editingDeviceId = device.Id;
+        CancelDeviceConnectionTest();
+        ClearDeviceValidationMessages();
+        DeviceConnectionTestMessage = string.Empty;
         FormName = device.Name;
         FormIpAddress = device.IpAddress;
         FormDeviceType = device.DeviceType;
@@ -92,6 +204,8 @@ public sealed partial class MainViewModel
 
     private void ClearDeviceForm()
     {
+        CancelDeviceConnectionTest();
+        ClearDeviceValidationMessages();
         _editingDeviceId = null;
         FormName = string.Empty;
         FormIpAddress = string.Empty;
@@ -109,8 +223,24 @@ public sealed partial class MainViewModel
         FormIsCritical = false;
         FormIsActive = true;
         FormSlaTargetAvailabilityPercent = null;
+        DeviceConnectionTestMessage = string.Empty;
         OnPropertyChanged(nameof(DeviceFormTitle));
         OnPropertyChanged(nameof(DeviceFormActionText));
+    }
+
+    private void ClearDeviceValidationMessages()
+    {
+        DeviceNameValidationMessage = string.Empty;
+        DeviceAddressValidationMessage = string.Empty;
+        DeviceFormValidationMessage = string.Empty;
+    }
+
+    private void CancelDeviceConnectionTest()
+    {
+        _deviceConnectionTestCancellationTokenSource?.Cancel();
+        _deviceConnectionTestCancellationTokenSource?.Dispose();
+        _deviceConnectionTestCancellationTokenSource = null;
+        IsTestingDeviceConnection = false;
     }
 
     private void ClearDeviceFilters()
@@ -121,6 +251,7 @@ public sealed partial class MainViewModel
         DeviceGroupFilter = AllGroupsText;
         CriticalFilter = AllCriticalText;
         DeletedDeviceFilter = ActiveDevicesText;
+        DeviceActivityFilter = AllActivityStatesText;
         AutoCheckFilter = AllAutoCheckStatesText;
         SuppressionFilter = AllSuppressionStatesText;
         UptimeRangeFilter = AllUptimeRangesText;
@@ -373,10 +504,32 @@ public sealed partial class MainViewModel
         await RunManualPingAsync(Devices.Where(device => device.DeviceType == type.Value).ToList(), PingTriggerType.TypeManual);
     }
 
+    private async Task PingSelectedDevicesBulkAsync(object? parameter)
+    {
+        var devices = GetSelectedDevices(parameter);
+        if (devices.Count == 0)
+        {
+            _dialogService.ShowWarning("Cihaz seçilmedi", "Toplu ping için cihaz seçin.");
+            return;
+        }
+
+        var selectedCount = devices.Count;
+        if (!_dialogService.Confirm(
+                "Seçili cihazlar kontrol edilsin mi?",
+                $"{selectedCount} cihaz için manuel ping başlatılacak."))
+        {
+            return;
+        }
+
+        await RunManualPingAsync(devices, PingTriggerType.SelectedDeviceManual, showResultSummary: true, selectedCount: selectedCount);
+    }
+
     private async Task RunManualPingAsync(
         IEnumerable<Device> devices,
         PingTriggerType triggerType,
-        SchedulePlan? schedulePlan = null)
+        SchedulePlan? schedulePlan = null,
+        bool showResultSummary = false,
+        int? selectedCount = null)
     {
         var targets = devices.Where(device => device.IsActive && device.IsEnabled && !device.IsDeleted).DistinctBy(device => device.Id).ToList();
         if (targets.Count == 0)
@@ -405,7 +558,15 @@ public sealed partial class MainViewModel
                 progress,
                 _pingCancellationTokenSource.Token);
 
-            StatusMessage = $"Ping tamamlandı. Başarılı: {result.SuccessCount}, başarısız: {result.FailureCount}, atlanan: {result.SkippedBecauseAlreadyRunning}.";
+            var summary = selectedCount.HasValue
+                ? $"{selectedCount.Value} cihaz seçildi. Ping tamamlandı. Başarılı: {result.SuccessCount}, başarısız: {result.FailureCount}, atlanan: {result.SkippedBecauseAlreadyRunning}."
+                : $"Ping tamamlandı. Başarılı: {result.SuccessCount}, başarısız: {result.FailureCount}, atlanan: {result.SkippedBecauseAlreadyRunning}.";
+            StatusMessage = summary;
+            if (showResultSummary)
+            {
+                _dialogService.ShowInfo("Toplu ping sonucu", summary);
+            }
+
             await ReloadAllAsync();
         }
         catch (OperationCanceledException)

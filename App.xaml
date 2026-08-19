@@ -1,8 +1,59 @@
 <Application x:Class="NetworkHealthMonitor.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             StartupUri="MainWindow.xaml">
+             xmlns:converters="clr-namespace:NetworkHealthMonitor.Converters">
     <Application.Resources>
+        <ResourceDictionary>
+        <ResourceDictionary.MergedDictionaries>
+            <ResourceDictionary Source="Resources/DesignSystem.xaml" />
+        </ResourceDictionary.MergedDictionaries>
+
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
+        <converters:BooleanToGridLengthConverter x:Key="NavigationWidthConverter" TrueWidth="64" FalseWidth="232" />
+        <converters:CollapsedCenterAlignmentConverter x:Key="CollapsedCenterAlignmentConverter" />
+
+        <Style x:Key="NavGlyphStyle" TargetType="TextBlock">
+            <Setter Property="Width" Value="24" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="TextAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="Foreground" Value="#E5E7EB" />
+        </Style>
+
+        <Style x:Key="SectionHeadingStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource ShellTextBrush}" />
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="0,0,0,10" />
+        </Style>
+
+        <Style x:Key="FieldLabelStyle" TargetType="TextBlock" BasedOn="{StaticResource MicroLabelTextStyle}">
+            <Setter Property="Margin" Value="0,0,0,4" />
+        </Style>
+
+        <Style x:Key="PageScrollStyle" TargetType="ScrollViewer">
+            <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+            <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
+        </Style>
+
+        <Style x:Key="QuietCardStyle" TargetType="Border" BasedOn="{StaticResource PanelSurfaceStyle}">
+            <Setter Property="Margin" Value="0,0,12,12" />
+            <Setter Property="Padding" Value="14" />
+        </Style>
+
+        <Style x:Key="CompactDataGridStyle" TargetType="DataGrid" BasedOn="{StaticResource ModernDataGridStyle}">
+            <Setter Property="AutoGenerateColumns" Value="False" />
+            <Setter Property="CanUserAddRows" Value="False" />
+            <Setter Property="CanUserDeleteRows" Value="False" />
+            <Setter Property="IsReadOnly" Value="False" />
+            <Setter Property="SelectionMode" Value="Extended" />
+            <Setter Property="SelectionUnit" Value="FullRow" />
+        </Style>
+
         <SolidColorBrush x:Key="PageBackgroundBrush" Color="#F6F8FB" />
         <SolidColorBrush x:Key="SidebarBrush" Color="#111827" />
         <SolidColorBrush x:Key="SidebarMutedBrush" Color="#9CA3AF" />
@@ -276,5 +327,6 @@
             <Setter Property="Padding" Value="10,8" />
             <Setter Property="BorderBrush" Value="{StaticResource PanelBorderBrush}" />
         </Style>
+        </ResourceDictionary>
     </Application.Resources>
 </Application>

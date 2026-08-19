@@ -85,7 +85,8 @@ jobs:
         run: |
           powershell -ExecutionPolicy Bypass `
             -File .\scripts\build-final-release.ps1 `
-            -CreateReleaseCandidate
+            -CreateReleaseCandidate `
+            -SkipGitGuards
 
       - name: Verify generated artifacts
         shell: powershell

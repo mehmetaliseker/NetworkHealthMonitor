@@ -1,0 +1,16 @@
+<UserControl x:Class="NetworkHealthMonitor.Views.About.AboutView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer Style="{StaticResource PageScrollStyle}">
+        <Border Style="{StaticResource PanelSectionStyle}">
+            <StackPanel>
+                <TextBlock Text="NetworkHealthMonitor" Style="{StaticResource SectionHeadingStyle}" />
+                <WrapPanel>
+                    <StackPanel Width="420" Margin="0,0,18,12"><TextBlock Text="Veritabani" Style="{StaticResource FieldLabelStyle}" /><TextBlock Text="{Binding Legacy.DatabaseLocation}" TextWrapping="Wrap" /></StackPanel>
+                    <StackPanel Width="260" Margin="0,0,18,12"><TextBlock Text="Arka plan servisi" Style="{StaticResource FieldLabelStyle}" /><TextBlock Text="{Binding Legacy.WorkerHealthText}" /></StackPanel>
+                    <StackPanel Width="260" Margin="0,0,18,12"><TextBlock Text="Tray" Style="{StaticResource FieldLabelStyle}" /><TextBlock Text="{Binding Legacy.TrayStatusText}" /></StackPanel>
+                </WrapPanel>
+            </StackPanel>
+        </Border>
+    </ScrollViewer>
+</UserControl>

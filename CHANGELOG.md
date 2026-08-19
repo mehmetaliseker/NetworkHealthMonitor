@@ -5,7 +5,7 @@
 - Eski `IntervalMinutes` planlari geriye uyumlu olarak yeni sabit aralik modeline migrate edilir.
 - Erisilemeyen cihazlar icin normal plandan ayri yeniden kontrol araligi eklendi; varsayilan deger 20 dakikadir.
 - Worker scheduler ayni cevrimde ayni cihaz icin duplicate ping baslatmayacak sekilde normal plan ve offline recheck akisini birlestirir.
-- Windows Service kurulum scripti Automatic Delayed Start ve 1/5/15 dakika recovery politikasini dogrular.
+- Windows Service kurulum scripti Manual / Demand Start davranisini dogrular ve servisi kurulumdan sonra baslatmaz.
 - Production readiness ve release paket scriptleri eklendi; dis kabul raporlari olmadan final release uretilmez.
 
 ## 1.0.0

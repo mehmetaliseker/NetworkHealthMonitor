@@ -5,6 +5,8 @@ namespace NetworkHealthMonitor.Services;
 
 public sealed class DeviceService : IDeviceService
 {
+    private const int MaxDeviceNameLength = 120;
+
     private readonly DeviceRepository _deviceRepository;
 
     public DeviceService(DeviceRepository deviceRepository)
@@ -23,12 +25,36 @@ public sealed class DeviceService : IDeviceService
         var now = DateTime.Now;
         if (device.Id == 0)
         {
+            var deletedExisting = await _deviceRepository.GetByIpAsync(device.IpAddress, includeDeleted: true);
+            if (deletedExisting is { IsDeleted: true })
+            {
+                device.Id = deletedExisting.Id;
+                device.CreatedAt = deletedExisting.CreatedAt;
+                device.UpdatedAt = now;
+                device.IsDeleted = false;
+                device.DeletedAtUtc = null;
+                await _deviceRepository.UpdateAsync(device);
+                return OperationResult.Ok("Cihaz eklendi.");
+            }
+
             device.CreatedAt = now;
             device.UpdatedAt = now;
             await _deviceRepository.AddAsync(device);
             return OperationResult.Ok("Cihaz eklendi.");
         }
 
+        var existing = await _deviceRepository.GetByIdAsync(device.Id, includeDeleted: true);
+        if (existing is null)
+        {
+            return OperationResult.Fail("Güncellenecek cihaz bulunamadı.");
+        }
+
+        if (existing.IsDeleted)
+        {
+            return OperationResult.Fail("Silinmiş cihaz doğrudan düzenlenemez. Önce geri yükleyin.");
+        }
+
+        device.CreatedAt = existing.CreatedAt;
         device.UpdatedAt = now;
         await _deviceRepository.UpdateAsync(device);
         return OperationResult.Ok("Cihaz güncellendi.");
@@ -37,6 +63,12 @@ public sealed class DeviceService : IDeviceService
     public async Task<OperationResult> DeleteAsync(Device device)
     {
         if (device.Id <= 0)
+        {
+            return OperationResult.Fail("Silinecek cihaz bulunamadı.");
+        }
+
+        var existing = await _deviceRepository.GetByIdAsync(device.Id, includeDeleted: true);
+        if (existing is null || existing.IsDeleted)
         {
             return OperationResult.Fail("Silinecek cihaz bulunamadı.");
         }
@@ -73,24 +105,24 @@ public sealed class DeviceService : IDeviceService
         var ids = devices.Where(device => device.Id > 0 && device.IsDeleted).Select(device => device.Id).Distinct().ToList();
         if (ids.Count == 0)
         {
-            return OperationResult.Fail("Geri yuklenecek cihaz bulunamadi.");
+            return OperationResult.Fail("Geri yüklenecek cihaz bulunamadı.");
         }
 
         var affected = await _deviceRepository.BulkRestoreAsync(ids);
-        return OperationResult.Ok($"{affected} cihaz geri yuklendi.");
+        return OperationResult.Ok($"{affected} cihaz geri yüklendi.");
     }
 
     public async Task<OperationResult> DeleteGroupDevicesAsync(DeviceGroup group, bool deleteEmptyGroup)
     {
         if (group.Id <= 0)
         {
-            return OperationResult.Fail("Silinecek grup bulunamadi.");
+            return OperationResult.Fail("Silinecek grup bulunamadı.");
         }
 
         var affected = await _deviceRepository.BulkSoftDeleteByGroupAsync(group.Id, deleteEmptyGroup);
         return OperationResult.Ok(deleteEmptyGroup
-            ? $"{affected} cihaz silindi ve bos grup kaldirildi."
-            : $"{affected} cihaz silindi. Grup kaydi korundu.");
+            ? $"{affected} cihaz silindi ve boş grup kaldırıldı."
+            : $"{affected} cihaz silindi. Grup kaydı korundu.");
     }
 
     private async Task<OperationResult> ValidateAsync(Device device)
@@ -100,14 +132,15 @@ public sealed class DeviceService : IDeviceService
             return OperationResult.Fail("Cihaz adı boş olamaz.");
         }
 
-        if (string.IsNullOrWhiteSpace(device.IpAddress))
+        if (device.Name.Trim().Length > MaxDeviceNameLength)
         {
-            return OperationResult.Fail("IP adresi boş olamaz.");
+            return OperationResult.Fail($"Cihaz adı en fazla {MaxDeviceNameLength} karakter olabilir.");
         }
 
-        if (!IpAddressValidator.IsValidIpv4(device.IpAddress.Trim()))
+        var addressValidation = IpAddressValidator.ValidateDeviceAddress(device.IpAddress);
+        if (!addressValidation.IsValid)
         {
-            return OperationResult.Fail("IP adresi geçerli IPv4 formatında olmalıdır.");
+            return OperationResult.Fail(addressValidation.ErrorMessage);
         }
 
         if (!Enum.IsDefined(device.DeviceType))
@@ -150,15 +183,19 @@ public sealed class DeviceService : IDeviceService
             return OperationResult.Fail($"Başarısızlık eşiği 0 veya {AppSettings.MinFailureThreshold} ile {AppSettings.MaxFailureThreshold} arasında olmalıdır.");
         }
 
-        if (await _deviceRepository.ExistsByIpAsync(device.IpAddress.Trim(), device.Id == 0 ? null : device.Id))
+        var existingByAddress = await _deviceRepository.GetByIpAsync(addressValidation.NormalizedAddress, includeDeleted: true);
+        if (existingByAddress is not null
+            && existingByAddress.Id != device.Id
+            && (device.Id != 0 || !existingByAddress.IsDeleted))
         {
-            return OperationResult.Fail("Bu IP adresi zaten başka bir cihazda kayıtlı.");
+            return OperationResult.Fail("Bu IP adresi veya hostname zaten başka bir cihazda kayıtlı.");
         }
 
         device.Name = device.Name.Trim();
-        device.IpAddress = device.IpAddress.Trim();
+        device.IpAddress = addressValidation.NormalizedAddress;
         device.Location = device.Location.Trim();
         device.GroupName = device.GroupName.Trim();
+        device.Description = device.Description.Trim();
         return OperationResult.Ok();
     }
 }

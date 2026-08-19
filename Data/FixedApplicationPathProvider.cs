@@ -20,7 +20,7 @@ public sealed class FixedApplicationPathProvider : IApplicationPathProvider
 
     public string ConfigDirectory => Path.Combine(RootDirectory, "config");
 
-    public string DatabasePath => Path.Combine(DataDirectory, "network_health_monitor.db");
+    public string DatabasePath => Path.Combine(DataDirectory, DatabasePaths.DatabaseFileName);
 
     public string SettingsPath => Path.Combine(ConfigDirectory, "settings.json");
 

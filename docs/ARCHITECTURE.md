@@ -1,143 +1,159 @@
-# NetworkHealthMonitor Mimari Notları
+# NetworkHealthMonitor Architecture
 
-NetworkHealthMonitor, şirket içindeki IP tabanlı cihazların ICMP ping ile izlenmesi, sonuçların SQLite üzerinde saklanması ve uptime raporlarının üretilmesi için geliştirilmiş WPF masaüstü uygulamasıdır. Mevcut sürümde hedef, 300+ cihazı tek kullanıcı arayüzünden kontrollü, sade ve raporlanabilir şekilde takip etmektir.
+Last reviewed: 2026-07-31
 
-## Katmanlar
-
-### Models
-
-Domain ve UI binding modellerini içerir. `Device`, `DeviceGroup`, `SchedulePlan`, `PingLog`, `Outage`, `AppSettings`, `DeviceCheckPolicy`, `DeviceTypePolicy` ve rapor modelleri bu katmandadır. Cihaz durum metinleri kullanıcıyı yanıltmayacak şekilde model/enum extension seviyesinde tutulur.
-
-### ViewModels
-
-WPF ekran state'i ve command bağlama katmanıdır. `MainViewModel` partial dosyalara bölünmüştür:
-
-- `MainViewModel.cs`: alanlar, constructor, public binding property'leri ve command property'leri.
-- `MainViewModel.DeviceCommands.cs`: cihaz, grup ve manuel ping komutları.
-- `MainViewModel.ScheduleCommands.cs`: plan ve scheduler komutları.
-- `MainViewModel.SettingsCommands.cs`: ayar, bakım ve log temizlik komutları.
-- `MainViewModel.ImportExportCommands.cs`: CSV import/export komutları.
-- `MainViewModel.BulkOperations.cs`: seçili cihazlara toplu işlem komutları.
-- `MainViewModel.Dashboard.cs`: dashboard özetleri.
-- `MainViewModel.Refresh.cs`: veri yükleme, filtreleme ve command state yenileme.
-
-ViewModel SQL yazmaz, CSV string üretmez, uptime hesaplamaz ve retry kararını kendi içinde vermez. Bu işler servis ve repository katmanlarına bırakılır.
-
-### Services
-
-İş mantığı ve koordinasyon katmanıdır.
-
-- `PingService`: ICMP ping işlemini yapar.
-- `PingExecutionService`: ping görevlerini koordine eder, duplicate guard ve paralellik sınırını uygular.
-- `SchedulerService`: zamanı gelen otomatik kontrolleri çalıştırır.
-- `SchedulePlanTargetResolver`: plan hedeflerini cihaz listesine çözer.
-- `DeviceCheckPolicyService`: cihaz/grup/tip/global policy önceliğini çözer.
-- `DeviceHealthEvaluator`: ping sonucu ve policy bilgisine göre sağlık durumunu değerlendirir.
-- `AvailabilityService`: uptime/erişilebilirlik hesaplamasını repository ile koordine eder.
-- `CsvExportService` ve `DeviceImportExportService`: CSV rapor, cihaz import ve export akışlarını yürütür.
-- `DataMaintenanceService`: SQLite yedekleme, restore, optimize ve ayar dosyası taşıma işlemlerini yürütür.
-- `AppSettingsService`: `settings.json` okuma/yazma ve ayar normalizasyonundan sorumludur.
-
-### Data / Repositories
-
-SQLite erişimi bu katmandadır. Repository sınıfları CRUD, aggregate rapor, import uygulama, log temizleme ve migration sonrası sorguları yürütür. ViewModel doğrudan SQL kullanmaz.
-
-### Export / Import
-
-CSV dosyaları UTF-8 BOM ile yazılır. Varsayılan ayırıcı Türkiye Excel uyumu için `;` karakteridir. Import sırasında geçersiz IP, eksik zorunlu alan, bilinmeyen cihaz tipi ve duplicate IP durumları kullanıcıya raporlanır.
-
-### Maintenance
-
-Bakım akışı SQLite dosyasının yedeklenmesi, restore edilmesi, eski ping loglarının retention değerine göre temizlenmesi ve `PRAGMA optimize` çalıştırılmasını kapsar. Cleanup scheduler tick'inde değil, düşük maliyetli noktalarda veya manuel komutla çalışır.
-
-## Ping Akışı
-
-1. Kullanıcı manuel ping başlatır veya scheduler zamanı gelen planı çalıştırır.
-2. Hedef cihazlar repository/target resolver üzerinden belirlenir.
-3. `DeviceCheckPolicyService` her cihaz için etkin policy değerlerini çözer.
-4. `PingExecutionService` aynı cihaza duplicate ping atılmasını engeller ve `MaxParallelPings` sınırını uygular.
-5. `PingService` ICMP ping sonucunu döndürür.
-6. Sonuç `PingLogs` tablosuna yazılır, cihazın son durum alanları güncellenir.
-7. Uptime ve dashboard verileri loglardan aggregate sorgularla yenilenir.
-
-## Scheduler Akışı
-
-Scheduler global poll aralığıyla zamanı gelen aktif planları kontrol eder. Pasif planlar, pasif cihazlar ve `AutoCheckEnabled=false` cihazlar otomatik kontrole alınmaz. Başarısız cihazlar global scheduler hızını değiştirmez; yalnız ilgili cihazın bir sonraki kontrol zamanı policy ile kısaltılır.
-
-## Akıllı Retry Mantığı
-
-Başarısız ping tek başına kesin arıza kabul edilmez. Ardışık başarısızlık sayısı artar ve policy izin veriyorsa yalnız o cihaz kısa retry aralığıyla tekrar kontrol edilir. Başarılı ping geldiğinde failure sayacı sıfırlanır ve cihaz normal kontrol aralığına döner.
-
-Durum geçişleri kullanıcıya daha temkinli metinlerle gösterilir:
-
-- Sağlıklı
-- Uyarı
-- Takipte
-- Muhtemel erişilemiyor
-- Ping yanıtlamıyor olabilir
-- Kontrol edilmedi
-
-## Policy Önceliği
-
-Etkin policy tek bir servis tarafından şu sırayla çözülür:
-
-1. Cihaz özel ayarı
-2. Grup varsayılanı
-3. Tip varsayılanı
-4. Global ayar
-
-Policy kapsamı:
-
-- Otomatik kontrol açık/kapalı
-- Normal kontrol aralığı
-- Ping timeout
-- Hızlı retry aralığı
-- Retry limiti
-- Başarısızlık eşiği
-
-## Uptime Hesaplama
-
-Uptime cihaz üzerinde sabit bir yüzde olarak tutulmaz. `PingLogs` kayıtlarından SQL aggregate sorguları ile hesaplanır.
-
-Temel formül:
+## Current Layers
 
 ```text
-uptime = başarılı ölçüm sayısı / toplam ölçüm sayısı * 100
+WPF View
+  -> ShellViewModel / page ViewModel
+  -> legacy MainViewModel facade for existing commands
+  -> application services
+  -> repository classes
+  -> SqliteConnectionFactory
+  -> SQLite database
 ```
 
-Desteklenen dönemler:
+The UI has been split into physical page views and page ViewModels. Existing business behavior is still preserved through `MainViewModel` while the page state is being moved behind smaller ViewModel surfaces. This is intentional transitional architecture: P0/P1 behavior remains wired while the large legacy facade is reduced incrementally.
 
-- Son 24 saat
-- Son 7 gün
-- Son 30 gün
-- Genel
+## Composition Root
 
-Bu hesaplama ViewModel içinde yapılmaz; repository/service katmanında çalışır.
+`MainWindow.xaml.cs` creates the SQLite connection factory, repositories, application services, scheduler, ping execution service, notification publisher/client and the legacy `MainViewModel`. It then creates `ShellViewModel` and assigns it as the `DataContext`.
 
-## SQLite Performans Stratejisi
+`MainWindow.xaml` is now a shell host only. It contains global resources, ViewModel-to-View DataTemplates, and `Views/Shell/MainShellView.xaml`.
 
-SQLite şu aşamada tek masaüstü uygulaması ve 300+ cihaz hedefi için yeterlidir. Log büyümesi asıl risk olduğu için şu önlemler kullanılır:
+## UI Modules
 
-- WAL modu
-- `busy_timeout`
-- `PingLogs` için `DeviceId`, `CheckedAt`, `Status` ve birleşik indexler
-- Plan ve cihaz otomatik kontrol sorguları için indexler
-- Retention ile eski log temizleme
-- Uptime ve CSV export için aggregate SQL sorguları
-- Manuel `PRAGMA optimize`
+| Area | View | ViewModel | State owner today | Main services used |
+| --- | --- | --- | --- | --- |
+| Shell | `Views/Shell/MainShellView.xaml` | `ShellViewModel` | Shell | `NavigationService` |
+| Navigation | `Views/Shell/SidebarNavigation.xaml` | `ShellViewModel` | Shell | `NavigationService` |
+| Dashboard | `Views/Dashboard/DashboardView.xaml` | `DashboardViewModel` | Page + legacy facade | device/log/outage/heartbeat projections |
+| Devices | `Views/Devices/DevicesView.xaml` | `DevicesViewModel` | Page + legacy facade | `IDeviceService`, `DeviceRepository`, CSV services |
+| Device details | `Views/Devices/DeviceDetailsView.xaml` | `DeviceDetailsViewModel` | Page + legacy facade | filtered ping/outage/outbox projections |
+| Groups | `Views/Devices/DeviceGroupsView.xaml` | `DeviceGroupsViewModel` | Page + legacy facade | `IDeviceGroupService`, `DeviceGroupRepository` |
+| Live status | `Views/LiveStatus/LiveStatusView.xaml` | `LiveStatusViewModel` | Page + legacy facade | device and ping projections |
+| Schedules | `Views/Schedules/SchedulesView.xaml` | `SchedulesViewModel` | Page + legacy facade | `ISchedulePlanService`, `ISchedulerService` |
+| Ping history | `Views/PingHistory/PingHistoryView.xaml` | `PingHistoryViewModel` | Page + legacy facade | `PingLogRepository`, `CsvExportService` |
+| Incidents | `Views/Incidents/IncidentsView.xaml` | `IncidentsViewModel` | Page + legacy facade | `OutageRepository`, `AvailabilityRepository`, `IncidentService` |
+| Notifications | `Views/Notifications/NotificationsView.xaml` | `NotificationsViewModel` | Page + legacy facade | `NotificationOutboxRepository`, ntfy, SMTP |
+| Reports | `Views/Reports/ReportsView.xaml` | `ReportsViewModel` | Page + legacy facade | `AvailabilityService`, `CsvExportService` |
+| Worker | `Views/Worker/WorkerServiceView.xaml` | `WorkerServiceViewModel` | Page + legacy facade | `IWindowsServiceStatusService`, `WorkerHeartbeatRepository` |
+| System health | `Views/SystemHealth/SystemHealthView.xaml` | `SystemHealthViewModel` | Page + legacy facade | heartbeat, readiness, SQLite status |
+| Settings | `Views/Settings/SettingsView.xaml` | `SettingsViewModel` | Page + legacy facade | `AppSettingsService`, `DataMaintenanceService` |
 
-Çok yıllı log saklama, merkezi çok kullanıcılı erişim, yoğun alarm iş akışı veya sunucu tarafı raporlama gerektiğinde PostgreSQL ya da SQL Server değerlendirilmelidir.
+## Navigation
 
-## HTTP/TCP/SNMP Kararı
+`INavigationService` and `NavigationService` own the active page object and bounded back stack. Page ViewModels implement `INavigationAware` and `IRefreshable` through `PageViewModelBase`.
 
-Mevcut sürüm ICMP ping odaklıdır. Şirketteki cihazlar ping alabildiği için HTTP, TCP port ve SNMP kontrolleri şu an aktif özellik olarak eklenmemiştir. Mimari ileride `TcpPortCheckService`, `HttpCheckService` ve `SnmpCheckService` gibi servislerin `PingService` benzeri ayrı implementation olarak eklenmesine uygundur.
+Navigation route example:
 
-Bu genişleme yapılırken ViewModel'e kontrol protokolü mantığı gömülmemeli; check type seçimi ayrı servis/policy katmanında tutulmalıdır.
+```text
+ShellViewModel.NavigateToAsync<DevicesViewModel>()
+  -> NavigationService.NavigateAsync<DevicesViewModel>()
+  -> DevicesViewModel.OnNavigatedFrom/To lifecycle
+  -> ContentControl renders DevicesView via DataTemplate
+```
 
-## Alarm Sistemi Kararı
+Device details route:
 
-Alarm sistemi bu sürümde yoktur. Mevcut outage altyapısı erişilememe dönemlerini raporlamak için kullanılabilir, ancak bildirim/eskalasyon işi ping akışının içine gömülmemelidir. İleride alarm sistemi eklenecekse ping sonuçlarını dinleyen ayrı bir `AlarmEvaluationService` ve ayrı notification adapter'ları kullanılmalıdır.
+```text
+DevicesView row command
+  -> ShellViewModel.OpenDeviceDetailsCommand
+  -> ShellViewModel.NavigateToAsync<DeviceDetailsViewModel>(Device)
+  -> DeviceDetailsViewModel applies selected device to legacy facade
+  -> DeviceDetailsView renders scoped tabs
+```
 
-## Windows Service Geçişi
+## Page Lifecycle
 
-Bu sürüm WPF masaüstü uygulamasıdır. Windows Service'e geçiş şu an yapılmamıştır. İleride scheduler ve ping execution katmanları arka plan servisine taşınabilir; WPF tarafı ise yalnız yönetim ve raporlama arayüzü olarak kalabilir. Bu ayrım yapılırken repository, settings ve policy servisleri ortak kullanılabilecek şekilde korunmalıdır.
+`PageViewModelBase` exposes:
+
+```csharp
+bool IsLoading
+bool HasData
+bool HasError
+string? ErrorMessage
+ICommand RetryCommand
+ICommand RefreshCommand
+Task LoadAsync(CancellationToken)
+```
+
+Rules implemented now:
+
+- First navigation loads the page.
+- Simple return navigation reuses the cached page instance.
+- Explicit refresh reloads page state.
+- `OnNavigatedFromAsync` cancels the page navigation token.
+- Device details reloads when a new device parameter is supplied.
+
+Remaining transition: many page ViewModels delegate data collections and commands to `MainViewModel` until each use case facade is extracted.
+
+## Application Services
+
+| Feature | Service | Repository / infrastructure | Tables |
+| --- | --- | --- | --- |
+| Device CRUD | `IDeviceService` / `DeviceService` | `DeviceRepository` | `Devices`, `DeviceGroups`, `DeviceAvailabilityPeriods` |
+| Device groups | `IDeviceGroupService` / `DeviceGroupService` | `DeviceGroupRepository` | `DeviceGroups`, `Devices` |
+| Ping execution | `IPingExecutionService` / `PingExecutionService` | `IPingService`, `PingLogRepository`, `DeviceRepository`, `OutageRepository` | `PingLogs`, `Devices`, `Outages`, `DeviceIncidents`, `DeviceAvailabilityPeriods` |
+| Scheduler | `ISchedulerService` / `SchedulerService` | `SchedulePlanRepository`, `SchedulePlanTargetResolver` | `SchedulePlans`, `PingLogs`, `WorkerHeartbeat` |
+| Incident state | `IIncidentService` / `IncidentService` | SQLite commands + `NotificationOutboxRepository` | `DeviceIncidents`, `NotificationOutbox`, `PingLogs` |
+| Notification dispatch | `NotificationDispatcherService` | `INotificationOutboxRepository`, `NtfyNotificationChannel`, `EmailNotificationChannel` | `NotificationOutbox`, `DeviceIncidents`, `WorkerHeartbeat` |
+| Reports | `IAvailabilityService` / `AvailabilityService` | `AvailabilityRepository`, `CsvExportService` | `DeviceAvailabilityDaily`, `DeviceAvailabilityPeriods`, `DeviceIncidents` |
+| Backup/restore | `DataMaintenanceService` | filesystem + SQLite file path | database file and backup folder |
+| Settings | `AppSettingsService` | `SqliteConnectionFactory` | `AppSettings` |
+| Worker service control | `IWindowsServiceStatusService` | `sc.exe`, elevated PowerShell when required | Windows SCM, not SQLite |
+| Worker heartbeat | `WorkerHeartbeatRepository` | `SqliteConnectionFactory` | `WorkerHeartbeat` |
+
+## Worker Runtime
+
+```text
+Windows Service
+  -> Worker Host
+  -> WorkerComposition
+  -> WorkerRuntime
+  -> SchedulerService
+  -> DeviceRepository.GetAutoCheckCandidatesAsync
+  -> PingExecutionService
+  -> PingService
+  -> PingLogRepository / DeviceRepository / OutageRepository
+  -> IncidentService
+  -> NotificationOutbox
+  -> NotificationDispatcherService
+  -> ntfy / SMTP
+  -> WorkerHeartbeatRepository
+```
+
+The worker reads the same SQLite database as the UI. It does not reference the WPF UI assembly. Heartbeat is written to `WorkerHeartbeat`; UI and System Health read it through `WorkerHeartbeatRepository`.
+
+## Tray Runtime
+
+The tray is a separate WPF/WinForms NotifyIcon application. It uses `WindowsWorkerServiceController`, `TrayMenuStateBuilder`, and elevated PowerShell scripts for service installation/start/stop operations. It polls service status every 3 seconds. It does not host the console worker.
+
+## Dependency Rules
+
+Current target:
+
+- Views bind to page ViewModels or the legacy facade exposed by page ViewModels.
+- Page ViewModels should call application services or page use cases, not repositories directly.
+- UI must not execute SQL directly.
+- UI must not use `ServiceController` directly.
+- Worker must not reference WPF UI.
+
+Current deviation:
+
+- `MainViewModel` still has direct repository dependencies and page-specific state. It is retained as a compatibility facade while pages are physically split.
+- `MainWindow.xaml.cs` is still the manual composition root rather than a DI container module.
+
+## Lifetime Decisions
+
+- Singleton-like: `ShellViewModel`, `NavigationService`, cached page ViewModels, repositories/services created by `MainWindow`.
+- Cached pages: Dashboard, Devices, DeviceDetails, Groups, LiveStatus, Schedules, PingHistory, Incidents, Notifications, Reports, Worker, SystemHealth, Settings, Help, About.
+- Transient dialogs: the existing device and schedule dialog views are displayed by `GlobalDialogHost`; their state is still held by the legacy facade.
+- Worker/Tray: separate process lifetimes.
+
+## DPI and Runtime Validation
+
+- The WPF host uses `ApplicationHighDpiMode=PerMonitorV2` in `NetworkHealthMonitor.csproj`.
+- Runtime screenshots were captured at `1366x768` and at the current host maximum logical area (`1707x1019`).
+- The current validation machine did not expose a fully visible `1920x1080` logical work area, so that exact size and real `%125/%150` OS scale checks remain unverified.

@@ -1,6 +1,6 @@
 param(
     [string]$ServiceName = "NetworkHealthMonitorWorker",
-    [string]$WorkerPath = (Join-Path $PSScriptRoot "..\worker\NetworkHealthMonitor.Worker.exe"),
+    [string]$WorkerPath = (Join-Path $PSScriptRoot "..\Worker\NetworkHealthMonitor.Worker.exe"),
     [int]$HeartbeatMaxAgeSeconds = 120,
     [switch]$Quiet
 )

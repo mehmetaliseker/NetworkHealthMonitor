@@ -11,9 +11,7 @@ public static class WorkerComposition
     {
         DatabasePaths.Configure(options.PathProvider, options.LegacyDataDirectory);
 
-        var connectionFactory = new SqliteConnectionFactory();
-        await connectionFactory.InitializeAsync();
-
+        var connectionFactory = await CreateConnectionFactoryAsync();
         var workerInstanceId = $"{Environment.MachineName}-{Environment.ProcessId}-{Guid.NewGuid():N}";
         var settingsService = new AppSettingsService();
         var settings = await settingsService.LoadAsync();
@@ -36,21 +34,11 @@ public static class WorkerComposition
             startedAtUtc,
             settings.HeartbeatGraceSeconds);
 
-        var outboxRepository = new NotificationOutboxRepository(connectionFactory);
-        var alertPolicyService = new AlertPolicyService();
-        var incidentRepository = new DeviceOutageIncidentRepository(connectionFactory);
-        var dispatcher = new NotificationDispatcherService(
-            outboxRepository,
-            new INotificationChannel[]
-            {
-                new NtfyNotificationChannel(new NtfyNotificationClient(new DefaultHttpClientFactory(), new DpapiSecretProtector())),
-                new EmailNotificationChannel(new SmtpEmailSender())
-            },
+        var dispatcher = CreateNotificationDispatcher(
+            connectionFactory,
             settingsService,
-            alertPolicyService,
             workerInstanceId,
-            heartbeatRepository,
-            incidentRepository);
+            heartbeatRepository);
 
         var scheduler = await CreateSchedulerAsync(options, connectionFactory, settingsService, heartbeatRepository, availabilityRepository, workerInstanceId);
         return new WorkerRuntime(workerInstanceId, scheduler, dispatcher, heartbeatRepository);
@@ -60,9 +48,40 @@ public static class WorkerComposition
     {
         DatabasePaths.Configure(options.PathProvider, options.LegacyDataDirectory);
 
+        var connectionFactory = await CreateConnectionFactoryAsync();
+        return await CreateSchedulerAsync(options, connectionFactory, new AppSettingsService(), null, new AvailabilityRepository(connectionFactory), null);
+    }
+
+    private static async Task<SqliteConnectionFactory> CreateConnectionFactoryAsync()
+    {
         var connectionFactory = new SqliteConnectionFactory();
         await connectionFactory.InitializeAsync();
-        return await CreateSchedulerAsync(options, connectionFactory, new AppSettingsService(), null, new AvailabilityRepository(connectionFactory), null);
+        return connectionFactory;
+    }
+
+    private static NotificationDispatcherService CreateNotificationDispatcher(
+        SqliteConnectionFactory connectionFactory,
+        AppSettingsService settingsService,
+        string workerInstanceId,
+        WorkerHeartbeatRepository heartbeatRepository)
+    {
+        return new NotificationDispatcherService(
+            new NotificationOutboxRepository(connectionFactory),
+            CreateNotificationChannels(),
+            settingsService,
+            new AlertPolicyService(),
+            workerInstanceId,
+            heartbeatRepository,
+            new DeviceOutageIncidentRepository(connectionFactory));
+    }
+
+    private static IReadOnlyList<INotificationChannel> CreateNotificationChannels()
+    {
+        return
+        [
+            new NtfyNotificationChannel(new NtfyNotificationClient(new DefaultHttpClientFactory(), new DpapiSecretProtector())),
+            new EmailNotificationChannel(new SmtpEmailSender())
+        ];
     }
 
     private static Task<ISchedulerService> CreateSchedulerAsync(
@@ -79,16 +98,13 @@ public static class WorkerComposition
         var schedulePlanRepository = new SchedulePlanRepository(connectionFactory);
         var outageRepository = new OutageRepository(connectionFactory);
         var deviceCheckPolicyService = new DeviceCheckPolicyService();
-        var alertPolicyService = new AlertPolicyService();
-        var incidentService = new IncidentService(connectionFactory, settingsService, alertPolicyService);
-        var pingExecutionService = new PingExecutionService(
+        var incidentService = new IncidentService(connectionFactory, settingsService, new AlertPolicyService());
+        var pingExecutionService = CreatePingExecutionService(
             deviceRepository,
             deviceGroupRepository,
             pingLogRepository,
             outageRepository,
-            new PingService(),
             deviceCheckPolicyService,
-            new DeviceHealthEvaluator(),
             settingsService,
             incidentService,
             heartbeatRepository,
@@ -111,5 +127,32 @@ public static class WorkerComposition
             availabilityRepository,
             incidentService,
             workerInstanceId));
+    }
+
+    private static PingExecutionService CreatePingExecutionService(
+        DeviceRepository deviceRepository,
+        DeviceGroupRepository deviceGroupRepository,
+        PingLogRepository pingLogRepository,
+        OutageRepository outageRepository,
+        IDeviceCheckPolicyService deviceCheckPolicyService,
+        AppSettingsService settingsService,
+        IIncidentService incidentService,
+        WorkerHeartbeatRepository? heartbeatRepository,
+        AvailabilityRepository? availabilityRepository,
+        string? workerInstanceId)
+    {
+        return new PingExecutionService(
+            deviceRepository,
+            deviceGroupRepository,
+            pingLogRepository,
+            outageRepository,
+            PingServiceFactory.Create(settingsService),
+            deviceCheckPolicyService,
+            new DeviceHealthEvaluator(),
+            settingsService,
+            incidentService,
+            heartbeatRepository,
+            availabilityRepository,
+            workerInstanceId);
     }
 }
