@@ -40,6 +40,8 @@ public sealed partial class MainViewModel
     {
         _pingCancellationTokenSource?.Cancel();
         _pingCancellationTokenSource?.Dispose();
+        _deviceConnectionTestCancellationTokenSource?.Cancel();
+        _deviceConnectionTestCancellationTokenSource?.Dispose();
         await _schedulerService.DisposeAsync();
         _schedulerService.StatusChanged -= SchedulerStatusChanged;
     }
@@ -463,6 +465,7 @@ public sealed partial class MainViewModel
     private void RaiseCommandStates()
     {
         SaveDeviceCommand?.NotifyCanExecuteChanged();
+        TestDeviceConnectionCommand?.NotifyCanExecuteChanged();
         ClearDeviceFormCommand?.NotifyCanExecuteChanged();
         EditSelectedDeviceCommand?.NotifyCanExecuteChanged();
         EditDeviceCommand?.NotifyCanExecuteChanged();
@@ -484,6 +487,7 @@ public sealed partial class MainViewModel
         PauseMonitoringCommand?.NotifyCanExecuteChanged();
         RemoveSuppressionCommand?.NotifyCanExecuteChanged();
         ResumeMonitoringCommand?.NotifyCanExecuteChanged();
+        ActivateSelectedDevicesCommand?.NotifyCanExecuteChanged();
         DeactivateSelectedDevicesCommand?.NotifyCanExecuteChanged();
         DeleteSelectedDevicesBulkCommand?.NotifyCanExecuteChanged();
         RestoreSelectedDevicesBulkCommand?.NotifyCanExecuteChanged();
