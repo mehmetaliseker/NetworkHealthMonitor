@@ -722,7 +722,15 @@ public sealed class NetworkHealthMonitorTests
             await AssertColumnExistsAsync(factory, "DeviceIncidents", "EndedAtUtc");
             await AssertMigrationRecordedAsync(factory, DatabaseMigrationRunner.DeviceIncidentsEndedAtUtcMigrationId);
             await AssertMigrationRecordedAsync(factory, SqliteConnectionFactory.NotificationEmailSuppressionSchemaMigrationId);
-            Assert.Single(await new AvailabilityRepository(factory).GetIncidentRankingAsync(DateTime.UtcNow.AddDays(-30), DateTime.UtcNow, 10));
+            var rankingStartUtc = DateTime.Parse(
+                "2026-07-15T00:00:00.0000000Z",
+                null,
+                System.Globalization.DateTimeStyles.AdjustToUniversal);
+            var rankingEndUtc = DateTime.Parse(
+                "2026-07-16T00:00:00.0000000Z",
+                null,
+                System.Globalization.DateTimeStyles.AdjustToUniversal);
+            Assert.Single(await new AvailabilityRepository(factory).GetIncidentRankingAsync(rankingStartUtc, rankingEndUtc, 10));
         }
         finally
         {
